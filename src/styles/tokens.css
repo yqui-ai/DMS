@@ -1,0 +1,38 @@
+/* DMS design tokens — copied verbatim from the prototype */
+:root{
+  --ink:#16191f; --ink-2:#20242c; --ink-3:#2a2f39;
+  --bg:#f2f4f7; --surface:#ffffff; --surface-2:#f4f6f9;
+  --blue:#0a4f8c; --blue-deep:#003a70; --blue-mid:#3d7dbd; --blue-light:#e8f0f9; --blue-pale:#f3f7fb;
+  --red:#da291c; --red-light:#fdecea;
+  --text:#1d2129; --muted:#69707c; --line:#e6e9ee;
+  --r:10px;
+}
+.dark{
+  --bg:#12151b; --surface:#1b1f27; --surface-2:#20242c;
+  --text:#e7eaf0; --muted:#9aa3af; --line:#31363f;
+  --blue-light:#1c3350; --blue-pale:#182534;
+}
+
+/* Semantic accents used by tags, node types and status dots */
+:root{
+  --amber:#e2a900; --amber-ink:#8a5a00; --amber-bg:#fff7e6;
+  --green:#15803d; --green-bg:#e7f6ed;
+  --violet:#7c3aed; --violet-deep:#6d28d9; --violet-bg:#ede9fe;
+  --teal:#0f766e; --teal-bg:#e6f4f1;
+  --slate:#334155; --neutral-bg:#eceff3; --neutral-ink:#525a66;
+  --red-ink:#a81409;
+}
+
+/* Type */
+body{
+  font-family:'IBM Plex Sans',system-ui,sans-serif;
+  font-size:14px; line-height:1.5; color:var(--text); background:var(--bg);
+}
+/* monospace used for every technical identifier (table, field, job, variable, run id) */
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+/* Elevation */
+.card-shadow{box-shadow:0 1px 2px rgba(22,28,40,.06),0 0 0 1px rgba(22,28,40,.04)}
+.card-shadow-hover{box-shadow:0 6px 20px rgba(10,79,140,.13)}
+.node-shadow{box-shadow:0 1px 3px rgba(15,23,42,.08)}
+.node-shadow-selected{box-shadow:0 3px 12px rgba(15,23,42,.16)}
