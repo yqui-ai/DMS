@@ -9,9 +9,22 @@
  * Run: node scripts/build-seed.mjs
  */
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+/**
+ * Deterministic id from a stable natural key (SHA-256, formatted as a UUID). Regenerating this
+ * script must always produce the SAME id for the SAME source row — otherwise re-running seed.sql
+ * against an already-seeded database breaks: `on conflict do nothing` silently skips a row whose
+ * unique key (e.g. migration_objects.guid) already exists, but a freshly random id generated in
+ * *this* run never actually gets inserted, so any other row in the same file that references that
+ * fresh-but-unpersisted id (e.g. object_dependencies) fails its foreign key.
+ */
+function stableId(key) {
+  const hex = createHash('sha256').update(key).digest('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -127,19 +140,20 @@ async function main() {
     ['end_user', 'End User', 'Read-only access for business reviewers.'],
     ['guest', 'Guest', 'Default role for newly added users until reassigned. No access until granted.'],
   ];
+  // mirrors src/lib/rbac.ts's ROLE_SCREENS
   const ALL_SCREENS = [
-    'myWork', 'timeline', 'projectSettings', 'preparation', 'rules', 'referenceData', 'dashboard',
-    'migration', 'quality', 'cutover', 'promotions', 'auditLog', 'jobMonitor', 'catalogObjects',
-    'catalogFmds', 'catalogRules', 'goldenLibrary', 'connections',
+    'myWork', 'projectSettings', 'preparation', 'rules', 'referenceData', 'dashboard',
+    'migration', 'quality', 'cutover', 'promotions', 'jobMonitor', 'catalogObjects',
+    'catalogFmds', 'catalogRules', 'connections',
   ];
   const ROLE_SCREENS = {
     program_admin: 'all',
-    data_owner: ['myWork', 'dashboard', 'timeline', 'preparation', 'rules', 'referenceData', 'catalogObjects', 'catalogFmds', 'catalogRules', 'goldenLibrary'],
-    etl_developer: ['myWork', 'dashboard', 'timeline', 'migration', 'quality', 'catalogObjects', 'jobMonitor'],
-    etl_lead: ['myWork', 'dashboard', 'timeline', 'migration', 'quality', 'cutover', 'promotions', 'auditLog', 'jobMonitor', 'connections', 'catalogObjects', 'catalogFmds', 'catalogRules', 'goldenLibrary'],
-    data_governance_lead: ['myWork', 'dashboard', 'timeline', 'preparation', 'rules', 'referenceData', 'quality', 'promotions', 'catalogObjects', 'catalogFmds', 'catalogRules', 'goldenLibrary'],
-    cab: ['myWork', 'dashboard', 'timeline', 'promotions', 'auditLog', 'cutover'],
-    end_user: ['myWork', 'dashboard', 'timeline', 'catalogObjects', 'catalogFmds', 'catalogRules', 'goldenLibrary'],
+    data_owner: ['myWork', 'dashboard', 'preparation', 'rules', 'referenceData', 'quality', 'cutover', 'catalogObjects', 'catalogFmds', 'catalogRules'],
+    etl_developer: ['myWork', 'dashboard', 'migration', 'quality', 'jobMonitor', 'catalogObjects'],
+    etl_lead: ['myWork', 'dashboard', 'migration', 'quality', 'cutover', 'promotions', 'jobMonitor', 'connections', 'catalogObjects', 'catalogFmds', 'catalogRules'],
+    data_governance_lead: ['myWork', 'dashboard', 'preparation', 'rules', 'referenceData', 'quality', 'promotions', 'catalogObjects', 'catalogFmds', 'catalogRules'],
+    cab: ['myWork', 'dashboard', 'promotions', 'cutover'],
+    end_user: ['myWork', 'dashboard'],
     guest: [],
   };
 
@@ -163,7 +177,7 @@ async function main() {
   // ── migration_objects: real SAP DMC catalogue (verbatim) ──
   const migObjMap = new Map(); // ident -> uuid (last write wins if idents repeat)
   const catalogRows = DMC_CATALOG.map(([guid, ident, alias, descr, objType, approach, component]) => {
-    const id = randomUUID();
+    const id = stableId('mo-dmc:' + guid);
     migObjMap.set(ident, id);
     return {
       id: q(id), guid: q(guid), object_id: q(ident), technical_name: q(alias || null),
@@ -185,7 +199,7 @@ async function main() {
   const SYNTHETIC_COMPONENT = { MARA: 'MM', MARC: 'MM', MBEW: 'MM', MVKE: 'SD', MARM: 'MM', MLGN: 'WM' };
   const migObjSyntheticMap = new Map(); // table code -> uuid
   const syntheticRows = scopeRows.map((s) => {
-    const id = randomUUID();
+    const id = stableId('mo-synthetic:' + s.table);
     migObjSyntheticMap.set(s.table, id);
     return {
       id: q(id), guid: 'null', object_id: q(s.table), technical_name: q(s.table), description: q(s.name),
@@ -215,8 +229,8 @@ async function main() {
   out.push(insertStatement('object_dependencies', ['migration_object_id', 'requires_object_id'], depRows));
 
   // ── programme hierarchy: project / releases / waves / cycles ──
-  const projectId = randomUUID();
   const proj = state.config.project;
+  const projectId = stableId('project:' + proj.code);
   out.push('-- ── projects ──');
   out.push(insertStatement('projects', ['id', 'code', 'name', 'description', 'start_date'], [{
     id: q(projectId), code: q(proj.code), name: q(proj.name), description: q(proj.description),
@@ -230,14 +244,14 @@ async function main() {
   const waveRows = [];
   const cycleRows = [];
   state.config.releases.forEach((r, ri) => {
-    const releaseId = randomUUID();
+    const releaseId = stableId('release:' + r.code);
     releaseMap.set(r.id, releaseId);
     releaseRows.push({
       id: q(releaseId), project_id: q(projectId), code: q(r.code), name: q(r.name), description: q(r.description),
       start_date: q(toIsoDate(r.start)), seq: n(ri + 1),
     });
     (r.waves ?? []).forEach((w, wi) => {
-      const waveId = randomUUID();
+      const waveId = stableId('wave:' + w.code);
       waveMap.set(w.id, waveId);
       waveRows.push({
         id: q(waveId), release_id: q(releaseId), code: q(w.code), name: q(w.name), description: q(w.description),
@@ -245,7 +259,7 @@ async function main() {
         scope_finalized: b(!!w.scopeFinalized), seq: n(wi + 1),
       });
       (w.cycles ?? []).forEach((c) => {
-        const cycleId = randomUUID();
+        const cycleId = stableId('cycle:' + w.code + ':' + c.id);
         cycleMap.set(c.id, cycleId);
         cycleRows.push({
           id: q(cycleId), wave_id: q(waveId), name: q(c.name), seq: n(c.seq), description: q(c.description),
@@ -265,7 +279,7 @@ async function main() {
 
   // ── wave_objects (Wave 1A scope) ──
   const waveObjectRows = scopeRows.map((s) => ({
-    id: q(randomUUID()), wave_id: q(wave1Id), migration_object_id: q(migObjSyntheticMap.get(s.table)),
+    id: q(stableId('wave-object:' + s.table)), wave_id: q(wave1Id), migration_object_id: q(migObjSyntheticMap.get(s.table)),
     in_scope: b(s.scopeLabel === 'In Scope'), approach: q(state.objectApproach[s.table] ?? null),
     load_seq: 'null', owner: q(s.owner === '—' ? null : s.owner), waiver_reason: 'null',
   }));
@@ -279,7 +293,7 @@ async function main() {
     if (!migObjId) continue;
     for (const s of structs) {
       structRows.push({
-        id: q(randomUUID()), migration_object_id: q(migObjId), name: q(s.name), table_name: q(s.table),
+        id: q(stableId('object-structure:' + s.id)), migration_object_id: q(migObjId), name: q(s.name), table_name: q(s.table),
         seq: n(s.seq), fields: n(s.fields), mapped: n(s.mapped), mandatory: b(s.mandatory), owner: q(s.owner),
         status: q(s.status),
       });
@@ -288,10 +302,41 @@ async function main() {
   out.push('-- ── object_structures ──');
   out.push(insertStatement('object_structures', ['id', 'migration_object_id', 'name', 'table_name', 'seq', 'fields', 'mapped', 'mandatory', 'owner', 'status'], structRows));
 
+  // ── fmds + fmd_versions — the one real FMD the prototype models in depth (Wave 1A's
+  // legacyRows/mappingRows), attached to the synthetic MARA object. Sheets follow FmdVersion's
+  // { source, target, mapping } shape from types/entities.ts.
+  const wave1Fixture = state.config.releases[0].waves[0];
+  const fmdId = stableId('fmd:MARA');
+  const fmdVersionId = stableId('fmd-version:MARA:v2.1.0');
+  out.push('-- ── fmds ──');
+  out.push(insertStatement('fmds', ['id', 'wave_id', 'migration_object_id', 'name'], [{
+    id: q(fmdId), wave_id: q(wave1Id), migration_object_id: q(migObjSyntheticMap.get('MARA')), name: q('FMD — MARA/MARC Core Fields'),
+  }]));
+
+  const sourceSheet = (wave1Fixture.legacyRows ?? []).map((r) => ({ field: r.field, desc: r.desc, sample: r.sample, sheet: r.sheet }));
+  const mappingSheet = (wave1Fixture.mappingRows ?? []).map((r) => ({
+    source: r.source, target: r.target, dataType: r.dataType, rule: r.rule,
+    mandatory: r.mandatory ? 'Yes' : 'No', defaultValue: r.defaultValue, dqRule: r.dqRule, comments: r.comments,
+  }));
+  const seenTargets = new Set();
+  const targetSheet = [];
+  for (const r of wave1Fixture.mappingRows ?? []) {
+    if (seenTargets.has(r.target)) continue;
+    seenTargets.add(r.target);
+    const [table, field] = String(r.target).split('.');
+    targetSheet.push({ table: table ?? r.target, field: field ?? '', dataType: r.dataType });
+  }
+  out.push('-- ── fmd_versions ──');
+  out.push(insertStatement('fmd_versions', ['id', 'fmd_id', 'version', 'state', 'sheets', 'created_by', 'created_at', 'approved_by', 'approved_at'], [{
+    id: q(fmdVersionId), fmd_id: q(fmdId), version: q('v2.1.0'), state: q('Approved'),
+    sheets: q(JSON.stringify({ source: sourceSheet, target: targetSheet, mapping: mappingSheet })) + '::jsonb',
+    created_by: q('J. Alvarez'), created_at: q(parseDate('Jul 20, 2026')), approved_by: q('S. Chen'), approved_at: q(parseDate('Jul 30, 2026')),
+  }]));
+
   // ── connections (state.landscape) ──
   const connectionMap = new Map(); // sid -> uuid
   const connectionRows = state.landscape.map((c) => {
-    const id = randomUUID();
+    const id = stableId('connection:' + c.sid);
     connectionMap.set(c.sid, id);
     return {
       id: q(id), project_id: q(projectId), sid: q(c.sid), description: q(c.desc), type: q(c.type),
@@ -315,12 +360,15 @@ async function main() {
   }]));
 
   // ── source_tables (state.extractTables) ──
+  const sourceTableIdByName = new Map(); // table name -> raw uuid (used below for staging_rows)
   const sourceTableRows = state.extractTables
     .map((t) => {
       const connId = connIdBySystem(t.system);
       if (!connId) return null;
+      const id = stableId('source-table:' + t.name + ':' + t.system);
+      sourceTableIdByName.set(t.name, { id, status: t.status });
       return {
-        id: q(randomUUID()), wave_id: q(wave1Id), connection_id: q(connId), name: q(t.name), tier: q(t.tier),
+        id: q(id), wave_id: q(wave1Id), connection_id: q(connId), name: q(t.name), tier: q(t.tier),
         in_scope: b(t.inScope), records: n(parseNum(t.records)), expected: 'null', status: q(t.status),
         extracted_on: q(parseDate(t.extractedOn)), executed_by: q(t.executedBy === '—' ? null : t.executedBy),
         duration_s: 'null', snapshot: 'null', dq_score: 'null', load_type: 'null',
@@ -330,9 +378,35 @@ async function main() {
   out.push('-- ── source_tables ──');
   out.push(insertStatement('source_tables', ['id', 'wave_id', 'connection_id', 'name', 'tier', 'in_scope', 'records', 'expected', 'status', 'extracted_on', 'executed_by', 'duration_s', 'snapshot', 'dq_score', 'load_type'], sourceTableRows));
 
+  // ── staging_rows: a handful of representative rows per extracted source table, so the
+  // Pipelines designer's Data preview tab can query real data instead of always falling back
+  // to its synthetic generator. Column sets mirror src/features/pipelines/dataPreview.ts.
+  const STAGING_COLUMN_SETS = {
+    MARA: ['MATNR', 'MTART', 'MEINS', 'MATKL', 'BRGEW', 'LVORM'],
+    MAKT: ['MATNR', 'SPRAS', 'MAKTX'],
+    MARC: ['MATNR', 'WERKS', 'DISPO', 'EKGRP'],
+    MARD: ['MATNR', 'WERKS', 'LGORT'],
+    MBEW: ['MATNR', 'BWKEY', 'BKLAS', 'SALK3'],
+    MARM: ['MATNR', 'MEINH', 'UMREZ', 'UMREN'],
+    MVKE: ['MATNR', 'VKORG', 'VTWEG', 'VERSG'],
+  };
+  const stagingRowRows = [];
+  for (const [name, info] of sourceTableIdByName) {
+    if (info.status !== 'Extracted') continue;
+    const base = name.replace(/\.[A-Za-z0-9]+$/, '').toUpperCase();
+    const columns = STAGING_COLUMN_SETS[base];
+    if (!columns) continue; // no plausible SAP-shaped column set for this table (legacy files, GL, etc.)
+    for (let i = 0; i < 8; i++) {
+      const rowData = Object.fromEntries(columns.map((c) => [c, seededPreviewValue(name, c, i)]));
+      stagingRowRows.push({ id: q(stableId('staging-row:' + name + ':' + i)), source_table_id: q(info.id), seq: n(i + 1), row_data: q(JSON.stringify(rowData)) + '::jsonb' });
+    }
+  }
+  out.push('-- ── staging_rows ──');
+  out.push(insertStatement('staging_rows', ['id', 'source_table_id', 'seq', 'row_data'], stagingRowRows));
+
   // ── selection_criteria (state.criteriaDefs) ──
   const criteriaRows = state.criteriaDefs.map((c) => ({
-    id: q(randomUUID()), wave_id: q(wave1Id), connection_id: q(connIdBySystem(c.system)), table_name: q(c.table),
+    id: q(stableId('criteria:' + c.id)), wave_id: q(wave1Id), connection_id: q(connIdBySystem(c.system)), table_name: q(c.table),
     mode: q(c.mode), field: q(c.field === '—' ? null : c.field), condition: q(c.condition), value: q(c.value),
     scope: q(c.scope),
   }));
@@ -345,7 +419,7 @@ async function main() {
   // 'Standardization' and 'Cleansing', which fold into 'Validation' here.
   const RULE_TYPES = new Set(['Validation', 'Transformation', 'Enrichment']);
   const ruleRows = state.rules.map((r) => ({
-    id: q(randomUUID()), wave_id: q(wave1Id), code: q(r.id), name: q(r.name),
+    id: q(stableId('rule:' + r.id)), wave_id: q(wave1Id), code: q(r.id), name: q(r.name),
     migration_object_id: q(migObjSyntheticMap.get(r.object) ?? null),
     type: q(RULE_TYPES.has(r.type) ? r.type : 'Validation'),
     severity: q(r.severity), status: q(RULE_STATUS[r.status] ?? 'Draft'), expression: 'null',
@@ -358,14 +432,14 @@ async function main() {
   const xrefTableRows = [];
   const xrefRowRows = [];
   for (const x of state.xrefs) {
-    const xrefId = randomUUID();
+    const xrefId = stableId('xref-table:' + x.id);
     xrefTableRows.push({ id: q(xrefId), wave_id: q(wave1Id), name: q(x.name), purpose: q(x.desc), version: q(x.version) });
-    for (const row of x.rows) {
+    x.rows.forEach((row, i) => {
       xrefRowRows.push({
-        id: q(randomUUID()), xref_table_id: q(xrefId), legacy_value: q(row.source), s4_value: q(row.target),
+        id: q(stableId('xref-row:' + x.id + ':' + i)), xref_table_id: q(xrefId), legacy_value: q(row.source), s4_value: q(row.target),
         valid_from: 'null', status: q('Active'),
       });
-    }
+    });
   }
   out.push('-- ── xref_tables ──');
   out.push(insertStatement('xref_tables', ['id', 'wave_id', 'name', 'purpose', 'version'], xrefTableRows));
@@ -375,7 +449,7 @@ async function main() {
   // ── ETL designer: etl_objects / etl_nodes / etl_edges / etl_globals ──
   const etlObjectMap = new Map();
   const etlObjectRows = state.dsObjects.map((o) => {
-    const id = randomUUID();
+    const id = stableId('etl-object:' + o.id);
     etlObjectMap.set(o.id, id);
     return { __obj: o, id };
   });
@@ -393,7 +467,7 @@ async function main() {
     const objectId = etlObjectMap.get(graphKey);
     if (!objectId) continue;
     for (const node of graph.nodes) {
-      const nodeId = randomUUID();
+      const nodeId = stableId('etl-node:' + graphKey + ':' + node.id);
       etlNodeMap.set(graphKey + '::' + node.id, nodeId);
       const data = { ...node.data };
       if (data.ref) data.ref = etlObjectMap.get(data.ref) ?? data.ref;
@@ -409,7 +483,7 @@ async function main() {
       const toId = etlNodeMap.get(graphKey + '::' + edge.to);
       if (!fromId || !toId) continue;
       etlEdgeRows.push({
-        id: q(randomUUID()), object_id: q(objectId), from_node: q(fromId), to_node: q(toId),
+        id: q(stableId('etl-edge:' + graphKey + ':' + edge.id)), object_id: q(objectId), from_node: q(fromId), to_node: q(toId),
         condition: q(edge.condition || ''),
       });
     }
@@ -420,7 +494,7 @@ async function main() {
   out.push(insertStatement('etl_edges', ['id', 'object_id', 'from_node', 'to_node', 'condition'], etlEdgeRows));
 
   const etlGlobalRows = state.dsGlobals.map((g) => ({
-    id: q(randomUUID()), wave_id: q(wave1Id), name: q(g.name), type: q(g.type), value: q(g.value ?? null),
+    id: q(stableId('etl-global:' + g.name)), wave_id: q(wave1Id), name: q(g.name), type: q(g.type), value: q(g.value ?? null),
   }));
   out.push('-- ── etl_globals ──');
   out.push(insertStatement('etl_globals', ['id', 'wave_id', 'name', 'type', 'value'], etlGlobalRows));
@@ -428,7 +502,7 @@ async function main() {
   // ── runs (state.runs) ──
   const cycleNameMap = new Map(cycleRows.map((c) => [c.name.slice(1, -1), c.id])); // name (quoted) -> quoted id
   const runRows = state.runs.map((r) => ({
-    id: q(randomUUID()), code: q(r.id), wave_id: q(wave1Id), cycle_id: cycleNameMap.get(r.cycle) ?? 'null',
+    id: q(stableId('run:' + r.id)), code: q(r.id), wave_id: q(wave1Id), cycle_id: cycleNameMap.get(r.cycle) ?? 'null',
     etl_object_id: 'null', migration_object_id: q(migObjSyntheticMap.get(r.object) ?? null),
     iteration: n(r.iter), mode: q(r.mode), env: q(r.env), target: q(r.target), approach: q(r.approach),
     fmd_version: q(r.fmd), rules_version: q(r.rules), xref_version: q(r.xref), staging_snapshot: q(r.staging),
@@ -439,7 +513,7 @@ async function main() {
   out.push(insertStatement('runs', ['id', 'code', 'wave_id', 'cycle_id', 'etl_object_id', 'migration_object_id', 'iteration', 'mode', 'env', 'target', 'approach', 'fmd_version', 'rules_version', 'xref_version', 'staging_snapshot', 'started_at', 'duration_s', 'run_by', 'src_count', 'tgt_count', 'rej_count', 'status'], runRows));
 
   // ── cutover_tasks (state.cutoverPlan — has start/end pairs matching our schema) ──
-  const cutoverIdMap = new Map(state.cutoverPlan.map((t) => [t.id, randomUUID()]));
+  const cutoverIdMap = new Map(state.cutoverPlan.map((t) => [t.id, stableId('cutover:' + t.id)]));
   const cutoverRows = state.cutoverPlan.map((t, i) => ({
     id: q(cutoverIdMap.get(t.id)), wave_id: q(wave1Id), seq: n(i + 1), name: q(t.task), owner: q(t.owner),
     planned_start: q(parseShortDate(t.start)), planned_end: q(parseShortDate(t.end)),
@@ -458,7 +532,7 @@ async function main() {
   for (const area of state.workflows) {
     for (const action of area.actions) {
       approvalRows.push({
-        id: q(randomUUID()), project_id: q(projectId), area: q(area.area), action: q(action.key),
+        id: q(stableId('approval:' + area.area + ':' + action.key)), project_id: q(projectId), area: q(area.area), action: q(action.key),
         approval_required: b(action.approval), approver_role_id: q(APPROVER_TO_ROLE[action.approver] ?? null),
       });
     }
@@ -471,12 +545,69 @@ async function main() {
   const promotionRows = state.promotions
     .filter((p) => PROMO_TYPE[p.type])
     .map((p) => ({
-      id: q(randomUUID()), wave_id: q(wave1Id), artefact_type: q(PROMO_TYPE[p.type]), artefact_id: 'null',
+      id: q(stableId('promotion:' + p.id)), wave_id: q(wave1Id), artefact_type: q(PROMO_TYPE[p.type]), artefact_id: 'null',
       artefact_name: q(p.artifact), from_env: q(normalizeEnv(p.from)), to_env: q(normalizeEnv(p.to)),
       requested_by: q(p.requestedBy), requested_at: q(parseDate(p.date)), status: q(p.status),
     }));
   out.push('-- ── promotions ──');
   out.push(insertStatement('promotions', ['id', 'wave_id', 'artefact_type', 'artefact_id', 'artefact_name', 'from_env', 'to_env', 'requested_by', 'requested_at', 'status'], promotionRows));
+
+  // ── check_tables + check_table_rows (state.referenceTables / state.referenceTableRows) ──
+  const checkTableRows = [];
+  const checkTableRowRows = [];
+  for (const t of state.referenceTables ?? []) {
+    const id = stableId('check-table:' + t.table);
+    const detail = (state.referenceTableRows ?? {})[t.table];
+    checkTableRows.push({
+      id: q(id), wave_id: q(wave1Id), table_name: q(t.table), domain: q(t.domain ?? null), field: q(t.field ?? null),
+      used_by: q(t.usedBy ?? null), description: q(t.desc ?? null), columns: pgTextArray(detail?.cols ?? []),
+    });
+    (detail?.rows ?? []).forEach((row, i) => {
+      checkTableRowRows.push({ id: q(stableId('check-table-row:' + t.table + ':' + i)), check_table_id: q(id), seq: n(i + 1), values: pgTextArray(row) });
+    });
+  }
+  out.push('-- ── check_tables ──');
+  out.push(insertStatement('check_tables', ['id', 'wave_id', 'table_name', 'domain', 'field', 'used_by', 'description', 'columns'], checkTableRows));
+  out.push('-- ── check_table_rows ──');
+  out.push(insertStatement('check_table_rows', ['id', 'check_table_id', 'seq', 'values'], checkTableRowRows));
+
+  // ── golden_library (state.goldenFmdVersions / state.goldenXrefVersions) ──
+  const goldenRows = [
+    ...(state.goldenFmdVersions ?? []).map((g) => ({ ...g, kind: 'fmd' })),
+    ...(state.goldenXrefVersions ?? []).map((g) => ({ ...g, kind: 'xref' })),
+  ].map((g) => ({
+    id: q(stableId('golden:' + (g.guid ?? g.name))), project_id: q(projectId), kind: q(g.kind), name: q(g.name), reference: q(g.reference ?? null),
+    version: q(g.version ?? null), created_by: q(g.createdBy ?? null), created_at: q(parseDmyHms(g.createdOn, g.createdAt)),
+    changed_by: q(g.changedBy ?? null), changed_at: q(parseDmyHms(g.changedOn, g.changedAt)),
+  }));
+  out.push('-- ── golden_library ──');
+  out.push(insertStatement('golden_library', ['id', 'project_id', 'kind', 'name', 'reference', 'version', 'created_by', 'created_at', 'changed_by', 'changed_at'], goldenRows));
+
+  // ── unmapped_values (state.unmapped) — artifact-aligned addition ──
+  const unmappedRows = (state.unmapped ?? []).map((u) => ({
+    id: q(stableId('unmapped:' + u.id)), wave_id: q(wave1Id), set_name: q(u.set), migration_object_id: q(migObjSyntheticMap.get(u.object) ?? null),
+    field: q(u.field ?? null), value: q(u.value), occurrences: n(u.occurrences ?? 0), owner: q(u.owner ?? null),
+    status: q(u.status), suggestion: q(u.suggestion === '—' ? null : u.suggestion ?? null),
+  }));
+  out.push('-- ── unmapped_values ──');
+  out.push(insertStatement('unmapped_values', ['id', 'wave_id', 'set_name', 'migration_object_id', 'field', 'value', 'occurrences', 'owner', 'status', 'suggestion'], unmappedRows));
+
+  // ── timeline_categories + timeline_entries (state.timelineCats / state.timelineEntries) — artifact-aligned addition ──
+  const timelineCatIdMap = new Map((state.timelineCats ?? []).map((c) => [c.id, stableId('timeline-cat:' + c.id)]));
+  const timelineCatRows = (state.timelineCats ?? []).map((c, i) => ({
+    id: q(timelineCatIdMap.get(c.id)), project_id: q(projectId), name: q(c.name), seq: n(i + 1),
+  }));
+  out.push('-- ── timeline_categories ──');
+  out.push(insertStatement('timeline_categories', ['id', 'project_id', 'name', 'seq'], timelineCatRows));
+
+  const timelineEntryRows = (state.timelineEntries ?? [])
+    .filter((e) => timelineCatIdMap.has(e.cat))
+    .map((e) => ({
+      id: q(stableId('timeline-entry:' + e.id)), category_id: q(timelineCatIdMap.get(e.cat)), row_label: q(e.row), name: q(e.name),
+      kind: q(e.type), icon: q(e.icon || null), start_date: q(toIsoDate(e.start) ?? null), end_date: q(toIsoDate(e.end) ?? null),
+    }));
+  out.push('-- ── timeline_entries ──');
+  out.push(insertStatement('timeline_entries', ['id', 'category_id', 'row_label', 'name', 'kind', 'icon', 'start_date', 'end_date'], timelineEntryRows));
 
   // ── app_users + memberships — guarded against auth.users by email match (see header comment) ──
   const ROLE_LABEL_TO_ID = {
@@ -497,7 +628,7 @@ async function main() {
     const roleId = ROLE_LABEL_TO_ID[u.role] ?? 'end_user';
     out.push(
       `insert into memberships (id, user_id, project_id, wave_id, role_id)\n` +
-      `select ${q(randomUUID())}, au.id, ${q(projectId)}, null, ${q(roleId)} from app_users au where au.email = ${q(u.email)}\n` +
+      `select ${q(stableId('membership:' + u.email))}, au.id, ${q(projectId)}, null, ${q(roleId)} from app_users au where au.email = ${q(u.email)}\n` +
       `on conflict (user_id, project_id, wave_id, role_id) do nothing;`,
     );
   }
@@ -514,6 +645,8 @@ async function main() {
   console.log(`  rules: ${ruleRows.length}, xref_tables: ${xrefTableRows.length}, xref_rows: ${xrefRowRows.length}`);
   console.log(`  etl_objects: ${etlObjectRows.length}, etl_nodes: ${etlNodeRows.length}, etl_edges: ${etlEdgeRows.length}, etl_globals: ${etlGlobalRows.length}`);
   console.log(`  runs: ${runRows.length}, cutover_tasks: ${cutoverRows.length}, approval_matrix: ${approvalRows.length}, promotions: ${promotionRows.length}`);
+  console.log(`  check_tables: ${checkTableRows.length}, check_table_rows: ${checkTableRowRows.length}, golden_library: ${goldenRows.length}`);
+  console.log(`  unmapped_values: ${unmappedRows.length}, timeline_categories: ${timelineCatRows.length}, timeline_entries: ${timelineEntryRows.length}`);
   console.log(`  users: ${state.users.length} (guarded inserts — populate once matching auth.users rows exist)`);
 }
 
@@ -529,6 +662,26 @@ function normalizeEnv(s) {
   if (!s) return null;
   const m = /^(DEV|QSA|PRD)/.exec(s);
   return m ? m[1] : null;
+}
+
+function pgTextArray(arr) {
+  if (!arr || arr.length === 0) return 'ARRAY[]::text[]';
+  return `ARRAY[${arr.map((v) => q(String(v))).join(', ')}]::text[]`;
+}
+
+function parseDmyHms(dmy, hms) {
+  const iso = toIsoDate(dmy);
+  if (!iso) return null;
+  return `${iso} ${hms || '00:00:00'}`;
+}
+
+function seededPreviewValue(seed, col, row) {
+  const n = Array.from(seed + col).reduce((a, c) => a + c.charCodeAt(0), 0) + row * 7;
+  if (/QTY|CNT|AMOUNT|SAL|HSL|UMRE/.test(col)) return String(1000 + (n % 90000));
+  if (col === 'MATNR') return String(100000000 + n).slice(0, 12);
+  if (col === 'SPRAS') return n % 2 === 0 ? 'E' : 'D';
+  if (col === 'LVORM') return n % 5 === 0 ? 'X' : '';
+  return `${col}_${(n % 999).toString().padStart(3, '0')}`;
 }
 
 main().catch((err) => { console.error(err); process.exit(1); });

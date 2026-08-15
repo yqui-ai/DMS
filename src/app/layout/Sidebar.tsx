@@ -5,7 +5,7 @@ import clsx from 'clsx';
 import { NAV_GROUPS } from '../nav';
 import { canView, SCOPE_GATED } from '../../lib/rbac';
 import { useCurrentRole } from '../../lib/queries/memberships';
-import { useWave } from '../../lib/queries/programme';
+import { useDefaultProject, useWave } from '../../lib/queries/programme';
 import type { ScreenKey } from '../../types/entities';
 
 const toPascal = (s: string) => s.split('-').map((p) => p[0].toUpperCase() + p.slice(1)).join('');
@@ -23,7 +23,9 @@ export interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const { projectId, waveId } = useParams();
-  const { data: role = 'guest' } = useCurrentRole(projectId, waveId);
+  // routes with no :projectId in the URL (Library, Connections, /, /me) still need a role to check against
+  const { data: defaultProject } = useDefaultProject();
+  const { data: role = 'guest' } = useCurrentRole(projectId ?? defaultProject?.id, waveId);
   const { data: wave } = useWave(waveId);
   const scopeFinalized = wave?.scopeFinalized ?? false;
 
@@ -49,6 +51,12 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           const visibleItems = group.items.filter((item) => {
             if (!canView(role, item.key as ScreenKey)) return false;
             if (SCOPE_GATED.includes(item.key as ScreenKey) && !scopeFinalized) return false;
+            // relative links need real :projectId/:waveId in the URL to resolve — hide them
+            // rather than link to /p/undefined/... when browsing a project-less screen
+            if (!item.to.startsWith('/')) {
+              if (!projectId) return false;
+              if (!item.to.startsWith('../../') && !waveId) return false;
+            }
             return true;
           });
           if (visibleItems.length === 0) return null;

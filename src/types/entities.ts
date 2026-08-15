@@ -10,9 +10,9 @@ export type RoleId =
   | 'etl_developer' | 'cab' | 'end_user' | 'guest';
 
 export type ScreenKey =
-  | 'myWork' | 'timeline' | 'projectSettings' | 'preparation' | 'rules' | 'referenceData'
-  | 'dashboard' | 'migration' | 'quality' | 'cutover' | 'promotions' | 'auditLog'
-  | 'jobMonitor' | 'catalogObjects' | 'catalogFmds' | 'catalogRules' | 'goldenLibrary' | 'connections';
+  | 'myWork' | 'projectSettings' | 'preparation' | 'rules' | 'referenceData'
+  | 'dashboard' | 'migration' | 'quality' | 'cutover' | 'promotions'
+  | 'jobMonitor' | 'catalogObjects' | 'catalogFmds' | 'catalogRules' | 'connections';
 
 export interface AppUser { id: UUID; name: string; email: string; status: 'Active' | 'Invited' | 'Disabled'; lastLogin?: string }
 export interface Role { id: RoleId; name: string; description?: string; isStandard: boolean }
@@ -22,7 +22,7 @@ export interface Membership { id: UUID; userId: UUID; projectId: UUID; waveId?: 
 /* programme */
 export interface Project { id: UUID; code: string; name: string; description?: string; startDate?: string; endDate?: string }
 export interface Release { id: UUID; projectId: UUID; code: string; name: string; description?: string; seq: number; startDate?: string; endDate?: string }
-export interface Wave { id: UUID; releaseId: UUID; code: string; name: string; description?: string; freezeDate?: string; scopeFinalized: boolean; seq: number }
+export interface Wave { id: UUID; releaseId: UUID; code: string; name: string; description?: string; startDate?: string; endDate?: string; freezeDate?: string; scopeFinalized: boolean; seq: number }
 export interface Cycle { id: UUID; waveId: UUID; name: string; seq: number; description?: string; migStart?: string; migEnd?: string; dataFreeze?: string }
 
 /* catalogue */
@@ -37,7 +37,7 @@ export interface ObjectStructure {
   fields: number; mapped: number; mandatory: boolean; owner?: string;
   status: 'Not Started' | GovState;
 }
-export type WaveApproach = 'M_ADMC' | 'M_ADPG' | 'M_LSMW' | 'M_MNL';
+export type WaveApproach = 'M_ADMC' | 'M_ADPG' | 'M_LSMW' | 'M_IDOC' | 'M_DRCT' | 'M_MNL';
 export interface WaveObject { id: UUID; waveId: UUID; migrationObjectId: UUID; inScope: boolean; approach?: WaveApproach; loadSeq?: number; owner?: string; waiverReason?: string }
 
 /* landscape & staging */
@@ -168,6 +168,17 @@ export interface CutoverTask { id: UUID; waveId: UUID; seq?: number; name: strin
 export interface ApprovalMatrixEntry { id: UUID; projectId: UUID; area: string; action: string; approvalRequired: boolean; approverRoleId?: RoleId }
 export interface Promotion { id: UUID; waveId: UUID; artefactType: 'fmd' | 'rules' | 'xref' | 'etl_object'; artefactId?: UUID; artefactName?: string; fromEnv?: Env; toEnv?: Env; requestedBy?: string; requestedAt?: string; status: 'Pending' | 'Approved' | 'Rejected' | 'Promoted' }
 export interface AuditEntry { id: number; projectId?: UUID; waveId?: UUID; at: string; actor?: string; action: string; entity?: string; entityId?: string; before?: unknown; after?: unknown }
+
+/* reference data & golden library */
+export interface CheckTable { id: UUID; waveId: UUID; tableName: string; domain?: string; field?: string; usedBy?: string; description?: string; columns: string[] }
+export interface CheckTableRow { id: UUID; checkTableId: UUID; seq: number; values: string[] }
+export interface GoldenLibraryEntry { id: UUID; projectId: UUID; kind: 'fmd' | 'xref'; name: string; reference?: string; version?: string; createdBy?: string; createdAt?: string; changedBy?: string; changedAt?: string }
+
+/* artifact-aligned additions: unmapped values, AI settings, timeline admin */
+export interface UnmappedValue { id: UUID; waveId: UUID; setName: string; migrationObjectId?: UUID; field?: string; value: string; occurrences: number; owner?: string; status: 'Open' | 'Proposed' | 'Resolved'; suggestion?: string }
+export interface AiProviderKey { id: UUID; projectId: UUID; provider: string; label?: string; endpoint?: string; keyMasked?: string; budget?: number; active: boolean; addedAt: string }
+export interface TimelineCategory { id: UUID; projectId: UUID; name: string; seq: number }
+export interface TimelineEntry { id: UUID; categoryId: UUID; rowLabel: string; name: string; kind: 'point' | 'range'; icon?: string; startDate?: string; endDate?: string }
 
 /* UI helper: node type presentation (see 03-PIPELINES-DESIGNER.md) */
 export const NODE_META: Record<EtlNodeType, { icon: string; color: string; label: string }> = {

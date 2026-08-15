@@ -10,3 +10,4 @@ export { Dialog, type DialogSize } from './Dialog';
 export { Table, type Column } from './Table';
 export { TableViewer } from './TableViewer';
 export { ToastProvider, useToast } from './Toast';
+export { QueryErrorNotice } from './QueryErrorNotice';

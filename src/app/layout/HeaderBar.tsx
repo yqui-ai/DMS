@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronDown, Search, Bell, UserCircle, Moon, LogOut, Layers } from 'lucide-react';
 import clsx from 'clsx';
 import { useAuth } from '../../lib/auth';
+import { useTheme } from '../../lib/theme';
 import { useProjects, useReleases, useWave, useWaves, useRelease } from '../../lib/queries/programme';
 import { Dialog } from '../../components/Dialog';
 import { Button } from '../../components/Button';
@@ -133,6 +134,7 @@ function SubprojectSwitcher() {
 
 function AvatarMenu() {
   const { user, signOut } = useAuth();
+  const { dark, toggle } = useTheme();
   const [open, setOpen] = useState(false);
   return (
     <div className="relative">
@@ -145,8 +147,8 @@ function AvatarMenu() {
           <Link to="/me" onClick={() => setOpen(false)} className="flex items-center gap-2.5 px-3.5 py-1.5 text-sm font-semibold hover:bg-blue-pale">
             <UserCircle size={15} /> Profile
           </Link>
-          <button className="w-full flex items-center gap-2.5 px-3.5 py-1.5 text-sm font-semibold hover:bg-blue-pale text-left">
-            <Moon size={15} /> Dark mode
+          <button onClick={toggle} className="w-full flex items-center gap-2.5 px-3.5 py-1.5 text-sm font-semibold hover:bg-blue-pale text-left">
+            <Moon size={15} /> {dark ? 'Light mode' : 'Dark mode'}
           </button>
           <button onClick={() => signOut()} className="w-full flex items-center gap-2.5 px-3.5 py-1.5 text-sm font-semibold hover:bg-red-light text-red text-left">
             <LogOut size={15} /> Sign out

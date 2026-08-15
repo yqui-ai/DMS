@@ -12,6 +12,19 @@ export const fmtPercent = (n?: number | null): string => (n == null ? '—' : pe
 export const fmtDate = (iso?: string | null): string => (!iso ? '—' : dateFmt.format(new Date(iso)));
 export const fmtDateTime = (iso?: string | null): string => (!iso ? '—' : dateTimeFmt.format(new Date(iso)));
 
+/** ISO 'YYYY-MM-DD' -> 'DD.MM.YYYY' for the prototype's date display convention. */
+export const isoToDmy = (iso?: string | null): string => {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return y && m && d ? `${d}.${m}.${y}` : '';
+};
+
+/** 'DD.MM.YYYY' -> ISO 'YYYY-MM-DD', or null if not a full valid-looking date. */
+export const dmyToIso = (dmy: string): string | null => {
+  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(dmy.trim());
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
+};
+
 export const fmtDuration = (seconds?: number | null): string => {
   if (seconds == null) return '—';
   const h = Math.floor(seconds / 3600);

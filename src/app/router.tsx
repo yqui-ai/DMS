@@ -5,18 +5,54 @@ import { ScreenGate } from './layout/ScreenGate';
 import { Placeholder } from '../components/Placeholder';
 import { MIGRATION_TABS } from './nav';
 import type { TabStripItem } from './layout/TabStrip';
+import { SubprojectPicker } from '../features/programme/SubprojectPicker';
+import { ProgramSettingsPage } from '../features/programme/ProgramSettingsPage';
+import { MigrationObjectCatalogue } from '../features/scope/MigrationObjectCatalogue';
+import { ScopeOverview } from '../features/scope/ScopeOverview';
+import { ScopeCriteria } from '../features/scope/ScopeCriteria';
+import { ScopeSequence } from '../features/scope/ScopeSequence';
+import { FmdMapping } from '../features/scope/FmdMapping';
+import { RulesOverview } from '../features/rules/RulesOverview';
+import { RulesRegister } from '../features/rules/RulesRegister';
+import { ValueMapping } from '../features/rules/ValueMapping';
+import { UnmappedValues } from '../features/rules/UnmappedValues';
+import { ConnectionsPage } from '../features/connections/ConnectionsPage';
+import { CutoverPage } from '../features/cutover/CutoverPage';
+import { RunsRegister } from '../features/runs/RunsRegister';
+import { RunDetailModal } from '../features/runs/RunDetailModal';
+import { StagingArea } from '../features/staging/StagingArea';
+import { MigrationOverview } from '../features/staging/MigrationOverview';
+import { ProfilingPage } from '../features/staging/ProfilingPage';
+import { PipelineStages } from '../features/staging/PipelineStages';
+import { PromotionsPage } from '../features/governance/PromotionsPage';
+import { JobMonitorPage } from '../features/governance/JobMonitorPage';
+import { LibraryObjects } from '../features/library/LibraryObjects';
+import { LibraryRules } from '../features/library/LibraryRules';
+import { LibraryFmds } from '../features/library/LibraryFmds';
+import { DashboardPage } from '../features/dashboard/DashboardPage';
+import { MyProfilePage } from '../features/profile/MyProfilePage';
+import { MyWorkPage } from '../features/mywork/MyWorkPage';
+import { QualityOverview } from '../features/quality/QualityOverview';
+import { QualityDimensions } from '../features/quality/QualityDimensions';
+import { DqChecksPhase } from '../features/quality/DqChecksPhase';
+import { ReconciliationPage } from '../features/quality/ReconciliationPage';
+import { FalloutPage } from '../features/quality/FalloutPage';
+import { ReferenceDataOverview } from '../features/referenceData/ReferenceDataOverview';
+import { CheckTablesPage } from '../features/referenceData/CheckTablesPage';
 
 const SCOPE_TABS: TabStripItem[] = [
   { key: 'overview', label: 'Overview', icon: 'layout-dashboard', to: '' },
   { key: 'objects', label: 'Migration Object', icon: 'database', to: 'objects' },
-  { key: 'erd', label: 'ERD Diagram', icon: 'git-fork', to: 'erd' },
-  { key: 'fmd-map', label: 'FMD Mapping', icon: 'files', to: 'fmd-map' },
+  { key: 'criteria', label: 'Criteria', icon: 'filter', to: 'criteria' },
+  { key: 'fmd', label: 'FMD', icon: 'files', to: 'fmd' },
+  { key: 'sequence', label: 'Sequence', icon: 'list-ordered', to: 'sequence' },
 ];
 
 const RULES_TABS: TabStripItem[] = [
   { key: 'overview', label: 'Overview', icon: 'layout-dashboard', to: '' },
   { key: 'rules', label: 'Rules', icon: 'list-checks', to: 'rules' },
   { key: 'value-mapping', label: 'Value Mapping (XREF)', icon: 'shuffle', to: 'value-mapping' },
+  { key: 'unmapped', label: 'Unmapped Values', icon: 'circle-help', to: 'unmapped' },
 ];
 
 const REFERENCE_DATA_TABS: TabStripItem[] = [
@@ -34,94 +70,89 @@ const QUALITY_TABS: TabStripItem[] = [
   { key: 'fallout', label: 'Fallout', icon: 'alert-triangle', to: 'fallout' },
 ];
 
-const gated = (screen: Parameters<typeof ScreenGate>[0]['screen'], title: string, description?: string) => (
-  <ScreenGate screen={screen}><Placeholder title={title} description={description} /></ScreenGate>
-);
-
 export const router = createBrowserRouter([
   {
     path: '/',
     element: <AppShell />,
     children: [
-      { index: true, element: <Placeholder title="Subproject picker" description="Projects → releases → waves." /> },
-      { path: 'me', element: <Placeholder title="My profile" description="Dark mode, notification preferences." /> },
+      { index: true, element: <SubprojectPicker /> },
+      { path: 'me', element: <MyProfilePage /> },
       {
         path: 'p/:projectId',
         children: [
-          { path: 'settings', element: gated('projectSettings', 'Program Settings', 'Configure, users, roles, approvals, promotions.') },
+          { path: 'settings', element: <ScreenGate screen="projectSettings"><ProgramSettingsPage /></ScreenGate> },
           {
             path: 'w/:waveId',
             children: [
-              { path: 'my-work', element: gated('myWork', 'My Work', 'Role-aware task inbox.') },
-              { path: 'timeline', element: gated('timeline', 'Timeline', 'Releases → waves → cycles.') },
-              { path: 'dashboard', element: gated('dashboard', 'Dashboard', 'Role-specific KPIs, panels and blockers.') },
+              { path: 'my-work', element: <ScreenGate screen="myWork"><MyWorkPage /></ScreenGate> },
+              { path: 'dashboard', element: <ScreenGate screen="dashboard"><DashboardPage /></ScreenGate> },
               {
                 path: 'scope',
                 element: <TabbedSection screen="preparation" title="Scope" tabs={SCOPE_TABS} segment="scope" />,
                 children: [
-                  { index: true, element: <Placeholder title="Scope overview" /> },
-                  { path: 'objects', element: <Placeholder title="Migration Object" description="Catalogue picker, import, wizard entry." /> },
-                  { path: 'erd', element: <Placeholder title="ERD Diagram" /> },
-                  { path: 'fmd-map', element: <Placeholder title="FMD Mapping" /> },
+                  { index: true, element: <ScopeOverview /> },
+                  { path: 'objects', element: <MigrationObjectCatalogue /> },
+                  { path: 'criteria', element: <ScopeCriteria /> },
+                  { path: 'fmd', element: <FmdMapping /> },
+                  { path: 'sequence', element: <ScopeSequence /> },
                 ],
               },
-              { path: 'scope/wizard/:step', element: gated('preparation', 'Scope wizard', 'select → dependencies → sequence → finalize') },
               {
                 path: 'rules',
                 element: <TabbedSection screen="rules" title="Rules & XREF" tabs={RULES_TABS} segment="rules" />,
                 children: [
-                  { index: true, element: <Placeholder title="Rules & XREF overview" /> },
-                  { path: 'rules', element: <Placeholder title="Rules" description="Rule register, severity, status." /> },
-                  { path: 'value-mapping', element: <Placeholder title="Value Mapping (XREF)" description="Table list + row editor." /> },
+                  { index: true, element: <RulesOverview /> },
+                  { path: 'rules', element: <RulesRegister /> },
+                  { path: 'value-mapping', element: <ValueMapping /> },
+                  { path: 'unmapped', element: <UnmappedValues /> },
                 ],
               },
               {
                 path: 'reference-data',
                 element: <TabbedSection screen="referenceData" title="Reference Data" tabs={REFERENCE_DATA_TABS} segment="reference-data" />,
                 children: [
-                  { index: true, element: <Placeholder title="Reference Data overview" /> },
-                  { path: 'check-tables', element: <Placeholder title="Check Tables" /> },
+                  { index: true, element: <ReferenceDataOverview /> },
+                  { path: 'check-tables', element: <CheckTablesPage /> },
                 ],
               },
               {
                 path: 'migration',
                 element: <TabbedSection screen="migration" title="Data Migration" tabs={MIGRATION_TABS as TabStripItem[]} segment="migration" />,
                 children: [
-                  { index: true, element: <Placeholder title="Data Migration overview" description="KPIs, staging by connection, object state." /> },
-                  { path: 'staging', element: <Placeholder title="Staging Area" description="Per-connection groups, extraction jobs." /> },
-                  { path: 'profiling', element: <Placeholder title="Profiling" description="Legacy data assessment." /> },
-                  { path: 'pipelines', element: <Placeholder title="Pipelines designer" description="Opens last-used job." /> },
-                  { path: 'pipelines/:objectId', element: <Placeholder title="Pipelines designer" description="Job / work flow / data flow." /> },
-                  { path: 'runs', element: <Placeholder title="Runs register" description="Filters: object, status." /> },
-                  { path: 'runs/:runId', element: <Placeholder title="Run detail" description="Snapshot of versions + counts." /> },
+                  { index: true, element: <MigrationOverview /> },
+                  { path: 'staging', element: <StagingArea /> },
+                  { path: 'profiling', element: <ProfilingPage /> },
+                  { path: 'pipeline', element: <PipelineStages /> },
+                  {
+                    path: 'runs', element: <RunsRegister />,
+                    children: [{ path: ':runId', element: <RunDetailModal /> }],
+                  },
                 ],
               },
               {
                 path: 'quality',
                 element: <TabbedSection screen="quality" title="Data Quality" tabs={QUALITY_TABS} segment="quality" />,
                 children: [
-                  { index: true, element: <Placeholder title="Data Quality overview" /> },
-                  { path: 'dimensions', element: <Placeholder title="Quality Dimensions" description="Scorecard vs thresholds." /> },
-                  { path: 'profile', element: <Placeholder title="Post-Transform Profiling" /> },
-                  { path: 'pre-load', element: <Placeholder title="Pre-Load Checks" /> },
-                  { path: 'post-load', element: <Placeholder title="Post-Load Checks" /> },
-                  { path: 'reconciliation', element: <Placeholder title="Reconciliation" description="Source vs target counts." /> },
-                  { path: 'fallout', element: <Placeholder title="Fallout" description="Rejected records." /> },
+                  { index: true, element: <QualityOverview /> },
+                  { path: 'dimensions', element: <QualityDimensions /> },
+                  { path: 'profile', element: <DqChecksPhase phase="post-transform" emptyLabel="No post-transform profiling yet" /> },
+                  { path: 'pre-load', element: <DqChecksPhase phase="pre-load" emptyLabel="No pre-load checks yet" /> },
+                  { path: 'post-load', element: <DqChecksPhase phase="post-load" emptyLabel="No post-load checks yet" /> },
+                  { path: 'reconciliation', element: <ReconciliationPage /> },
+                  { path: 'fallout', element: <FalloutPage /> },
                 ],
               },
-              { path: 'cutover', element: gated('cutover', 'Cutover', 'Plan, tasks, go/no-go.') },
-              { path: 'promotions', element: gated('promotions', 'Promotions', 'DEV → QSA → PRD transports with approvals.') },
-              { path: 'audit-log', element: gated('auditLog', 'Audit Log', 'Immutable events.') },
-              { path: 'job-monitor', element: gated('jobMonitor', 'Job Monitor', 'Live/queued/failed jobs.') },
+              { path: 'cutover', element: <ScreenGate screen="cutover"><CutoverPage /></ScreenGate> },
+              { path: 'promotions', element: <ScreenGate screen="promotions"><PromotionsPage /></ScreenGate> },
+              { path: 'job-monitor', element: <ScreenGate screen="jobMonitor"><JobMonitorPage /></ScreenGate> },
             ],
           },
         ],
       },
-      { path: 'library/objects', element: gated('catalogObjects', 'Migration Objects', 'Programme-wide catalogue.') },
-      { path: 'library/fmds', element: gated('catalogFmds', 'Field Mapping Documents', 'Versions, compare, where-used.') },
-      { path: 'library/rules', element: gated('catalogRules', 'Rules catalogue') },
-      { path: 'library/golden', element: gated('goldenLibrary', 'Golden Library', 'Approved reusable artefacts.') },
-      { path: 'systems/connections', element: gated('connections', 'Connections', 'Landscape (SID, host, client, role, status).') },
+      { path: 'library/objects', element: <ScreenGate screen="catalogObjects"><LibraryObjects /></ScreenGate> },
+      { path: 'library/fmds', element: <ScreenGate screen="catalogFmds"><LibraryFmds /></ScreenGate> },
+      { path: 'library/rules', element: <ScreenGate screen="catalogRules"><LibraryRules /></ScreenGate> },
+      { path: 'systems/connections', element: <ScreenGate screen="connections"><ConnectionsPage /></ScreenGate> },
       { path: '*', element: <Placeholder title="Page not found" description="Nothing lives at this address." /> },
     ],
   },
