@@ -2,15 +2,15 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../supabase';
 import type { CheckTable, CheckTableRow } from '../../types/entities';
 
-export function useCheckTables(waveId?: string) {
+export function useCheckTables(subprojectId?: string) {
   return useQuery({
-    queryKey: ['check-tables', waveId],
-    enabled: !!waveId,
+    queryKey: ['check-tables', subprojectId],
+    enabled: !!subprojectId,
     queryFn: async (): Promise<CheckTable[]> => {
-      const { data, error } = await supabase.from('check_tables').select('*').eq('wave_id', waveId!).order('table_name');
+      const { data, error } = await supabase.from('check_tables').select('*').eq('subproject_id', subprojectId!).order('table_name');
       if (error) throw error;
       return (data ?? []).map((t) => ({
-        id: t.id, waveId: t.wave_id, tableName: t.table_name, domain: t.domain ?? undefined,
+        id: t.id, subprojectId: t.subproject_id, tableName: t.table_name, domain: t.domain ?? undefined,
         field: t.field ?? undefined, usedBy: t.used_by ?? undefined, description: t.description ?? undefined,
         columns: t.columns ?? [],
       }));

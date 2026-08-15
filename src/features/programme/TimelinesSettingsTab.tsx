@@ -6,12 +6,12 @@ import { Field, Input } from '../../components/Field';
 import { useToast } from '../../components/Toast';
 import { useTimelineCategories, useTimelineEntries, useTimelineAdminMutations } from '../../lib/queries/timelineAdmin';
 
-export function TimelinesSettingsTab({ projectId }: { projectId: string }) {
+export function TimelinesSettingsTab({ programId }: { programId: string }) {
   const toast = useToast();
-  const { data: categories = [] } = useTimelineCategories(projectId);
+  const { data: categories = [] } = useTimelineCategories(programId);
   const categoryIds = categories.map((c) => c.id);
   const { data: entries = [] } = useTimelineEntries(categoryIds);
-  const mutations = useTimelineAdminMutations(projectId);
+  const mutations = useTimelineAdminMutations(programId);
   const [newCategory, setNewCategory] = useState('');
   const [entryForm, setEntryForm] = useState<Record<string, { rowLabel: string; name: string; startDate: string; endDate: string }>>({});
 

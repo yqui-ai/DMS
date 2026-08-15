@@ -3,34 +3,34 @@ import { PageHeader } from '../../components/PageHeader';
 import { Card } from '../../components/Card';
 import { StatStrip } from '../../components/Kpi';
 import { EmptyState } from '../../components/EmptyState';
-import { useWave } from '../../lib/queries/programme';
-import { useWaveObjects } from '../../lib/queries/scope';
+import { useSubproject } from '../../lib/queries/programme';
+import { useSubprojectObjects } from '../../lib/queries/scope';
 import { useRules } from '../../lib/queries/rules';
 import { useRuns } from '../../lib/queries/runs';
 import { useCutoverTasks } from '../../lib/queries/cutover';
 import { TimelineGantt } from './TimelineGantt';
 
 export function DashboardPage() {
-  const { waveId } = useParams();
+  const { subprojectId } = useParams();
   const [params] = useSearchParams();
   const env = params.get('env') ?? 'DEV';
-  const { data: wave } = useWave(waveId);
-  const { data: waveObjects = [] } = useWaveObjects(waveId);
-  const { data: rules = [] } = useRules(waveId);
-  const { data: runs = [] } = useRuns(waveId);
-  const { data: cutoverTasks = [] } = useCutoverTasks(waveId);
+  const { data: subproject } = useSubproject(subprojectId);
+  const { data: subprojectObjects = [] } = useSubprojectObjects(subprojectId);
+  const { data: rules = [] } = useRules(subprojectId);
+  const { data: runs = [] } = useRuns(subprojectId);
+  const { data: cutoverTasks = [] } = useCutoverTasks(subprojectId);
 
-  const inScope = waveObjects.filter((w) => w.inScope).length;
+  const inScope = subprojectObjects.filter((w) => w.inScope).length;
   const rulesActive = rules.filter((r) => r.status === 'Approved').length;
   const failedRuns = runs.filter((r) => r.status === 'Failed').length;
   const openBlockers = failedRuns;
   const cutoverDone = cutoverTasks.filter((t) => t.status === 'Done').length;
   const cutoverReadiness = cutoverTasks.length ? Math.round((cutoverDone / cutoverTasks.length) * 100) : 0;
-  const healthScore = Math.max(0, 100 - openBlockers * 15 - (wave?.scopeFinalized ? 0 : 20));
+  const healthScore = Math.max(0, 100 - openBlockers * 15 - (subproject?.scopeFinalized ? 0 : 20));
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title="Dashboard" description={wave ? `${wave.name} — programme health and open items.` : undefined} />
+      <PageHeader title="Dashboard" description={subproject ? `${subproject.name} — programme health and open items.` : undefined} />
 
       <Card>
         <div className="flex items-center gap-8">
@@ -50,7 +50,7 @@ export function DashboardPage() {
             <div className="mt-3">
               <StatStrip
                 items={[
-                  { label: 'Schedule', value: wave?.scopeFinalized ? 'On track' : 'Scoping' },
+                  { label: 'Schedule', value: subproject?.scopeFinalized ? 'On track' : 'Scoping' },
                   { label: 'Execution', value: `${runs.length - failedRuns}/${runs.length || 0}` },
                   { label: 'Open blockers', value: openBlockers, accent: openBlockers ? 'red' : 'green' },
                   { label: 'Cutover readiness', value: `${cutoverReadiness}%` },
@@ -75,7 +75,7 @@ export function DashboardPage() {
 
       {env === 'DEV' && (
         <p className="text-sm text-muted bg-blue-pale rounded-[8px] px-3.5 py-2.5">
-          Execution summary appears once this SubProject is running in QSA or Prod — DEV is design-only.
+          Execution summary appears once this SubProgram is running in QSA or Prod — DEV is design-only.
         </p>
       )}
 
@@ -92,7 +92,7 @@ export function DashboardPage() {
           </div>
         </div>
       ) : (
-        <EmptyState title="No blockers" description="Nothing is currently blocking this wave." />
+        <EmptyState title="No blockers" description="Nothing is currently blocking this subproject." />
       )}
     </div>
   );

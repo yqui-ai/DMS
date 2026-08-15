@@ -3,17 +3,17 @@ import { ChevronDown, ChevronUp } from 'lucide-react';
 import { Tag } from '../../components/Tag';
 import { EmptyState } from '../../components/EmptyState';
 import { useToast } from '../../components/Toast';
-import { useMigrationObjects, useWaveObjects, useScopeMutations } from '../../lib/queries/scope';
+import { useMigrationObjects, useSubprojectObjects, useScopeMutations } from '../../lib/queries/scope';
 
 export function ScopeSequence() {
-  const { waveId } = useParams();
+  const { subprojectId } = useParams();
   const toast = useToast();
   const { data: objects = [] } = useMigrationObjects();
-  const { data: waveObjects = [] } = useWaveObjects(waveId);
-  const mutations = useScopeMutations(waveId!);
+  const { data: subprojectObjects = [] } = useSubprojectObjects(subprojectId);
+  const mutations = useScopeMutations(subprojectId!);
 
   const byId = new Map(objects.map((o) => [o.id, o]));
-  const ordered = [...waveObjects.filter((w) => w.inScope)].sort((a, b) => (a.loadSeq ?? 999) - (b.loadSeq ?? 999));
+  const ordered = [...subprojectObjects.filter((w) => w.inScope)].sort((a, b) => (a.loadSeq ?? 999) - (b.loadSeq ?? 999));
 
   const move = async (index: number, dir: -1 | 1) => {
     const target = index + dir;

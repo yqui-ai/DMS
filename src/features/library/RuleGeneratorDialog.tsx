@@ -7,7 +7,7 @@ import { Field } from '../../components/Field';
 import { Card } from '../../components/Card';
 import { useToast } from '../../components/Toast';
 import { useMigrationObjects } from '../../lib/queries/scope';
-import { useDefaultProject, useReleases, useWaves } from '../../lib/queries/programme';
+import { useDefaultProgram, useProjects, useSubprojects } from '../../lib/queries/programme';
 import { supabase } from '../../lib/supabase';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -30,38 +30,38 @@ function generateExpression(description: string): string {
 export function RuleGeneratorDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const { waveId: paramWaveId } = useParams();
-  const { data: project } = useDefaultProject();
-  const { data: releases = [] } = useReleases(project?.id);
-  const releaseIds = useMemo(() => releases.map((r) => r.id), [releases]);
-  const { data: waves = [] } = useWaves(releaseIds);
+  const { subprojectId: paramSubprojectId } = useParams();
+  const { data: program } = useDefaultProgram();
+  const { data: projects = [] } = useProjects(program?.id);
+  const projectIds = useMemo(() => projects.map((r) => r.id), [projects]);
+  const { data: subprojects = [] } = useSubprojects(projectIds);
   const { data: objects = [] } = useMigrationObjects();
 
-  const [waveId, setWaveId] = useState('');
+  const [subprojectId, setSubprojectId] = useState('');
   const [objectId, setObjectId] = useState('');
   const [scope, setScope] = useState<'Local' | 'Global'>('Local');
   const [description, setDescription] = useState('');
   const [expression, setExpression] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const effectiveWaveId = paramWaveId ?? waveId ?? waves[0]?.id;
+  const effectiveSubprojectId = paramSubprojectId ?? subprojectId ?? subprojects[0]?.id;
   const targetObjects = objects.filter((o) => o.category === 'Master data').slice(0, 30);
 
   const generate = () => setExpression(generateExpression(description));
 
   const save = async () => {
-    if (!expression || !effectiveWaveId) { toast.error('Generate a rule and pick a wave first.'); return; }
+    if (!expression || !effectiveSubprojectId) { toast.error('Generate a rule and pick a subproject first.'); return; }
     setBusy(true);
     try {
       const obj = objects.find((o) => o.id === objectId);
       const code = `GEN-${Math.floor(1000 + Math.random() * 9000)}`;
       const { error } = await supabase.from('rules').insert({
-        wave_id: effectiveWaveId, code, name: description.slice(0, 60) || 'Generated rule',
+        subproject_id: effectiveSubprojectId, code, name: description.slice(0, 60) || 'Generated rule',
         migration_object_id: objectId || null, type: 'Validation', severity: 'Medium', status: 'Draft',
         expression, version: 'v1.0.0',
       });
       if (error) throw error;
-      await queryClient.invalidateQueries({ queryKey: ['rules', effectiveWaveId] });
+      await queryClient.invalidateQueries({ queryKey: ['rules', effectiveSubprojectId] });
       await queryClient.invalidateQueries({ queryKey: ['rules-all'] });
       toast.success(`Rule ${code} saved to catalog${obj ? ` for ${obj.objectId}` : ''}.`);
       setDescription(''); setExpression(null); setObjectId('');
@@ -82,11 +82,11 @@ export function RuleGeneratorDialog({ open, onClose }: { open: boolean; onClose:
     }>
       <p className="text-sm text-muted mb-4">Describe the check in plain language and generate a data quality rule.</p>
       <div className="flex flex-col gap-3.5">
-        {!paramWaveId && (
-          <Field label="Wave">
-            <select value={waveId} onChange={(e) => setWaveId(e.target.value)} className="w-full text-base bg-surface border border-[#d6dbe2] rounded-[8px] px-[11px] py-2 min-h-[38px]">
-              <option value="">Select a wave…</option>
-              {waves.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+        {!paramSubprojectId && (
+          <Field label="Subproject">
+            <select value={subprojectId} onChange={(e) => setSubprojectId(e.target.value)} className="w-full text-base bg-surface border border-[#d6dbe2] rounded-[8px] px-[11px] py-2 min-h-[38px]">
+              <option value="">Select a subproject…</option>
+              {subprojects.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           </Field>
         )}

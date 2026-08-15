@@ -12,8 +12,8 @@ const SEVERITY_VARIANT = { Critical: 'danger', High: 'warn', Medium: 'accent', L
 const STATUS_VARIANT = { Draft: 'neutral', 'In Review': 'warn', Approved: 'accent', Rejected: 'danger' } as const;
 
 export function RulesRegister() {
-  const { waveId } = useParams();
-  const { data: rules = [], isLoading } = useRules(waveId);
+  const { subprojectId } = useParams();
+  const { data: rules = [], isLoading } = useRules(subprojectId);
   const { data: objects = [] } = useMigrationObjects();
   const [selected, setSelected] = useState<Rule | null>(null);
 
@@ -31,7 +31,7 @@ export function RulesRegister() {
   ];
 
   if (!isLoading && rules.length === 0) {
-    return <EmptyState title="No rules yet" description="Rules created for this wave will register here." />;
+    return <EmptyState title="No rules yet" description="Rules created for this subproject will register here." />;
   }
 
   return (

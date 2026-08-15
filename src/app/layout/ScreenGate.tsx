@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import { canView, deniedMessage } from '../../lib/rbac';
 import { useCurrentRole } from '../../lib/queries/memberships';
-import { useDefaultProject } from '../../lib/queries/programme';
+import { useDefaultProgram } from '../../lib/queries/programme';
 import { RestrictedNotice } from '../../components/RestrictedNotice';
 import type { ScreenKey } from '../../types/entities';
 
@@ -13,10 +13,10 @@ const ROLE_LABEL: Record<string, string> = {
 
 /** Wraps a route's element and shows the inline restriction notice instead of the screen when denied. */
 export function ScreenGate({ screen, children }: { screen: ScreenKey; children: ReactNode }) {
-  const { projectId, waveId } = useParams();
-  // routes with no :projectId in the URL (Library, Connections, /, /me) still need a role to check against
-  const { data: defaultProject } = useDefaultProject();
-  const { data: role = 'guest' } = useCurrentRole(projectId ?? defaultProject?.id, waveId);
+  const { programId, subprojectId } = useParams();
+  // routes with no :programId in the URL (Library, Connections, /, /me) still need a role to check against
+  const { data: defaultProgram } = useDefaultProgram();
+  const { data: role = 'guest' } = useCurrentRole(programId ?? defaultProgram?.id, subprojectId);
   if (!canView(role, screen)) {
     return <RestrictedNotice message={deniedMessage(ROLE_LABEL[role] ?? role, screen)} />;
   }

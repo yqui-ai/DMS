@@ -8,8 +8,8 @@ import { fmtNumber, fmtDateTime } from '../../lib/format';
 import type { Reconciliation } from '../../types/entities';
 
 export function ReconciliationPage() {
-  const { waveId } = useParams();
-  const { data: rows = [], isLoading } = useReconciliation(waveId);
+  const { subprojectId } = useParams();
+  const { data: rows = [], isLoading } = useReconciliation(subprojectId);
   const { data: objects = [] } = useMigrationObjects();
   const objLabel = (id?: string) => (id ? objects.find((o) => o.id === id)?.objectId ?? id : '—');
 

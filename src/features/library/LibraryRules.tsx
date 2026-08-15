@@ -28,7 +28,7 @@ export function LibraryRules() {
   return (
     <div>
       <PageHeader
-        title="Rules" description="Rules across every wave you have access to."
+        title="Rule" description="Rules across every subproject you have access to."
         actions={<Button variant="secondary" onClick={() => setGeneratorOpen(true)}><Wand2 size={13} /> Rule Generator</Button>}
       />
       {!isLoading && rules.length === 0

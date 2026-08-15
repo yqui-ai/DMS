@@ -17,10 +17,10 @@ const STATUS_ICON = {
 };
 
 export function CutoverPage() {
-  const { waveId } = useParams();
+  const { subprojectId } = useParams();
   const toast = useToast();
-  const { data: tasks = [], isLoading } = useCutoverTasks(waveId);
-  const mutations = useCutoverMutations(waveId!);
+  const { data: tasks = [], isLoading } = useCutoverTasks(subprojectId);
+  const mutations = useCutoverMutations(subprojectId!);
   const byId = new Map(tasks.map((t) => [t.id, t]));
 
   const cycle = async (task: CutoverTask) => {
@@ -38,7 +38,7 @@ export function CutoverPage() {
         description={tasks.length ? `${done} of ${tasks.length} tasks done. Click a status icon to advance it.` : undefined}
       />
       {!isLoading && tasks.length === 0 ? (
-        <EmptyState title="No cutover plan yet" description="Tasks for this wave's cutover will list here." />
+        <EmptyState title="No cutover plan yet" description="Tasks for this subproject's cutover will list here." />
       ) : (
         <div className="rounded-lg shadow-card bg-surface divide-y divide-line">
           {tasks.map((task) => (

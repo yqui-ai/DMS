@@ -7,8 +7,8 @@ import { fmtNumber, fmtDecimal } from '../../lib/format';
 import type { SourceTable } from '../../types/entities';
 
 export function ProfilingPage() {
-  const { waveId } = useParams();
-  const { data: tables = [], isLoading } = useSourceTables(waveId);
+  const { subprojectId } = useParams();
+  const { data: tables = [], isLoading } = useSourceTables(subprojectId);
   const extracted = tables.filter((t) => t.status === 'Extracted');
 
   const columns: Column<SourceTable>[] = [

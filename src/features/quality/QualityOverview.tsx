@@ -4,10 +4,10 @@ import { StatStrip } from '../../components/Kpi';
 import { useDqDimensions, useReconciliation, useFallout } from '../../lib/queries/quality';
 
 export function QualityOverview() {
-  const { waveId } = useParams();
-  const { data: dimensions = [] } = useDqDimensions(waveId);
-  const { data: reconciliation = [] } = useReconciliation(waveId);
-  const { data: fallout = [] } = useFallout(waveId);
+  const { subprojectId } = useParams();
+  const { data: dimensions = [] } = useDqDimensions(subprojectId);
+  const { data: reconciliation = [] } = useReconciliation(subprojectId);
+  const { data: fallout = [] } = useFallout(subprojectId);
 
   const withinThreshold = dimensions.filter((d) => d.threshold != null && d.actual != null && d.actual >= d.threshold).length;
 

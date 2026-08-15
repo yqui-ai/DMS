@@ -11,9 +11,9 @@ import type { Run } from '../../types/entities';
 const STATUS_VARIANT = { Running: 'warn', Completed: 'accent', 'Completed with rejects': 'warn', Failed: 'danger' } as const;
 
 export function RunsRegister() {
-  const { waveId } = useParams();
+  const { subprojectId } = useParams();
   const navigate = useNavigate();
-  const { data: runs = [], isLoading } = useRuns(waveId);
+  const { data: runs = [], isLoading } = useRuns(subprojectId);
   const { data: objects = [] } = useMigrationObjects();
   const objLabel = (id?: string) => (id ? objects.find((o) => o.id === id)?.objectId ?? id : '—');
 
@@ -51,7 +51,7 @@ export function RunsRegister() {
       </div>
 
       {!isLoading && runs.length === 0 ? (
-        <EmptyState title="No runs yet" description="Job runs for this wave will register here." />
+        <EmptyState title="No runs yet" description="Job runs for this subproject will register here." />
       ) : (
         <Table columns={columns} rows={filtered} rowKey={(r) => r.id} onRowClick={(r) => navigate(r.id)} emptyMessage="No runs match these filters." />
       )}

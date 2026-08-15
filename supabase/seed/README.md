@@ -2,9 +2,9 @@
 
 **Done.** `scripts/build-seed.mjs` (repo root) implements the approach below — it reads
 `dmc_data.js` and the prototype HTML directly (never hand-copied), and writes `seed.sql` next to
-this file. Regenerate with `npm run seed:build`. Apply `0001_init.sql`, `0002_rls.sql`, then
-`seed.sql` against a real Supabase project. `app_users`/`memberships` inserts are guarded by an
-`auth.users` email match, so the script is safe to run before those four demo users
+this file. Regenerate with `npm run seed:build`. Apply `0001_init.sql` through `0008_program_hierarchy.sql`
+(in order), then `seed.sql`, against a real Supabase project. `app_users`/`memberships` inserts are
+guarded by an `auth.users` email match, so the script is safe to run before those four demo users
 (jordan.alvarez@client.com, s.chen@client.com, m.okafor@client.com, p.nair@client.com) sign up —
 their rows populate once matching auth accounts exist. `DMC_STRUCTURES`/`DMC_FIELDS`/
 `DMC_COBJ_LCYCLE`/`DMC_SIN_SCOBJSEQ` (raw SAP BAPI structure metadata, not modeled by this
@@ -12,8 +12,16 @@ schema) are intentionally not loaded; only `DMC_CATALOG` → `migration_objects`
 `DMC_DEPENDENCIES` → `object_dependencies` are used from `dmc_data.js`. The prototype's demo
 scope objects (MARA, MARC, MBEW, MVKE, MARM, MLGN) are seeded as additional synthetic
 `migration_objects` rows (`guid` null) since the fixture data references them by bare SAP table
-mnemonic rather than by real DMC ident — everything wave-scoped (`rules`, `runs`,
-`object_structures`, `wave_objects`) hangs off those synthetic rows.
+mnemonic rather than by real DMC ident — everything subproject-scoped (`rules`, `runs`,
+`object_structures`, `subproject_objects`) hangs off those synthetic rows.
+
+Note: the table/column names below reflect the *original* Project > Release > Wave > Cycle schema
+from `0001_init.sql`. `0008_program_hierarchy.sql` renamed these in place to
+Program > Project > Subproject > Cycle (`projects`→`programs`, `releases`→`projects`,
+`waves`→`subprojects`, `wave_id`→`subproject_id`, top-level `project_id`→`program_id`) — the
+extraction logic in `build-seed.mjs` was updated to emit the new names, but the anchors below
+still describe the source fixture's own (unrenamed) property paths, which is what you'd actually
+grep for in the HTML.
 
 The original extraction notes are kept below for reference:
 

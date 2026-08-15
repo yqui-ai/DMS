@@ -11,10 +11,10 @@ import { fmtDateTime } from '../../lib/format';
 const STATUS_VARIANT = { Pending: 'warn', Approved: 'accent', Rejected: 'danger', Promoted: 'accent' } as const;
 
 export function PromotionsPage() {
-  const { waveId } = useParams();
+  const { subprojectId } = useParams();
   const toast = useToast();
-  const { data: promotions = [], isLoading } = usePromotions(waveId);
-  const mutations = usePromotionMutations(waveId!);
+  const { data: promotions = [], isLoading } = usePromotions(subprojectId);
+  const mutations = usePromotionMutations(subprojectId!);
 
   const decide = async (id: string, status: 'Approved' | 'Rejected' | 'Promoted') => {
     try { await mutations.setStatus(id, status); toast.success(`Promotion ${status.toLowerCase()}.`); }

@@ -4,7 +4,7 @@ import { Dialog } from '../../components/Dialog';
 import { Button } from '../../components/Button';
 import { useToast } from '../../components/Toast';
 import { useScopeMutations } from '../../lib/queries/scope';
-import type { MigrationObject, WaveObject } from '../../types/entities';
+import type { MigrationObject, SubprojectObject } from '../../types/entities';
 
 /** Minimal CSV parser — handles quoted fields containing commas ("a, b"). */
 function parseCsv(text: string): string[][] {
@@ -34,18 +34,18 @@ function parseCsv(text: string): string[][] {
 const csvCell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
 
 export function ImportObjectsDialog({
-  open, onClose, objects, waveObjects, waveId,
+  open, onClose, objects, subprojectObjects, subprojectId,
 }: {
-  open: boolean; onClose: () => void; objects: MigrationObject[]; waveObjects: WaveObject[]; waveId: string;
+  open: boolean; onClose: () => void; objects: MigrationObject[]; subprojectObjects: SubprojectObject[]; subprojectId: string;
 }) {
   const toast = useToast();
-  const mutations = useScopeMutations(waveId);
+  const mutations = useScopeMutations(subprojectId);
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [summary, setSummary] = useState<{ applied: number; skipped: number } | null>(null);
 
   const downloadTemplate = () => {
-    const byId = new Map(waveObjects.map((w) => [w.migrationObjectId, w]));
+    const byId = new Map(subprojectObjects.map((w) => [w.migrationObjectId, w]));
     const header = ['object_id', 'description', 'in_scope', 'owner'];
     const lines = [header.join(',')];
     for (const o of objects) {

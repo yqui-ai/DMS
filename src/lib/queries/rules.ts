@@ -3,24 +3,24 @@ import { supabase } from '../supabase';
 import type { GovState, Rule, XrefRow, XrefTable } from '../../types/entities';
 
 const toRule = (r: any): Rule => ({
-  id: r.id, waveId: r.wave_id, code: r.code, name: r.name, migrationObjectId: r.migration_object_id ?? undefined,
+  id: r.id, subprojectId: r.subproject_id, code: r.code, name: r.name, migrationObjectId: r.migration_object_id ?? undefined,
   type: r.type, severity: r.severity, status: r.status, expression: r.expression ?? undefined,
   owner: r.owner ?? undefined, version: r.version ?? undefined,
 });
 
-export function useRules(waveId?: string) {
+export function useRules(subprojectId?: string) {
   return useQuery({
-    queryKey: ['rules', waveId],
-    enabled: !!waveId,
+    queryKey: ['rules', subprojectId],
+    enabled: !!subprojectId,
     queryFn: async (): Promise<Rule[]> => {
-      const { data, error } = await supabase.from('rules').select('*').eq('wave_id', waveId!).order('code');
+      const { data, error } = await supabase.from('rules').select('*').eq('subproject_id', subprojectId!).order('code');
       if (error) throw error;
       return (data ?? []).map(toRule);
     },
   });
 }
 
-/** Rules across every wave the user can access — used by the programme-wide Library > Rules catalogue. */
+/** Rules across every subproject the user can access — used by the programme-wide Library > Rules catalogue. */
 export function useAllRules() {
   return useQuery({
     queryKey: ['rules-all'],
@@ -32,9 +32,9 @@ export function useAllRules() {
   });
 }
 
-export function useRuleMutations(waveId: string) {
+export function useRuleMutations(subprojectId: string) {
   const queryClient = useQueryClient();
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['rules', waveId] });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['rules', subprojectId] });
   return {
     async setStatus(id: string, status: GovState) {
       const { error } = await supabase.from('rules').update({ status }).eq('id', id);
@@ -44,14 +44,14 @@ export function useRuleMutations(waveId: string) {
   };
 }
 
-export function useXrefTables(waveId?: string) {
+export function useXrefTables(subprojectId?: string) {
   return useQuery({
-    queryKey: ['xref-tables', waveId],
-    enabled: !!waveId,
+    queryKey: ['xref-tables', subprojectId],
+    enabled: !!subprojectId,
     queryFn: async (): Promise<XrefTable[]> => {
-      const { data, error } = await supabase.from('xref_tables').select('*').eq('wave_id', waveId!).order('name');
+      const { data, error } = await supabase.from('xref_tables').select('*').eq('subproject_id', subprojectId!).order('name');
       if (error) throw error;
-      return (data ?? []).map((x) => ({ id: x.id, waveId: x.wave_id, name: x.name, purpose: x.purpose ?? undefined, version: x.version ?? undefined }));
+      return (data ?? []).map((x) => ({ id: x.id, subprojectId: x.subproject_id, name: x.name, purpose: x.purpose ?? undefined, version: x.version ?? undefined }));
     },
   });
 }

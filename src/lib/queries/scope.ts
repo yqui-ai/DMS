@@ -1,14 +1,14 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../supabase';
-import type { MigrationObject, WaveObject } from '../../types/entities';
+import type { MigrationObject, SubprojectObject } from '../../types/entities';
 
 const toMigrationObject = (o: any): MigrationObject => ({
   id: o.id, guid: o.guid ?? undefined, objectId: o.object_id, technicalName: o.technical_name ?? undefined,
   description: o.description ?? undefined, category: o.category ?? undefined, approach: o.approach ?? undefined,
   component: o.component ?? undefined,
 });
-const toWaveObject = (w: any): WaveObject => ({
-  id: w.id, waveId: w.wave_id, migrationObjectId: w.migration_object_id, inScope: w.in_scope,
+const toSubprojectObject = (w: any): SubprojectObject => ({
+  id: w.id, subprojectId: w.subproject_id, migrationObjectId: w.migration_object_id, inScope: w.in_scope,
   approach: w.approach ?? undefined, loadSeq: w.load_seq ?? undefined, owner: w.owner ?? undefined,
   waiverReason: w.waiver_reason ?? undefined,
 });
@@ -26,28 +26,28 @@ export function useMigrationObjects() {
   });
 }
 
-export function useWaveObjects(waveId?: string) {
+export function useSubprojectObjects(subprojectId?: string) {
   return useQuery({
-    queryKey: ['wave-objects', waveId],
-    enabled: !!waveId,
-    queryFn: async (): Promise<WaveObject[]> => {
-      const { data, error } = await supabase.from('wave_objects').select('*').eq('wave_id', waveId!);
+    queryKey: ['subproject-objects', subprojectId],
+    enabled: !!subprojectId,
+    queryFn: async (): Promise<SubprojectObject[]> => {
+      const { data, error } = await supabase.from('subproject_objects').select('*').eq('subproject_id', subprojectId!);
       if (error) throw error;
-      return (data ?? []).map(toWaveObject);
+      return (data ?? []).map(toSubprojectObject);
     },
   });
 }
 
 /** Idents (real DMC catalogue only) required by any in-scope object but not themselves in scope. */
-export function useMissingPrerequisites(waveId?: string) {
+export function useMissingPrerequisites(subprojectId?: string) {
   return useQuery({
-    queryKey: ['missing-prereqs', waveId],
-    enabled: !!waveId,
+    queryKey: ['missing-prereqs', subprojectId],
+    enabled: !!subprojectId,
     queryFn: async (): Promise<{ object: string; requires: string }[]> => {
-      const { data: waveObjs, error: e1 } = await supabase
-        .from('wave_objects').select('migration_object_id').eq('wave_id', waveId!).eq('in_scope', true);
+      const { data: subprojectObjs, error: e1 } = await supabase
+        .from('subproject_objects').select('migration_object_id').eq('subproject_id', subprojectId!).eq('in_scope', true);
       if (e1) throw e1;
-      const inScopeIds = (waveObjs ?? []).map((w) => w.migration_object_id);
+      const inScopeIds = (subprojectObjs ?? []).map((w) => w.migration_object_id);
       if (inScopeIds.length === 0) return [];
       const { data: deps, error: e2 } = await supabase
         .from('object_dependencies')
@@ -62,35 +62,35 @@ export function useMissingPrerequisites(waveId?: string) {
   });
 }
 
-export function useScopeMutations(waveId: string) {
+export function useScopeMutations(subprojectId: string) {
   const queryClient = useQueryClient();
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['wave-objects', waveId] });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['subproject-objects', subprojectId] });
 
   return {
     async setInScope(migrationObjectId: string, inScope: boolean) {
       const { error } = await supabase
-        .from('wave_objects')
-        .upsert({ wave_id: waveId, migration_object_id: migrationObjectId, in_scope: inScope }, { onConflict: 'wave_id,migration_object_id' });
+        .from('subproject_objects')
+        .upsert({ subproject_id: subprojectId, migration_object_id: migrationObjectId, in_scope: inScope }, { onConflict: 'subproject_id,migration_object_id' });
       if (error) throw error;
       await invalidate();
     },
     async setOwner(migrationObjectId: string, owner: string) {
       const { error } = await supabase
-        .from('wave_objects')
-        .upsert({ wave_id: waveId, migration_object_id: migrationObjectId, owner, in_scope: true }, { onConflict: 'wave_id,migration_object_id' });
+        .from('subproject_objects')
+        .upsert({ subproject_id: subprojectId, migration_object_id: migrationObjectId, owner, in_scope: true }, { onConflict: 'subproject_id,migration_object_id' });
       if (error) throw error;
       await invalidate();
     },
     async setScopeFinalized(finalized: boolean) {
-      const { error } = await supabase.from('waves').update({ scope_finalized: finalized }).eq('id', waveId);
+      const { error } = await supabase.from('subprojects').update({ scope_finalized: finalized }).eq('id', subprojectId);
       if (error) throw error;
-      await queryClient.invalidateQueries({ queryKey: ['wave', waveId] });
-      await queryClient.invalidateQueries({ queryKey: ['waves'] });
+      await queryClient.invalidateQueries({ queryKey: ['subproject', subprojectId] });
+      await queryClient.invalidateQueries({ queryKey: ['subprojects'] });
     },
     async setLoadSeq(migrationObjectId: string, loadSeq: number) {
       const { error } = await supabase
-        .from('wave_objects')
-        .upsert({ wave_id: waveId, migration_object_id: migrationObjectId, load_seq: loadSeq, in_scope: true }, { onConflict: 'wave_id,migration_object_id' });
+        .from('subproject_objects')
+        .upsert({ subproject_id: subprojectId, migration_object_id: migrationObjectId, load_seq: loadSeq, in_scope: true }, { onConflict: 'subproject_id,migration_object_id' });
       if (error) throw error;
       await invalidate();
     },

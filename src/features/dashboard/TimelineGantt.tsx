@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Snowflake, Star } from 'lucide-react';
 import clsx from 'clsx';
-import { useDefaultProject } from '../../lib/queries/programme';
+import { useDefaultProgram } from '../../lib/queries/programme';
 import { useTimelineCategories, useTimelineEntries } from '../../lib/queries/timelineAdmin';
 import { Card } from '../../components/Card';
 import { EmptyState } from '../../components/EmptyState';
@@ -15,8 +15,8 @@ const ICON_COLOR: Record<string, string> = { 'freeze-yellow': '#e2a900', 'freeze
 
 /** Read-only programme milestone gantt, admin-edited from Program Settings → Timelines. */
 export function TimelineGantt() {
-  const { data: project } = useDefaultProject();
-  const { data: categories = [] } = useTimelineCategories(project?.id);
+  const { data: program } = useDefaultProgram();
+  const { data: categories = [] } = useTimelineCategories(program?.id);
   const categoryIds = useMemo(() => categories.map((c) => c.id), [categories]);
   const { data: entries = [] } = useTimelineEntries(categoryIds);
 

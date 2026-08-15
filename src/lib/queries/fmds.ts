@@ -14,7 +14,7 @@ export function useAllFmds() {
     queryFn: async (): Promise<Fmd[]> => {
       const { data, error } = await supabase.from('fmds').select('*').order('name');
       if (error) throw error;
-      return (data ?? []).map((f) => ({ id: f.id, waveId: f.wave_id, migrationObjectId: f.migration_object_id ?? undefined, name: f.name }));
+      return (data ?? []).map((f) => ({ id: f.id, subprojectId: f.subproject_id, migrationObjectId: f.migration_object_id ?? undefined, name: f.name }));
     },
   });
 }

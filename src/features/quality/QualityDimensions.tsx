@@ -7,8 +7,8 @@ import { fmtDecimal } from '../../lib/format';
 import type { DqDimension } from '../../types/entities';
 
 export function QualityDimensions() {
-  const { waveId } = useParams();
-  const { data: dimensions = [], isLoading } = useDqDimensions(waveId);
+  const { subprojectId } = useParams();
+  const { data: dimensions = [], isLoading } = useDqDimensions(subprojectId);
 
   const columns: Column<DqDimension>[] = [
     { key: 'dimension', header: 'Dimension', render: (d) => <span className="font-semibold">{d.dimension}</span> },
@@ -24,7 +24,7 @@ export function QualityDimensions() {
   ];
 
   if (!isLoading && dimensions.length === 0) {
-    return <EmptyState title="No quality dimensions yet" description="Thresholds and actuals scored for this wave will list here." />;
+    return <EmptyState title="No quality dimensions yet" description="Thresholds and actuals scored for this subproject will list here." />;
   }
   return <Table columns={columns} rows={dimensions} rowKey={(d) => d.id} emptyMessage="Loading…" />;
 }

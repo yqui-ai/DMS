@@ -10,20 +10,20 @@ export type RoleId =
   | 'etl_developer' | 'cab' | 'end_user' | 'guest';
 
 export type ScreenKey =
-  | 'myWork' | 'projectSettings' | 'preparation' | 'rules' | 'referenceData'
+  | 'myWork' | 'programSettings' | 'preparation' | 'rules' | 'referenceData'
   | 'dashboard' | 'migration' | 'quality' | 'cutover' | 'promotions'
-  | 'jobMonitor' | 'catalogObjects' | 'catalogFmds' | 'catalogRules' | 'connections';
+  | 'jobMonitor' | 'catalogObjects' | 'catalogFmds' | 'catalogRules' | 'catalogGolden' | 'connections';
 
 export interface AppUser { id: UUID; name: string; email: string; status: 'Active' | 'Invited' | 'Disabled'; lastLogin?: string }
 export interface Role { id: RoleId; name: string; description?: string; isStandard: boolean }
 export interface RoleScreen { roleId: RoleId; screenKey: ScreenKey; canView: boolean; canEdit: boolean }
-export interface Membership { id: UUID; userId: UUID; projectId: UUID; waveId?: UUID | null; roleId: RoleId }
+export interface Membership { id: UUID; userId: UUID; programId: UUID; subprojectId?: UUID | null; roleId: RoleId }
 
-/* programme */
-export interface Project { id: UUID; code: string; name: string; description?: string; startDate?: string; endDate?: string }
-export interface Release { id: UUID; projectId: UUID; code: string; name: string; description?: string; seq: number; startDate?: string; endDate?: string }
-export interface Wave { id: UUID; releaseId: UUID; code: string; name: string; description?: string; startDate?: string; endDate?: string; freezeDate?: string; scopeFinalized: boolean; seq: number }
-export interface Cycle { id: UUID; waveId: UUID; name: string; seq: number; description?: string; migStart?: string; migEnd?: string; dataFreeze?: string }
+/* programme: Program > Project > Subproject > Cycle */
+export interface Program { id: UUID; code: string; name: string; description?: string; startDate?: string; endDate?: string }
+export interface Project { id: UUID; programId: UUID; code: string; name: string; description?: string; seq: number; startDate?: string; endDate?: string }
+export interface Subproject { id: UUID; projectId: UUID; code: string; name: string; description?: string; startDate?: string; endDate?: string; freezeDate?: string; scopeFinalized: boolean; seq: number }
+export interface Cycle { id: UUID; subprojectId: UUID; name: string; seq: number; description?: string; migStart?: string; migEnd?: string; dataFreeze?: string }
 
 /* catalogue */
 export type ObjectCategory = 'Master data' | 'Transactional data' | 'Not classified';
@@ -37,56 +37,56 @@ export interface ObjectStructure {
   fields: number; mapped: number; mandatory: boolean; owner?: string;
   status: 'Not Started' | GovState;
 }
-export type WaveApproach = 'M_ADMC' | 'M_ADPG' | 'M_LSMW' | 'M_IDOC' | 'M_DRCT' | 'M_MNL';
-export interface WaveObject { id: UUID; waveId: UUID; migrationObjectId: UUID; inScope: boolean; approach?: WaveApproach; loadSeq?: number; owner?: string; waiverReason?: string }
+export type SubprojectApproach = 'M_ADMC' | 'M_ADPG' | 'M_LSMW' | 'M_IDOC' | 'M_DRCT' | 'M_MNL';
+export interface SubprojectObject { id: UUID; subprojectId: UUID; migrationObjectId: UUID; inScope: boolean; approach?: SubprojectApproach; loadSeq?: number; owner?: string; waiverReason?: string }
 
 /* landscape & staging */
 export interface Connection {
-  id: UUID; projectId: UUID; sid: string; description: string;
+  id: UUID; programId: UUID; sid: string; description: string;
   type: 'SAP ECC' | 'Oracle 19c' | 'SFTP' | 'S/4HANA' | string;
   host?: string; client?: string; role: 'Source' | 'Target' | 'Staging';
   envs?: string; status: 'Connected' | 'Error' | 'Not Configured';
 }
-export interface StagingDb { waveId: UUID; engine?: string; host?: string; schemaName?: string; retention?: string; owner?: string; lastIngestion?: string }
+export interface StagingDb { subprojectId: UUID; engine?: string; host?: string; schemaName?: string; retention?: string; owner?: string; lastIngestion?: string }
 export type ExtractStatus = 'Not Extracted' | 'Extracting' | 'Extracted' | 'Failed';
 export interface SourceTable {
-  id: UUID; waveId: UUID; connectionId: UUID; name: string; tier: 'source' | 'target';
+  id: UUID; subprojectId: UUID; connectionId: UUID; name: string; tier: 'source' | 'target';
   inScope: boolean; records?: number; expected?: number; status: ExtractStatus;
   extractedOn?: string; executedBy?: string; durationS?: number; snapshot?: string;
   dqScore?: number; loadType?: 'Full' | 'Delta';
   /** generated: <SID>_<TABLE without extension, upper>_STG (null until extracted) */
   stagingTable?: string | null;
 }
-export interface TableGroup { id: UUID; waveId: UUID; connectionId: UUID; name: string; tableIds: UUID[] }
+export interface TableGroup { id: UUID; subprojectId: UUID; connectionId: UUID; name: string; tableIds: UUID[] }
 export interface ExtractionJob {
-  id: UUID; waveId: UUID; connectionId: UUID; name: string; schedule?: string;
+  id: UUID; subprojectId: UUID; connectionId: UUID; name: string; schedule?: string;
   status: 'Idle' | 'Running' | 'Success' | 'Failed'; lastRun?: string; groupIds: UUID[];
 }
 export interface SelectionCriterion {
-  id: UUID; waveId: UUID; connectionId?: UUID; tableName: string;
+  id: UUID; subprojectId: UUID; connectionId?: UUID; tableName: string;
   mode: 'Simple' | 'Complex'; field?: string; condition?: string; value?: string;
   scope: 'Table' | 'Cross-table';
 }
 
 /* mapping & rules */
-export interface Fmd { id: UUID; waveId: UUID; migrationObjectId?: UUID; name: string }
+export interface Fmd { id: UUID; subprojectId: UUID; migrationObjectId?: UUID; name: string }
 export interface FmdVersion {
   id: UUID; fmdId: UUID; version: string; state: GovState;
   sheets: { source?: Record<string, string>[]; target?: Record<string, string>[]; mapping?: Record<string, string>[] };
   createdBy?: string; createdAt?: string; approvedBy?: string; approvedAt?: string;
 }
 export interface Rule {
-  id: UUID; waveId: UUID; code: string; name: string; migrationObjectId?: UUID;
+  id: UUID; subprojectId: UUID; code: string; name: string; migrationObjectId?: UUID;
   type: 'Validation' | 'Transformation' | 'Enrichment';
   severity: 'Critical' | 'High' | 'Medium' | 'Low';
   status: GovState; expression?: string; owner?: string; version?: string;
 }
-export interface XrefTable { id: UUID; waveId: UUID; name: string; purpose?: string; version?: string }
+export interface XrefTable { id: UUID; subprojectId: UUID; name: string; purpose?: string; version?: string }
 export interface XrefRow { id: UUID; xrefTableId: UUID; legacyValue?: string; s4Value?: string; validFrom?: string; status: 'Active' | 'Retired' }
 
 /* ─────────────── ETL designer ─────────────── */
 export type EtlObjectType = 'job' | 'workflow' | 'dataflow';
-export interface EtlObject { id: UUID; waveId: UUID; type: EtlObjectType; name: string; parentId?: UUID | null; meta?: string }
+export interface EtlObject { id: UUID; subprojectId: UUID; type: EtlObjectType; name: string; parentId?: UUID | null; meta?: string }
 
 export type EtlNodeType =
   | 'workflow' | 'dataflow' | 'script' | 'conditional' | 'whileloop' | 'trycatch'
@@ -134,7 +134,7 @@ export interface EtlNode {
 }
 export type EdgeCondition = '' | 'Pass' | 'Fail' | 'Then' | 'Else';
 export interface EtlEdge { id: UUID; objectId: UUID; fromNode: UUID; toNode: UUID; condition: EdgeCondition }
-export interface EtlGlobal { id: UUID; waveId: UUID; name: string; type: string; value?: string }
+export interface EtlGlobal { id: UUID; subprojectId: UUID; name: string; type: string; value?: string }
 
 export interface RunOptions {
   jobServer: string; sysConfig: string; dop: number; monitorRate: number;
@@ -146,7 +146,7 @@ export interface RunOptions {
 /* execution */
 export type RunStatus = 'Running' | 'Completed' | 'Completed with rejects' | 'Failed';
 export interface Run {
-  id: UUID; code: string; waveId: UUID; cycleId?: UUID; etlObjectId?: UUID;
+  id: UUID; code: string; subprojectId: UUID; cycleId?: UUID; etlObjectId?: UUID;
   migrationObjectId?: UUID; iteration: number; mode?: 'Full' | 'Delta'; env?: Env;
   target?: string; approach?: string;
   fmdVersion?: string; rulesVersion?: string; xrefVersion?: string; stagingSnapshot?: string;
@@ -160,24 +160,24 @@ export interface RunLogEntry {
 }
 
 /* quality, cutover, governance */
-export interface DqDimension { id: UUID; waveId: UUID; dimension: string; description?: string; threshold?: number; actual?: number }
-export interface DqCheck { id: UUID; waveId: UUID; phase: 'pre-load' | 'post-load' | 'post-transform'; code: string; migrationObjectId?: UUID; description?: string; expected?: string; actual?: string; result?: 'Pass' | 'Warning' | 'Fail' }
+export interface DqDimension { id: UUID; subprojectId: UUID; dimension: string; description?: string; threshold?: number; actual?: number }
+export interface DqCheck { id: UUID; subprojectId: UUID; phase: 'pre-load' | 'post-load' | 'post-transform'; code: string; migrationObjectId?: UUID; description?: string; expected?: string; actual?: string; result?: 'Pass' | 'Warning' | 'Fail' }
 export interface Reconciliation { id: UUID; runId: UUID; migrationObjectId?: UUID; srcCount: number; tgtCount: number; variance: number; signedOffBy?: string; signedOffAt?: string }
 export interface FalloutRecord { id: number; runId: UUID; ruleCode?: string; keyValue?: string; reason?: string; payload?: unknown }
-export interface CutoverTask { id: UUID; waveId: UUID; seq?: number; name: string; owner?: string; plannedStart?: string; plannedEnd?: string; dependsOn?: UUID; status: 'Not Started' | 'In Progress' | 'Done' | 'Blocked' }
-export interface ApprovalMatrixEntry { id: UUID; projectId: UUID; area: string; action: string; approvalRequired: boolean; approverRoleId?: RoleId }
-export interface Promotion { id: UUID; waveId: UUID; artefactType: 'fmd' | 'rules' | 'xref' | 'etl_object'; artefactId?: UUID; artefactName?: string; fromEnv?: Env; toEnv?: Env; requestedBy?: string; requestedAt?: string; status: 'Pending' | 'Approved' | 'Rejected' | 'Promoted' }
-export interface AuditEntry { id: number; projectId?: UUID; waveId?: UUID; at: string; actor?: string; action: string; entity?: string; entityId?: string; before?: unknown; after?: unknown }
+export interface CutoverTask { id: UUID; subprojectId: UUID; seq?: number; name: string; owner?: string; plannedStart?: string; plannedEnd?: string; dependsOn?: UUID; status: 'Not Started' | 'In Progress' | 'Done' | 'Blocked' }
+export interface ApprovalMatrixEntry { id: UUID; programId: UUID; area: string; action: string; approvalRequired: boolean; approverRoleId?: RoleId }
+export interface Promotion { id: UUID; subprojectId: UUID; artefactType: 'fmd' | 'rules' | 'xref' | 'etl_object'; artefactId?: UUID; artefactName?: string; fromEnv?: Env; toEnv?: Env; requestedBy?: string; requestedAt?: string; status: 'Pending' | 'Approved' | 'Rejected' | 'Promoted' }
+export interface AuditEntry { id: number; programId?: UUID; subprojectId?: UUID; at: string; actor?: string; action: string; entity?: string; entityId?: string; before?: unknown; after?: unknown }
 
 /* reference data & golden library */
-export interface CheckTable { id: UUID; waveId: UUID; tableName: string; domain?: string; field?: string; usedBy?: string; description?: string; columns: string[] }
+export interface CheckTable { id: UUID; subprojectId: UUID; tableName: string; domain?: string; field?: string; usedBy?: string; description?: string; columns: string[] }
 export interface CheckTableRow { id: UUID; checkTableId: UUID; seq: number; values: string[] }
-export interface GoldenLibraryEntry { id: UUID; projectId: UUID; kind: 'fmd' | 'xref'; name: string; reference?: string; version?: string; createdBy?: string; createdAt?: string; changedBy?: string; changedAt?: string }
+export interface GoldenLibraryEntry { id: UUID; programId: UUID; kind: 'fmd' | 'xref'; name: string; reference?: string; version?: string; createdBy?: string; createdAt?: string; changedBy?: string; changedAt?: string }
 
 /* artifact-aligned additions: unmapped values, AI settings, timeline admin */
-export interface UnmappedValue { id: UUID; waveId: UUID; setName: string; migrationObjectId?: UUID; field?: string; value: string; occurrences: number; owner?: string; status: 'Open' | 'Proposed' | 'Resolved'; suggestion?: string }
-export interface AiProviderKey { id: UUID; projectId: UUID; provider: string; label?: string; endpoint?: string; keyMasked?: string; budget?: number; active: boolean; addedAt: string }
-export interface TimelineCategory { id: UUID; projectId: UUID; name: string; seq: number }
+export interface UnmappedValue { id: UUID; subprojectId: UUID; setName: string; migrationObjectId?: UUID; field?: string; value: string; occurrences: number; owner?: string; status: 'Open' | 'Proposed' | 'Resolved'; suggestion?: string }
+export interface AiProviderKey { id: UUID; programId: UUID; provider: string; label?: string; endpoint?: string; keyMasked?: string; budget?: number; active: boolean; addedAt: string }
+export interface TimelineCategory { id: UUID; programId: UUID; name: string; seq: number }
 export interface TimelineEntry { id: UUID; categoryId: UUID; rowLabel: string; name: string; kind: 'point' | 'range'; icon?: string; startDate?: string; endDate?: string }
 
 /* UI helper: node type presentation (see 03-PIPELINES-DESIGNER.md) */

@@ -11,11 +11,11 @@ import type { RoleId } from '../../types/entities';
 
 const STATUS_VARIANT = { Active: 'accent', Invited: 'warn', Disabled: 'neutral' } as const;
 
-export function UsersTab({ projectId }: { projectId: string }) {
+export function UsersTab({ programId }: { programId: string }) {
   const toast = useToast();
-  const { data: members = [], isLoading } = useProjectMembers(projectId);
+  const { data: members = [], isLoading } = useProjectMembers(programId);
   const { data: roles = [] } = useRoles();
-  const mutations = useMemberMutations(projectId);
+  const mutations = useMemberMutations(programId);
 
   const [adding, setAdding] = useState(false);
   const [email, setEmail] = useState('');
@@ -27,7 +27,7 @@ export function UsersTab({ projectId }: { projectId: string }) {
     setBusy(true);
     try {
       await mutations.addByEmail(email.trim(), roleId);
-      toast.success(`${email} added to the project.`);
+      toast.success(`${email} added to the programme.`);
       setEmail(''); setAdding(false);
     } catch (err: any) {
       toast.error(err.message ?? 'Could not add user.');
@@ -47,7 +47,7 @@ export function UsersTab({ projectId }: { projectId: string }) {
   const removeMember = async (member: ProjectMember) => {
     try {
       await mutations.remove(member.membershipId);
-      toast.info(`${member.name} removed from the project.`);
+      toast.info(`${member.name} removed from the programme.`);
     } catch (err: any) {
       toast.error(err.message ?? 'Could not remove user.');
     }
@@ -69,7 +69,7 @@ export function UsersTab({ projectId }: { projectId: string }) {
     },
     { key: 'status', header: 'Status', render: (m) => <Tag variant={STATUS_VARIANT[m.status]}>{m.status}</Tag> },
     { key: 'lastLogin', header: 'Last Login', render: (m) => fmtDateTime(m.lastLogin) },
-    { key: 'scope', header: 'Scope', render: (m) => m.waveId ? <span className="text-sm2 text-muted">This wave</span> : <span className="text-sm2 text-muted">Whole programme</span> },
+    { key: 'scope', header: 'Scope', render: (m) => m.subprojectId ? <span className="text-sm2 text-muted">This subproject</span> : <span className="text-sm2 text-muted">Whole programme</span> },
     {
       key: 'actions', header: '', frozen: true, width: 40,
       render: (m) => (
@@ -104,7 +104,7 @@ export function UsersTab({ projectId }: { projectId: string }) {
         columns={columns}
         rows={members}
         rowKey={(m) => m.membershipId}
-        emptyMessage={isLoading ? 'Loading…' : 'No users on this project yet.'}
+        emptyMessage={isLoading ? 'Loading…' : 'No users on this programme yet.'}
       />
     </div>
   );

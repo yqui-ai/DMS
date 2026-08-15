@@ -4,16 +4,16 @@ import { Search } from 'lucide-react';
 import clsx from 'clsx';
 import { EmptyState } from '../../components/EmptyState';
 import { Tag } from '../../components/Tag';
-import { useMigrationObjects, useWaveObjects } from '../../lib/queries/scope';
+import { useMigrationObjects, useSubprojectObjects } from '../../lib/queries/scope';
 import { useRuns } from '../../lib/queries/runs';
 import { APPROACH_TEMPLATES } from './approachTemplates';
 import { ObjectDetailDialog } from '../scope/ObjectDetailDialog';
-import type { MigrationObject, Run, WaveApproach } from '../../types/entities';
+import type { MigrationObject, Run, SubprojectApproach } from '../../types/entities';
 
 interface StageState { label: string; state: 'done' | 'failed' | 'running' | 'idle' }
 interface PipeState { stages: StageState[]; statusLabel: string; variant: 'accent' | 'danger' | 'warn' | 'neutral' }
 
-function computePipeState(approach: WaveApproach | undefined, run: Run | undefined): PipeState {
+function computePipeState(approach: SubprojectApproach | undefined, run: Run | undefined): PipeState {
   const tmpl = APPROACH_TEMPLATES[approach ?? 'M_ADMC'];
   const n = tmpl.stages.length;
   let doneCount = 0, failIdx = -1, runIdx = -1;
@@ -33,15 +33,15 @@ function computePipeState(approach: WaveApproach | undefined, run: Run | undefin
 const DOT_COLOR = { done: 'bg-blue', failed: 'bg-red', running: 'bg-amber-ink', idle: 'bg-neutralTag-bg' } as const;
 
 export function PipelineStages() {
-  const { waveId } = useParams();
+  const { subprojectId } = useParams();
   const { data: objects = [] } = useMigrationObjects();
-  const { data: waveObjects = [] } = useWaveObjects(waveId);
-  const { data: runs = [] } = useRuns(waveId);
+  const { data: subprojectObjects = [] } = useSubprojectObjects(subprojectId);
+  const { data: runs = [] } = useRuns(subprojectId);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<MigrationObject | null>(null);
 
   const byId = useMemo(() => new Map(objects.map((o) => [o.id, o])), [objects]);
-  const inScope = waveObjects.filter((w) => w.inScope);
+  const inScope = subprojectObjects.filter((w) => w.inScope);
   const latestRunByObject = useMemo(() => {
     const m = new Map<string, Run>();
     for (const r of runs) {
@@ -54,7 +54,7 @@ export function PipelineStages() {
 
   const rows = inScope
     .map((w) => ({ obj: byId.get(w.migrationObjectId), approach: w.approach, run: latestRunByObject.get(w.migrationObjectId) }))
-    .filter((r): r is { obj: MigrationObject; approach: WaveApproach | undefined; run: Run | undefined } => !!r.obj)
+    .filter((r): r is { obj: MigrationObject; approach: SubprojectApproach | undefined; run: Run | undefined } => !!r.obj)
     .filter((r) => !query || r.obj.objectId.toLowerCase().includes(query.toLowerCase()) || (r.obj.description ?? '').toLowerCase().includes(query.toLowerCase()));
 
   if (inScope.length === 0) {

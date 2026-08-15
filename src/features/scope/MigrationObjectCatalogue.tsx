@@ -7,8 +7,8 @@ import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { Kpi } from '../../components/Kpi';
 import { useToast } from '../../components/Toast';
-import { useMigrationObjects, useWaveObjects, useMissingPrerequisites, useScopeMutations } from '../../lib/queries/scope';
-import { useWave } from '../../lib/queries/programme';
+import { useMigrationObjects, useSubprojectObjects, useMissingPrerequisites, useScopeMutations } from '../../lib/queries/scope';
+import { useSubproject } from '../../lib/queries/programme';
 import { useCurrentRole } from '../../lib/queries/memberships';
 import { ImportObjectsDialog } from './ImportObjectsDialog';
 import { SelectStandardDialog } from './SelectStandardDialog';
@@ -25,14 +25,14 @@ interface Row {
 }
 
 export function MigrationObjectCatalogue() {
-  const { projectId, waveId } = useParams();
+  const { programId, subprojectId } = useParams();
   const toast = useToast();
   const { data: objects = [], isLoading } = useMigrationObjects();
-  const { data: waveObjects = [] } = useWaveObjects(waveId);
-  const { data: wave } = useWave(waveId);
-  const { data: role = 'guest' } = useCurrentRole(projectId, waveId);
-  const { data: missingPrereqs = [] } = useMissingPrerequisites(waveId);
-  const mutations = useScopeMutations(waveId!);
+  const { data: subprojectObjects = [] } = useSubprojectObjects(subprojectId);
+  const { data: subproject } = useSubproject(subprojectId);
+  const { data: role = 'guest' } = useCurrentRole(programId, subprojectId);
+  const { data: missingPrereqs = [] } = useMissingPrerequisites(subprojectId);
+  const mutations = useScopeMutations(subprojectId!);
 
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('All');
@@ -43,7 +43,7 @@ export function MigrationObjectCatalogue() {
   const [selectStandardOpen, setSelectStandardOpen] = useState(false);
   const [detailObject, setDetailObject] = useState<MigrationObject | null>(null);
 
-  const waveObjByMoId = useMemo(() => new Map(waveObjects.map((w) => [w.migrationObjectId, w])), [waveObjects]);
+  const subprojectObjByMoId = useMemo(() => new Map(subprojectObjects.map((w) => [w.migrationObjectId, w])), [subprojectObjects]);
 
   const isString = <T extends string>(v: T | undefined): v is T => Boolean(v);
   const categories = useMemo(() => ['All', ...Array.from(new Set(objects.map((o) => o.category).filter(isString)))], [objects]);
@@ -51,8 +51,8 @@ export function MigrationObjectCatalogue() {
   const components = useMemo(() => ['All', ...Array.from(new Set(objects.map((o) => o.component).filter(isString)))].sort(), [objects]);
 
   const rows: Row[] = useMemo(
-    () => objects.map((obj) => ({ obj, inScope: waveObjByMoId.get(obj.id)?.inScope ?? false, owner: waveObjByMoId.get(obj.id)?.owner ?? '' })),
-    [objects, waveObjByMoId],
+    () => objects.map((obj) => ({ obj, inScope: subprojectObjByMoId.get(obj.id)?.inScope ?? false, owner: subprojectObjByMoId.get(obj.id)?.owner ?? '' })),
+    [objects, subprojectObjByMoId],
   );
 
   const filtered = useMemo(() => {
@@ -72,7 +72,7 @@ export function MigrationObjectCatalogue() {
 
   const inScopeCount = rows.filter((r) => r.inScope).length;
   const canEdit = CAN_FINALIZE_ROLES.has(role);
-  const scopeFinalized = wave?.scopeFinalized ?? false;
+  const scopeFinalized = subproject?.scopeFinalized ?? false;
 
   const toggleScope = async (row: Row) => {
     try {
@@ -200,7 +200,7 @@ export function MigrationObjectCatalogue() {
           <div className="flex flex-col gap-3">
             <p className="text-sm text-text">
               Finalizing locks the {inScopeCount}-object scope and unlocks Data Migration, Data Quality, Cutover and
-              Governance navigation for this wave.
+              Governance navigation for this subproject.
             </p>
             {missingPrereqs.length > 0 && (
               <div className="flex gap-2 bg-amber-bg text-amber-ink rounded-[8px] p-3 text-sm">
@@ -219,8 +219,8 @@ export function MigrationObjectCatalogue() {
         )}
       </Dialog>
 
-      <ImportObjectsDialog open={importOpen} onClose={() => setImportOpen(false)} objects={objects} waveObjects={waveObjects} waveId={waveId!} />
-      <SelectStandardDialog open={selectStandardOpen} onClose={() => setSelectStandardOpen(false)} objects={objects} waveObjects={waveObjects} waveId={waveId!} />
+      <ImportObjectsDialog open={importOpen} onClose={() => setImportOpen(false)} objects={objects} subprojectObjects={subprojectObjects} subprojectId={subprojectId!} />
+      <SelectStandardDialog open={selectStandardOpen} onClose={() => setSelectStandardOpen(false)} objects={objects} subprojectObjects={subprojectObjects} subprojectId={subprojectId!} />
       <ObjectDetailDialog object={detailObject} onClose={() => setDetailObject(null)} />
     </div>
   );

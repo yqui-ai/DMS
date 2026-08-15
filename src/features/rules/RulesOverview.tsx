@@ -4,9 +4,9 @@ import { StatStrip } from '../../components/Kpi';
 import { useRules, useXrefTables } from '../../lib/queries/rules';
 
 export function RulesOverview() {
-  const { waveId } = useParams();
-  const { data: rules = [] } = useRules(waveId);
-  const { data: xrefTables = [] } = useXrefTables(waveId);
+  const { subprojectId } = useParams();
+  const { data: rules = [] } = useRules(subprojectId);
+  const { data: xrefTables = [] } = useXrefTables(subprojectId);
 
   const critical = rules.filter((r) => r.severity === 'Critical').length;
   const approved = rules.filter((r) => r.status === 'Approved').length;

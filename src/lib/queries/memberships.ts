@@ -4,27 +4,27 @@ import { useAuth } from '../auth';
 import type { RoleId } from '../../types/entities';
 
 /**
- * Resolves the current user's role for a given project (+ optional wave).
- * A membership with wave_id = null is programme-wide and applies to every wave in the project.
+ * Resolves the current user's role for a given programme (+ optional subproject).
+ * A membership with subproject_id = null is programme-wide and applies to every subproject in the programme.
  * Falls back to 'guest' when signed out or no membership row matches.
  */
-export function useCurrentRole(projectId?: string, waveId?: string) {
+export function useCurrentRole(programId?: string, subprojectId?: string) {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ['current-role', user?.id, projectId, waveId],
-    enabled: !!user && !!projectId,
+    queryKey: ['current-role', user?.id, programId, subprojectId],
+    enabled: !!user && !!programId,
     queryFn: async (): Promise<RoleId> => {
       const { data, error } = await supabase
         .from('memberships')
-        .select('role_id, wave_id')
+        .select('role_id, subproject_id')
         .eq('user_id', user!.id)
-        .eq('project_id', projectId!);
+        .eq('program_id', programId!);
       if (error) throw error;
       const rows = data ?? [];
-      const waveSpecific = waveId ? rows.find((r) => r.wave_id === waveId) : undefined;
-      const programmeWide = rows.find((r) => r.wave_id === null);
-      return (waveSpecific?.role_id ?? programmeWide?.role_id ?? 'guest') as RoleId;
+      const subprojectSpecific = subprojectId ? rows.find((r) => r.subproject_id === subprojectId) : undefined;
+      const programmeWide = rows.find((r) => r.subproject_id === null);
+      return (subprojectSpecific?.role_id ?? programmeWide?.role_id ?? 'guest') as RoleId;
     },
     placeholderData: 'guest' as RoleId,
   });

@@ -9,7 +9,7 @@ const SCREEN_GROUPS: { title: string; screens: { key: ScreenKey; label: string }
     title: 'General',
     screens: [
       { key: 'myWork', label: 'My Work' }, { key: 'dashboard', label: 'Dashboard' },
-      { key: 'projectSettings', label: 'Program Settings' },
+      { key: 'programSettings', label: 'Program Settings' },
     ],
   },
   {
@@ -35,8 +35,8 @@ const SCREEN_GROUPS: { title: string; screens: { key: ScreenKey; label: string }
   {
     title: 'Library',
     screens: [
-      { key: 'catalogObjects', label: 'Migration Objects' }, { key: 'catalogFmds', label: 'FMDs' },
-      { key: 'catalogRules', label: 'Rules' },
+      { key: 'catalogObjects', label: 'Migration Object' }, { key: 'catalogFmds', label: 'Field Mapping' },
+      { key: 'catalogRules', label: 'Rule' }, { key: 'catalogGolden', label: 'Golden Library' },
     ],
   },
 ];

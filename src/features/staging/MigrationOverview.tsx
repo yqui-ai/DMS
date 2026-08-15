@@ -1,17 +1,17 @@
 import { useParams } from 'react-router-dom';
 import { Card } from '../../components/Card';
 import { StatStrip } from '../../components/Kpi';
-import { useWaveObjects } from '../../lib/queries/scope';
+import { useSubprojectObjects } from '../../lib/queries/scope';
 import { useSourceTables } from '../../lib/queries/staging';
 import { useRuns } from '../../lib/queries/runs';
 
 export function MigrationOverview() {
-  const { waveId } = useParams();
-  const { data: waveObjects = [] } = useWaveObjects(waveId);
-  const { data: tables = [] } = useSourceTables(waveId);
-  const { data: runs = [] } = useRuns(waveId);
+  const { subprojectId } = useParams();
+  const { data: subprojectObjects = [] } = useSubprojectObjects(subprojectId);
+  const { data: tables = [] } = useSourceTables(subprojectId);
+  const { data: runs = [] } = useRuns(subprojectId);
 
-  const inScope = waveObjects.filter((w) => w.inScope);
+  const inScope = subprojectObjects.filter((w) => w.inScope);
   const extracted = tables.filter((t) => t.status === 'Extracted').length;
   const completed = runs.filter((r) => r.status === 'Completed').length;
   const failed = runs.filter((r) => r.status === 'Failed').length;

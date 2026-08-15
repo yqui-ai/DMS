@@ -9,8 +9,8 @@ import type { DqCheck } from '../../types/entities';
 const RESULT_VARIANT = { Pass: 'accent', Warning: 'warn', Fail: 'danger' } as const;
 
 export function DqChecksPhase({ phase, emptyLabel }: { phase: 'pre-load' | 'post-load' | 'post-transform'; emptyLabel: string }) {
-  const { waveId } = useParams();
-  const { data: checks = [], isLoading } = useDqChecks(waveId, phase);
+  const { subprojectId } = useParams();
+  const { data: checks = [], isLoading } = useDqChecks(subprojectId, phase);
   const { data: objects = [] } = useMigrationObjects();
   const objLabel = (id?: string) => (id ? objects.find((o) => o.id === id)?.objectId ?? id : '—');
 
@@ -24,7 +24,7 @@ export function DqChecksPhase({ phase, emptyLabel }: { phase: 'pre-load' | 'post
   ];
 
   if (!isLoading && checks.length === 0) {
-    return <EmptyState title={emptyLabel} description="Checks run for this wave will list here." />;
+    return <EmptyState title={emptyLabel} description="Checks run for this subproject will list here." />;
   }
   return <Table columns={columns} rows={checks} rowKey={(c) => c.id} emptyMessage="Loading…" />;
 }

@@ -8,14 +8,14 @@ import { useCheckTables, useCheckTableRows } from '../../lib/queries/referenceDa
 import type { CheckTable, CheckTableRow } from '../../types/entities';
 
 export function CheckTablesPage() {
-  const { waveId } = useParams();
-  const { data: tables = [], isLoading, isError, error } = useCheckTables(waveId);
+  const { subprojectId } = useParams();
+  const { data: tables = [], isLoading, isError, error } = useCheckTables(subprojectId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = tables.find((t) => t.id === selectedId) ?? tables[0];
 
   if (isError) return <QueryErrorNotice error={error} />;
   if (!isLoading && tables.length === 0) {
-    return <EmptyState title="No check tables yet" description="SAP check tables referenced by this wave will list here." />;
+    return <EmptyState title="No check tables yet" description="SAP check tables referenced by this subproject will list here." />;
   }
 
   return (

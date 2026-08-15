@@ -5,7 +5,7 @@ import clsx from 'clsx';
 import { Dialog } from '../../components/Dialog';
 import { Tag } from '../../components/Tag';
 import { Button } from '../../components/Button';
-import { useWaveObjects } from '../../lib/queries/scope';
+import { useSubprojectObjects } from '../../lib/queries/scope';
 import { useAllRules } from '../../lib/queries/rules';
 import { useAllFmds } from '../../lib/queries/fmds';
 import { useRuns } from '../../lib/queries/runs';
@@ -21,21 +21,21 @@ const TABS: { key: Tab; label: string }[] = [
 ];
 
 export function ObjectDetailDialog({ object, onClose }: { object: MigrationObject | null; onClose: () => void }) {
-  const { waveId } = useParams();
+  const { subprojectId } = useParams();
   const [tab, setTab] = useState<Tab>('overview');
   const [openFmd, setOpenFmd] = useState<Fmd | null>(null);
-  const { data: waveObjects = [] } = useWaveObjects(waveId);
+  const { data: subprojectObjects = [] } = useSubprojectObjects(subprojectId);
   const { data: allRules = [] } = useAllRules();
   const { data: allFmds = [] } = useAllFmds();
-  const { data: runs = [] } = useRuns(waveId);
+  const { data: runs = [] } = useRuns(subprojectId);
 
-  const waveObj = object ? waveObjects.find((w) => w.migrationObjectId === object.id) : undefined;
+  const subprojectObj = object ? subprojectObjects.find((w) => w.migrationObjectId === object.id) : undefined;
   const objRules = object ? allRules.filter((r) => r.migrationObjectId === object.id) : [];
   const activeRules = objRules.filter((r) => r.status === 'Approved');
   const fmd = object ? allFmds.find((f) => f.migrationObjectId === object.id) : undefined;
   const objRuns = object ? runs.filter((r) => r.migrationObjectId === object.id).sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? '')) : [];
   const lastRun = objRuns[0];
-  const { data: fallout = [] } = useFallout(waveId);
+  const { data: fallout = [] } = useFallout(subprojectId);
   const openFalloutCount = lastRun ? fallout.filter((f) => f.runId === lastRun.id).length : 0;
 
   return (
@@ -46,7 +46,7 @@ export function ObjectDetailDialog({ object, onClose }: { object: MigrationObjec
             <div className="flex items-center gap-2">
               <Tag variant="table">{object.objectId}</Tag>
               {object.component && <Tag variant="connection">{object.component}</Tag>}
-              {waveObj?.inScope && <Tag variant="accent">In Scope</Tag>}
+              {subprojectObj?.inScope && <Tag variant="accent">In Scope</Tag>}
             </div>
 
             <div className="flex items-center gap-1 border-b border-line">
@@ -62,9 +62,9 @@ export function ObjectDetailDialog({ object, onClose }: { object: MigrationObjec
 
             {tab === 'overview' && (
               <div className="grid grid-cols-2 gap-3">
-                <SummaryField label="In scope">{waveObj?.inScope ? 'Yes' : 'No'}</SummaryField>
-                <SummaryField label="Approach">{waveObj?.approach ?? '—'}</SummaryField>
-                <SummaryField label="Data owner">{waveObj?.owner ?? '—'}</SummaryField>
+                <SummaryField label="In scope">{subprojectObj?.inScope ? 'Yes' : 'No'}</SummaryField>
+                <SummaryField label="Approach">{subprojectObj?.approach ?? '—'}</SummaryField>
+                <SummaryField label="Data owner">{subprojectObj?.owner ?? '—'}</SummaryField>
                 <SummaryField label="FMD status">{fmd ? 'Assigned' : 'Not created'}</SummaryField>
                 <SummaryField label="Category">{object.category ?? '—'}</SummaryField>
                 <SummaryField label="Technical name"><span className="font-mono">{object.technicalName ?? '—'}</span></SummaryField>

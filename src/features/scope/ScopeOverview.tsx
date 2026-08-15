@@ -3,18 +3,18 @@ import { StatStrip } from '../../components/Kpi';
 import { Card } from '../../components/Card';
 import { Table, type Column } from '../../components/Table';
 import { Tag } from '../../components/Tag';
-import { useMigrationObjects, useWaveObjects, useMissingPrerequisites } from '../../lib/queries/scope';
+import { useMigrationObjects, useSubprojectObjects, useMissingPrerequisites } from '../../lib/queries/scope';
 import { useRules } from '../../lib/queries/rules';
 import type { MigrationObject } from '../../types/entities';
 
 export function ScopeOverview() {
-  const { waveId } = useParams();
+  const { subprojectId } = useParams();
   const { data: objects = [] } = useMigrationObjects();
-  const { data: waveObjects = [] } = useWaveObjects(waveId);
-  const { data: missingPrereqs = [] } = useMissingPrerequisites(waveId);
-  const { data: rules = [] } = useRules(waveId);
+  const { data: subprojectObjects = [] } = useSubprojectObjects(subprojectId);
+  const { data: missingPrereqs = [] } = useMissingPrerequisites(subprojectId);
+  const { data: rules = [] } = useRules(subprojectId);
 
-  const inScope = waveObjects.filter((w) => w.inScope);
+  const inScope = subprojectObjects.filter((w) => w.inScope);
   const byId = new Map(objects.map((o) => [o.id, o]));
   const rulesActive = rules.filter((r) => r.status === 'Approved').length;
 

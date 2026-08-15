@@ -2,18 +2,18 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../supabase';
 import type { TimelineCategory, TimelineEntry } from '../../types/entities';
 
-const toCategory = (c: any): TimelineCategory => ({ id: c.id, projectId: c.project_id, name: c.name, seq: c.seq });
+const toCategory = (c: any): TimelineCategory => ({ id: c.id, programId: c.program_id, name: c.name, seq: c.seq });
 const toEntry = (e: any): TimelineEntry => ({
   id: e.id, categoryId: e.category_id, rowLabel: e.row_label, name: e.name, kind: e.kind,
   icon: e.icon ?? undefined, startDate: e.start_date ?? undefined, endDate: e.end_date ?? undefined,
 });
 
-export function useTimelineCategories(projectId?: string) {
+export function useTimelineCategories(programId?: string) {
   return useQuery({
-    queryKey: ['timeline-categories', projectId],
-    enabled: !!projectId,
+    queryKey: ['timeline-categories', programId],
+    enabled: !!programId,
     queryFn: async (): Promise<TimelineCategory[]> => {
-      const { data, error } = await supabase.from('timeline_categories').select('*').eq('project_id', projectId!).order('seq');
+      const { data, error } = await supabase.from('timeline_categories').select('*').eq('program_id', programId!).order('seq');
       if (error) throw error;
       return (data ?? []).map(toCategory);
     },
@@ -32,13 +32,13 @@ export function useTimelineEntries(categoryIds: string[]) {
   });
 }
 
-export function useTimelineAdminMutations(projectId: string) {
+export function useTimelineAdminMutations(programId: string) {
   const queryClient = useQueryClient();
-  const invalidateCats = () => queryClient.invalidateQueries({ queryKey: ['timeline-categories', projectId] });
+  const invalidateCats = () => queryClient.invalidateQueries({ queryKey: ['timeline-categories', programId] });
   const invalidateEntries = () => queryClient.invalidateQueries({ queryKey: ['timeline-entries'] });
   return {
     async addCategory(name: string, seq: number) {
-      const { error } = await supabase.from('timeline_categories').insert({ project_id: projectId, name, seq });
+      const { error } = await supabase.from('timeline_categories').insert({ program_id: programId, name, seq });
       if (error) throw error;
       await invalidateCats();
     },

@@ -16,13 +16,13 @@ import type { SourceTable } from '../../types/entities';
 const STATUS_VARIANT = { Extracted: 'accent', Extracting: 'warn', Failed: 'danger', 'Not Extracted': 'neutral' } as const;
 
 export function StagingArea() {
-  const { projectId, waveId } = useParams();
+  const { programId, subprojectId } = useParams();
   const toast = useToast();
   const { user } = useAuth();
-  const { data: stagingDb } = useStagingDb(waveId);
-  const { data: tables = [], isLoading } = useSourceTables(waveId);
-  const { data: connections = [] } = useConnections(projectId);
-  const mutations = useSourceTableMutations(waveId!);
+  const { data: stagingDb } = useStagingDb(subprojectId);
+  const { data: tables = [], isLoading } = useSourceTables(subprojectId);
+  const { data: connections = [] } = useConnections(programId);
+  const mutations = useSourceTableMutations(subprojectId!);
 
   const connName = (id: string) => connections.find((c) => c.id === id)?.sid ?? id;
 
@@ -72,7 +72,7 @@ export function StagingArea() {
       )}
 
       {!isLoading && tables.length === 0 ? (
-        <EmptyState title="No source tables yet" description="Tables extracted into staging for this wave will list here." />
+        <EmptyState title="No source tables yet" description="Tables extracted into staging for this subproject will list here." />
       ) : (
         Array.from(grouped.entries()).map(([connId, rows]) => (
           <div key={connId}>

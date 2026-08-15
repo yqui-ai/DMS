@@ -4,7 +4,7 @@ import { ChevronDown, Search, Bell, UserCircle, Moon, LogOut, Layers } from 'luc
 import clsx from 'clsx';
 import { useAuth } from '../../lib/auth';
 import { useTheme } from '../../lib/theme';
-import { useProjects, useReleases, useWave, useWaves, useRelease } from '../../lib/queries/programme';
+import { usePrograms, useProjects, useSubproject, useSubprojects, useProject } from '../../lib/queries/programme';
 import { Dialog } from '../../components/Dialog';
 import { Button } from '../../components/Button';
 import { Field, Input } from '../../components/Field';
@@ -88,37 +88,37 @@ function EnvPill() {
 }
 
 function SubprojectSwitcher() {
-  const { projectId, waveId } = useParams();
+  const { programId, subprojectId } = useParams();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const { data: projects = [] } = useProjects();
-  const { data: releases = [] } = useReleases(projectId);
-  const { data: waves = [] } = useWaves(releases.map((r) => r.id));
-  const { data: wave } = useWave(waveId);
-  const { data: release } = useRelease(wave?.releaseId);
+  const { data: programs = [] } = usePrograms();
+  const { data: projects = [] } = useProjects(programId);
+  const { data: subprojects = [] } = useSubprojects(projects.map((r) => r.id));
+  const { data: subproject } = useSubproject(subprojectId);
+  const { data: project } = useProject(subproject?.projectId);
 
   return (
     <div className="relative">
       <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 text-sm font-semibold hover:bg-blue-pale rounded-[8px] px-2 py-1.5">
         <Layers size={14} className="text-muted" />
         <span className="truncate max-w-[220px]">
-          {release && wave ? <>{release.name} <span className="text-muted font-normal">›</span> {wave.name}</> : 'Pick a subproject'}
+          {project && subproject ? <>{project.name} <span className="text-muted font-normal">›</span> {subproject.name}</> : 'Pick a subproject'}
         </span>
         <ChevronDown size={13} />
       </button>
       {open && (
         <div className="absolute left-0 mt-1 w-72 bg-surface rounded-[8px] shadow-cardHover py-2 z-20 max-h-96 overflow-auto">
-          {projects.length === 0 && <div className="px-3.5 py-2 text-sm text-muted">No projects available.</div>}
-          {projects.map((p) => (
-            <div key={p.id} className="mb-1">
-              <div className="px-3.5 py-1 text-2xs font-bold uppercase tracking-[.05em] text-muted">{p.name}</div>
-              {waves.filter((w) => releases.some((r) => r.id === w.releaseId && r.projectId === p.id) || projectId === p.id).map((w) => (
+          {programs.length === 0 && <div className="px-3.5 py-2 text-sm text-muted">No programmes available.</div>}
+          {programs.map((pg) => (
+            <div key={pg.id} className="mb-1">
+              <div className="px-3.5 py-1 text-2xs font-bold uppercase tracking-[.05em] text-muted">{pg.name}</div>
+              {subprojects.filter((s) => projects.some((r) => r.id === s.projectId && r.programId === pg.id) || programId === pg.id).map((s) => (
                 <button
-                  key={w.id}
-                  onClick={() => { navigate(`/p/${p.id}/w/${w.id}/dashboard`); setOpen(false); }}
-                  className={clsx('w-full text-left px-3.5 py-1.5 text-sm hover:bg-blue-pale', w.id === waveId && 'bg-blue-light font-semibold')}
+                  key={s.id}
+                  onClick={() => { navigate(`/pg/${pg.id}/sp/${s.id}/dashboard`); setOpen(false); }}
+                  className={clsx('w-full text-left px-3.5 py-1.5 text-sm hover:bg-blue-pale', s.id === subprojectId && 'bg-blue-light font-semibold')}
                 >
-                  {w.name}
+                  {s.name}
                 </button>
               ))}
             </div>

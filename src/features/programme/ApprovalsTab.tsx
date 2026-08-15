@@ -4,11 +4,11 @@ import { useRolesFull } from '../../lib/queries/roles';
 import { useToast } from '../../components/Toast';
 import type { RoleId } from '../../types/entities';
 
-export function ApprovalsTab({ projectId }: { projectId: string }) {
+export function ApprovalsTab({ programId }: { programId: string }) {
   const toast = useToast();
-  const { data: entries = [], isLoading } = useApprovalMatrix(projectId);
+  const { data: entries = [], isLoading } = useApprovalMatrix(programId);
   const { data: roles = [] } = useRolesFull();
-  const mutations = useApprovalMutations(projectId);
+  const mutations = useApprovalMutations(programId);
 
   const byArea = useMemo(() => {
     const m = new Map<string, typeof entries>();
@@ -26,7 +26,7 @@ export function ApprovalsTab({ projectId }: { projectId: string }) {
   };
 
   if (isLoading) return <p className="text-sm text-muted py-8 text-center">Loading…</p>;
-  if (entries.length === 0) return <p className="text-sm text-muted py-8 text-center">No approval rules configured for this project.</p>;
+  if (entries.length === 0) return <p className="text-sm text-muted py-8 text-center">No approval rules configured for this programme.</p>;
 
   return (
     <div className="flex flex-col gap-5">

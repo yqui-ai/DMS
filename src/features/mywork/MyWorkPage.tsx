@@ -40,34 +40,34 @@ function WorkCard({ title, items }: { title: string; items: WorkItem[] }) {
 }
 
 export function MyWorkPage() {
-  const { projectId, waveId } = useParams();
+  const { programId, subprojectId } = useParams();
   const navigate = useNavigate();
-  const { data: promotions = [] } = usePromotions(waveId);
-  const { data: runs = [] } = useRuns(waveId);
-  const { data: missingPrereqs = [] } = useMissingPrerequisites(waveId);
+  const { data: promotions = [] } = usePromotions(subprojectId);
+  const { data: runs = [] } = useRuns(subprojectId);
+  const { data: missingPrereqs = [] } = useMissingPrerequisites(subprojectId);
 
   const awaitingApproval: WorkItem[] = promotions
     .filter((p) => p.status === 'Pending')
     .map((p) => ({
       id: p.id, label: p.artefactName ?? p.artefactType, context: `${p.fromEnv ?? '?'} → ${p.toEnv ?? '?'} · requested by ${p.requestedBy ?? 'someone'}`,
-      state: 'Pending', variant: 'warn', onClick: () => navigate(`/p/${projectId}/w/${waveId}/promotions`),
+      state: 'Pending', variant: 'warn', onClick: () => navigate(`/pg/${programId}/sp/${subprojectId}/promotions`),
     }));
 
   const blockers: WorkItem[] = runs
     .filter((r) => r.status === 'Failed')
     .map((r) => ({
       id: r.id, label: r.code, context: `Failed run${r.startedAt ? ` · ${fmtDateTime(r.startedAt)}` : ''}`,
-      state: 'Failed', variant: 'danger', onClick: () => navigate(`/p/${projectId}/w/${waveId}/migration/runs/${r.id}`),
+      state: 'Failed', variant: 'danger', onClick: () => navigate(`/pg/${programId}/sp/${subprojectId}/migration/runs/${r.id}`),
     }));
 
   const openItems: WorkItem[] = missingPrereqs.map((m, i) => ({
     id: String(i), label: m.object, context: `Requires ${m.requires} — not yet in scope`,
-    state: 'Open', variant: 'accent', onClick: () => navigate(`/p/${projectId}/w/${waveId}/scope/objects`),
+    state: 'Open', variant: 'accent', onClick: () => navigate(`/pg/${programId}/sp/${subprojectId}/scope/objects`),
   }));
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="My Work" description="Open items, approvals and blockers across this wave." />
+      <PageHeader title="My Work" description="Open items, approvals and blockers across this subproject." />
       <WorkCard title="My open items" items={openItems} />
       <WorkCard title="Awaiting my approval" items={awaitingApproval} />
       <WorkCard title="Blockers assigned to me" items={blockers} />

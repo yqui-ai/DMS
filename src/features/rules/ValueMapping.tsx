@@ -13,14 +13,14 @@ import { useXrefTables, useXrefRows, useXrefRowMutations } from '../../lib/queri
 import type { XrefRow } from '../../types/entities';
 
 export function ValueMapping() {
-  const { waveId } = useParams();
-  const { data: tables = [], isLoading } = useXrefTables(waveId);
+  const { subprojectId } = useParams();
+  const { data: tables = [], isLoading } = useXrefTables(subprojectId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = selectedId ?? tables[0]?.id ?? null;
   const selectedTable = tables.find((t) => t.id === selected);
 
   if (!isLoading && tables.length === 0) {
-    return <EmptyState title="No XREF tables yet" description="Value-mapping tables created for this wave will list here." />;
+    return <EmptyState title="No XREF tables yet" description="Value-mapping tables created for this subproject will list here." />;
   }
 
   return (

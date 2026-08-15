@@ -10,24 +10,24 @@ export interface ProjectMember {
   status: 'Active' | 'Invited' | 'Disabled';
   lastLogin?: string;
   roleId: RoleId;
-  waveId: string | null;
+  subprojectId: string | null;
 }
 
-export function useProjectMembers(projectId?: string) {
+export function useProjectMembers(programId?: string) {
   return useQuery({
-    queryKey: ['project-members', projectId],
-    enabled: !!projectId,
+    queryKey: ['program-members', programId],
+    enabled: !!programId,
     queryFn: async (): Promise<ProjectMember[]> => {
       const { data, error } = await supabase
         .from('memberships')
-        .select('id, role_id, wave_id, app_users(id, name, email, status, last_login)')
-        .eq('project_id', projectId!);
+        .select('id, role_id, subproject_id, app_users(id, name, email, status, last_login)')
+        .eq('program_id', programId!);
       if (error) throw error;
       return (data ?? [])
         .filter((m: any) => m.app_users)
         .map((m: any) => ({
           membershipId: m.id, userId: m.app_users.id, name: m.app_users.name, email: m.app_users.email,
-          status: m.app_users.status, lastLogin: m.app_users.last_login ?? undefined, roleId: m.role_id, waveId: m.wave_id,
+          status: m.app_users.status, lastLogin: m.app_users.last_login ?? undefined, roleId: m.role_id, subprojectId: m.subproject_id,
         }));
     },
   });
@@ -45,9 +45,9 @@ export function useRoles() {
   });
 }
 
-export function useMemberMutations(projectId: string) {
+export function useMemberMutations(programId: string) {
   const queryClient = useQueryClient();
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['project-members', projectId] });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['program-members', programId] });
 
   return {
     async addByEmail(email: string, roleId: RoleId) {
@@ -56,7 +56,7 @@ export function useMemberMutations(projectId: string) {
       if (!user) throw new Error(`No account found for ${email} — ask them to sign up first, then add them here.`);
       const { error: e2 } = await supabase
         .from('memberships')
-        .insert({ user_id: user.id, project_id: projectId, wave_id: null, role_id: roleId });
+        .insert({ user_id: user.id, program_id: programId, subproject_id: null, role_id: roleId });
       if (e2) throw e2;
       await invalidate();
     },

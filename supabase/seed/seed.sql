@@ -20,7 +20,7 @@ on conflict do nothing;
 -- ── role_screens ──
 insert into role_screens (role_id, screen_key, can_view, can_edit) values
   ('program_admin', 'myWork', true, true),
-  ('program_admin', 'projectSettings', true, true),
+  ('program_admin', 'programSettings', true, true),
   ('program_admin', 'preparation', true, true),
   ('program_admin', 'rules', true, true),
   ('program_admin', 'referenceData', true, true),
@@ -33,6 +33,7 @@ insert into role_screens (role_id, screen_key, can_view, can_edit) values
   ('program_admin', 'catalogObjects', true, true),
   ('program_admin', 'catalogFmds', true, true),
   ('program_admin', 'catalogRules', true, true),
+  ('program_admin', 'catalogGolden', true, true),
   ('program_admin', 'connections', true, true),
   ('data_owner', 'myWork', true, true),
   ('data_owner', 'dashboard', true, true),
@@ -44,6 +45,7 @@ insert into role_screens (role_id, screen_key, can_view, can_edit) values
   ('data_owner', 'catalogObjects', true, true),
   ('data_owner', 'catalogFmds', true, true),
   ('data_owner', 'catalogRules', true, true),
+  ('data_owner', 'catalogGolden', true, true),
   ('data_governance_lead', 'myWork', true, true),
   ('data_governance_lead', 'dashboard', true, true),
   ('data_governance_lead', 'preparation', true, true),
@@ -54,6 +56,7 @@ insert into role_screens (role_id, screen_key, can_view, can_edit) values
   ('data_governance_lead', 'catalogObjects', true, true),
   ('data_governance_lead', 'catalogFmds', true, true),
   ('data_governance_lead', 'catalogRules', true, true),
+  ('data_governance_lead', 'catalogGolden', true, true),
   ('etl_lead', 'myWork', true, true),
   ('etl_lead', 'dashboard', true, true),
   ('etl_lead', 'migration', true, true),
@@ -65,6 +68,7 @@ insert into role_screens (role_id, screen_key, can_view, can_edit) values
   ('etl_lead', 'catalogObjects', true, true),
   ('etl_lead', 'catalogFmds', true, true),
   ('etl_lead', 'catalogRules', true, true),
+  ('etl_lead', 'catalogGolden', true, true),
   ('etl_developer', 'myWork', true, true),
   ('etl_developer', 'dashboard', true, true),
   ('etl_developer', 'migration', true, true),
@@ -1373,31 +1377,31 @@ insert into object_dependencies (migration_object_id, requires_object_id) values
   ('11b73225-af84-22c4-f9fb-18fdd8ec4a0e', 'ca751d19-211b-5fb2-7bd5-010a202d1075')
 on conflict do nothing;
 
--- ── projects ──
-insert into projects (id, code, name, description, start_date) values
+-- ── programs ──
+insert into programs (id, code, name, description, start_date) values
   ('c6c50fc6-ff35-db3d-9235-5a257e692be4', 'PROJX', 'S/4HANA Migration – NA Rollout', 'Full material and finance master data migration from ECC to S/4HANA.', '2026-01-05')
 on conflict do nothing;
 
--- ── releases ──
-insert into releases (id, project_id, code, name, description, start_date, seq) values
+-- ── projects ──
+insert into projects (id, program_id, code, name, description, start_date, seq) values
   ('09307e54-2310-16ca-c2b8-16c578268f87', 'c6c50fc6-ff35-db3d-9235-5a257e692be4', 'W1', 'Wave 1 – Finance & MM Foundation', 'Core master data foundation.', '2026-01-05', 1),
   ('a1dfe935-d63b-abfc-057a-30a0b6e3fb7d', 'c6c50fc6-ff35-db3d-9235-5a257e692be4', 'W2', 'Wave 2 – Plant, Valuation & Sales Views', 'Plant-level and sales data.', '2026-07-01', 2)
 on conflict do nothing;
 
--- ── waves ──
-insert into waves (id, release_id, code, name, description, start_date, freeze_date, scope_finalized, seq) values
+-- ── subprojects ──
+insert into subprojects (id, project_id, code, name, description, start_date, freeze_date, scope_finalized, seq) values
   ('40e9d9dd-3e65-4085-c909-942a671fda16', '09307e54-2310-16ca-c2b8-16c578268f87', 'W1A', 'Wave 1A – Material Master Core', 'MARA, MARC, MBEW core views.', '2026-01-05', '2026-03-20', true, 1),
   ('316089e3-f8f9-f4e2-fb00-21b842c43bb7', '09307e54-2310-16ca-c2b8-16c578268f87', 'W1B', 'Wave 1B – Extended Attributes', 'Classification and long texts.', '2026-04-01', '2026-06-15', false, 2)
 on conflict do nothing;
 
 -- ── cycles ──
-insert into cycles (id, wave_id, name, seq, description, mig_start, mig_end, data_freeze) values
+insert into cycles (id, subproject_id, name, seq, description, mig_start, mig_end, data_freeze) values
   ('3e486ef2-8bee-6d25-0f7b-0ee53504ab2f', '40e9d9dd-3e65-4085-c909-942a671fda16', 'Mock Load 1', 1, 'First full-volume mock load.', '2026-02-10', '2026-02-14', '2026-02-09'),
   ('be177a90-d8cc-c514-9b7d-d3b09674625f', '40e9d9dd-3e65-4085-c909-942a671fda16', 'Dress Rehearsal', 2, 'Cutover simulation with business sign-off.', '2026-05-12', '2026-05-16', '2026-05-11')
 on conflict do nothing;
 
--- ── wave_objects (Wave 1A scope) ──
-insert into wave_objects (id, wave_id, migration_object_id, in_scope, approach, load_seq, owner, waiver_reason) values
+-- ── subproject_objects (Subproject 1A scope) ──
+insert into subproject_objects (id, subproject_id, migration_object_id, in_scope, approach, load_seq, owner, waiver_reason) values
   ('6c8e5c1a-c810-247b-d5ad-4bed4f53d0a2', '40e9d9dd-3e65-4085-c909-942a671fda16', 'fc95a79e-1ed6-cc01-2ee2-25d7e37eb1c0', true, 'M_ADMC', null, 'J. Alvarez', null),
   ('16bb4d93-0c79-1b96-b5be-bec58d0ecb22', '40e9d9dd-3e65-4085-c909-942a671fda16', '6c5042c0-92e0-c25e-2b74-02396d5bd945', true, 'M_ADPG', null, 'M. Okafor', null),
   ('8d490c27-0266-0e71-7074-41d350b1a311', '40e9d9dd-3e65-4085-c909-942a671fda16', '3dfeccff-14c4-8bc0-7323-985569d18dee', true, 'M_ADPG', null, 'M. Okafor', null),
@@ -1428,7 +1432,7 @@ insert into object_structures (id, migration_object_id, name, table_name, seq, f
 on conflict do nothing;
 
 -- ── fmds ──
-insert into fmds (id, wave_id, migration_object_id, name) values
+insert into fmds (id, subproject_id, migration_object_id, name) values
   ('136ef16a-1a6b-99f1-5124-5d2f23df2c0c', '40e9d9dd-3e65-4085-c909-942a671fda16', 'fc95a79e-1ed6-cc01-2ee2-25d7e37eb1c0', 'FMD — MARA/MARC Core Fields')
 on conflict do nothing;
 
@@ -1438,7 +1442,7 @@ insert into fmd_versions (id, fmd_id, version, state, sheets, created_by, create
 on conflict do nothing;
 
 -- ── connections ──
-insert into connections (id, project_id, sid, description, type, host, client, role, envs, status) values
+insert into connections (id, program_id, sid, description, type, host, client, role, envs, status) values
   ('665f02bf-ffe1-e33c-42ce-540532e0571e', 'c6c50fc6-ff35-db3d-9235-5a257e692be4', 'ECP', 'SAP ECC 6.0 — Production', 'SAP ECC', 'ecc-prd.corp.net', '100', 'Source', 'DEV · QSA · PRD', 'Connected'),
   ('49f5e0bf-c343-fe55-cecf-27ee0814ed5c', 'c6c50fc6-ff35-db3d-9235-5a257e692be4', 'ECQ', 'SAP ECC 6.0 — Quality', 'SAP ECC', 'ecc-qas.corp.net', '210', 'Source', 'DEV · QSA', 'Connected'),
   ('3d46a63b-cf31-aa26-caf2-cfc7baa3839c', 'c6c50fc6-ff35-db3d-9235-5a257e692be4', 'WMS', 'Legacy Oracle WMS', 'Oracle 19c', 'wms-db.corp.net', null, 'Source', 'DEV · QSA · PRD', 'Connected'),
@@ -1449,12 +1453,12 @@ insert into connections (id, project_id, sid, description, type, host, client, r
 on conflict do nothing;
 
 -- ── staging_db ──
-insert into staging_db (wave_id, engine, host, schema_name, retention, owner, last_ingestion) values
+insert into staging_db (subproject_id, engine, host, schema_name, retention, owner, last_ingestion) values
   ('40e9d9dd-3e65-4085-c909-942a671fda16', 'PostgreSQL 15', 'dms-stg-01.eu.internal', 'DMS_STG_W1A', '90 days', 'P. Nair', '2026-08-09T01:40:00.000Z')
 on conflict do nothing;
 
 -- ── source_tables ──
-insert into source_tables (id, wave_id, connection_id, name, tier, in_scope, records, expected, status, extracted_on, executed_by, duration_s, snapshot, dq_score, load_type) values
+insert into source_tables (id, subproject_id, connection_id, name, tier, in_scope, records, expected, status, extracted_on, executed_by, duration_s, snapshot, dq_score, load_type) values
   ('7976b96f-f05a-346d-56d7-710d160ff6b8', '40e9d9dd-3e65-4085-c909-942a671fda16', '665f02bf-ffe1-e33c-42ce-540532e0571e', 'MARA', 'source', true, 128400, null, 'Extracted', '2026-08-08T02:12:00.000Z', 'P. Nair', null, null, null, null),
   ('eb47cd1b-b14e-259f-1b5c-37c3729e933c', '40e9d9dd-3e65-4085-c909-942a671fda16', '665f02bf-ffe1-e33c-42ce-540532e0571e', 'MARC', 'source', true, 412900, null, 'Extracted', '2026-08-08T02:23:00.000Z', 'P. Nair', null, null, null, null),
   ('8e18fc22-bac3-2814-ea1f-5df3c832b013', '40e9d9dd-3e65-4085-c909-942a671fda16', '665f02bf-ffe1-e33c-42ce-540532e0571e', 'MBEW', 'source', true, 389120, null, 'Failed', '2026-08-09T00:05:00.000Z', 'P. Nair', null, null, null, null),
@@ -1498,7 +1502,7 @@ insert into staging_rows (id, source_table_id, seq, row_data) values
 on conflict do nothing;
 
 -- ── selection_criteria ──
-insert into selection_criteria (id, wave_id, connection_id, table_name, mode, field, condition, value, scope) values
+insert into selection_criteria (id, subproject_id, connection_id, table_name, mode, field, condition, value, scope) values
   ('9c11f688-b19c-7bdf-02a7-e542225add12', '40e9d9dd-3e65-4085-c909-942a671fda16', '665f02bf-ffe1-e33c-42ce-540532e0571e', 'MARA', 'Simple', 'MTART', 'in', 'FERT, ROH, HALB', 'Table'),
   ('458e8a7a-0758-1620-dbf2-92e10863de57', '40e9d9dd-3e65-4085-c909-942a671fda16', '665f02bf-ffe1-e33c-42ce-540532e0571e', 'MARA', 'Simple', 'LVORM', 'not equals', 'X', 'Table'),
   ('d3c965a9-e70b-9056-c5c3-10f6826de99d', '40e9d9dd-3e65-4085-c909-942a671fda16', '665f02bf-ffe1-e33c-42ce-540532e0571e', 'MARC', 'Simple', 'WERKS', 'in', '1000, 1100, 1200', 'Table'),
@@ -1508,7 +1512,7 @@ insert into selection_criteria (id, wave_id, connection_id, table_name, mode, fi
 on conflict do nothing;
 
 -- ── rules ──
-insert into rules (id, wave_id, code, name, migration_object_id, type, severity, status, expression, owner, version) values
+insert into rules (id, subproject_id, code, name, migration_object_id, type, severity, status, expression, owner, version) values
   ('e8885681-a59c-267e-4429-9aaefebc04e2', '40e9d9dd-3e65-4085-c909-942a671fda16', 'STD-014', 'Material Number Format', 'fc95a79e-1ed6-cc01-2ee2-25d7e37eb1c0', 'Validation', 'Critical', 'Approved', null, 'Samira Chen', 'v4.1.0'),
   ('652644f1-e918-63ce-c981-b90cfbc8833a', '40e9d9dd-3e65-4085-c909-942a671fda16', 'GLB-021', 'Material Type Lookup', 'fc95a79e-1ed6-cc01-2ee2-25d7e37eb1c0', 'Enrichment', 'High', 'Approved', null, 'Jordan Alvarez', 'v2.3.1'),
   ('7eda1d50-d475-af43-341f-6f935558929c', '40e9d9dd-3e65-4085-c909-942a671fda16', 'STD-030', 'Base Unit Standardization', '6c5042c0-92e0-c25e-2b74-02396d5bd945', 'Validation', 'Medium', 'Draft', null, 'Priya Nair', 'v1.0.2'),
@@ -1517,7 +1521,7 @@ insert into rules (id, wave_id, code, name, migration_object_id, type, severity,
 on conflict do nothing;
 
 -- ── xref_tables ──
-insert into xref_tables (id, wave_id, name, purpose, version) values
+insert into xref_tables (id, subproject_id, name, purpose, version) values
   ('5976c770-b0b0-6406-8937-910b1fcb47d2', '40e9d9dd-3e65-4085-c909-942a671fda16', 'XREF_UOM', 'Unit of measure harmonization', 'v3.0.1'),
   ('993bdfc3-c89a-1e3a-1e73-7d6b417e61c7', '40e9d9dd-3e65-4085-c909-942a671fda16', 'XREF_MATTYPE', 'Legacy material type to SAP material type', 'v2.1.0'),
   ('1835e5d7-be45-d0cf-8333-def23a744826', '40e9d9dd-3e65-4085-c909-942a671fda16', 'XREF_PLANT', 'Legacy plant codes to S/4HANA plants', 'v1.2.0'),
@@ -1537,7 +1541,7 @@ insert into xref_rows (id, xref_table_id, legacy_value, s4_value, valid_from, st
 on conflict do nothing;
 
 -- ── etl_objects ──
-insert into etl_objects (id, wave_id, type, name, parent_id, meta) values
+insert into etl_objects (id, subproject_id, type, name, parent_id, meta) values
   ('7940e9fb-55dc-f389-a386-82ffe0b2c973', '40e9d9dd-3e65-4085-c909-942a671fda16', 'job', 'JOB_MM_MATERIAL_MASTER', null, 'Material master — wave 1A'),
   ('755068dd-edf2-8e9a-0f1c-cd633829d56d', '40e9d9dd-3e65-4085-c909-942a671fda16', 'job', 'JOB_FI_GL_BALANCES', null, 'FI G/L balances'),
   ('0593b7c9-882a-84f3-658a-572ffb997955', '40e9d9dd-3e65-4085-c909-942a671fda16', 'workflow', 'WF_00_INITIALIZE', '7940e9fb-55dc-f389-a386-82ffe0b2c973', null),
@@ -1654,7 +1658,7 @@ insert into etl_edges (id, object_id, from_node, to_node, condition) values
 on conflict do nothing;
 
 -- ── etl_globals ──
-insert into etl_globals (id, wave_id, name, type, value) values
+insert into etl_globals (id, subproject_id, name, type, value) values
   ('93bb2641-bbed-0a2d-00a4-2e7c2872fa20', '40e9d9dd-3e65-4085-c909-942a671fda16', '$G_WAVE', 'varchar(4)', 'W1A'),
   ('2e7e265c-d221-40f9-2451-8d97de44fa3e', '40e9d9dd-3e65-4085-c909-942a671fda16', '$G_LOAD_DATE', 'datetime', 'sysdate()'),
   ('99bce97d-7ce5-a3a7-9fc2-acae62be08a4', '40e9d9dd-3e65-4085-c909-942a671fda16', '$G_LOAD_PLANT', 'int', '1'),
@@ -1662,7 +1666,7 @@ insert into etl_globals (id, wave_id, name, type, value) values
 on conflict do nothing;
 
 -- ── runs ──
-insert into runs (id, code, wave_id, cycle_id, etl_object_id, migration_object_id, iteration, mode, env, target, approach, fmd_version, rules_version, xref_version, staging_snapshot, started_at, duration_s, run_by, src_count, tgt_count, rej_count, status) values
+insert into runs (id, code, subproject_id, cycle_id, etl_object_id, migration_object_id, iteration, mode, env, target, approach, fmd_version, rules_version, xref_version, staging_snapshot, started_at, duration_s, run_by, src_count, tgt_count, rej_count, status) values
   ('12c7e44b-b2fa-1519-5886-f66ff07a4c45', 'RUN-2026-0184', '40e9d9dd-3e65-4085-c909-942a671fda16', null, null, 'fc95a79e-1ed6-cc01-2ee2-25d7e37eb1c0', 4, 'Delta', 'QSA', 'S4Q / 210', 'M_ADMC', 'v2.1.0', 'v1.3.0', 'v1.1.0', 'SNAP-0091', '2026-08-09T04:12:00.000Z', 1080, 'P. Nair', 128400, 127988, 412, 'Completed'),
   ('1599a7b4-5957-3970-abad-31a919fa63aa', 'RUN-2026-0183', '40e9d9dd-3e65-4085-c909-942a671fda16', null, null, '6c5042c0-92e0-c25e-2b74-02396d5bd945', 3, 'Full', 'QSA', 'S4Q / 210', 'M_ADPG', 'v1.8.0', 'v1.3.0', 'v1.1.0', 'SNAP-0091', '2026-08-09T03:40:00.000Z', 2460, 'P. Nair', 412900, 412812, 88, 'Completed'),
   ('21d9c320-820b-e547-4df7-f4728e15fb87', 'RUN-2026-0182', '40e9d9dd-3e65-4085-c909-942a671fda16', null, null, '3dfeccff-14c4-8bc0-7323-985569d18dee', 2, 'Full', 'QSA', 'S4Q / 210', 'M_ADPG', 'v1.4.0', 'v1.2.0', 'v1.1.0', 'SNAP-0090', '2026-08-09T02:02:00.000Z', 540, 'System', 389120, 0, 389120, 'Failed'),
@@ -1672,7 +1676,7 @@ insert into runs (id, code, wave_id, cycle_id, etl_object_id, migration_object_i
 on conflict do nothing;
 
 -- ── cutover_tasks ──
-insert into cutover_tasks (id, wave_id, seq, name, owner, planned_start, planned_end, depends_on, status) values
+insert into cutover_tasks (id, subproject_id, seq, name, owner, planned_start, planned_end, depends_on, status) values
   ('4433b6ab-92f6-ea9f-da8b-1f40413b25a4', '40e9d9dd-3e65-4085-c909-942a671fda16', 1, 'Freeze source system change requests', 'M. Okafor', '2026-08-20T16:00:00.000Z', '2026-08-20T18:00:00.000Z', null, 'Done'),
   ('00a19ae0-ee0d-8c7b-0326-ba83571b059e', '40e9d9dd-3e65-4085-c909-942a671fda16', 2, 'Final extraction — all source tables to staging', 'P. Nair', '2026-08-20T18:00:00.000Z', '2026-08-20T23:30:00.000Z', '4433b6ab-92f6-ea9f-da8b-1f40413b25a4', 'Done'),
   ('216c0158-623a-7922-89fc-70f54d000321', '40e9d9dd-3e65-4085-c909-942a671fda16', 3, 'Transform + validate all in-scope objects', 'P. Nair', '2026-08-20T23:30:00.000Z', '2026-08-21T05:00:00.000Z', '00a19ae0-ee0d-8c7b-0326-ba83571b059e', 'In Progress'),
@@ -1685,7 +1689,7 @@ insert into cutover_tasks (id, wave_id, seq, name, owner, planned_start, planned
 on conflict do nothing;
 
 -- ── approval_matrix ──
-insert into approval_matrix (id, project_id, area, action, approval_required, approver_role_id) values
+insert into approval_matrix (id, program_id, area, action, approval_required, approver_role_id) values
   ('8939c70e-d20a-8ea7-d47f-a9d55041be56', 'c6c50fc6-ff35-db3d-9235-5a257e692be4', 'Program', 'create', true, 'program_admin'),
   ('d105cd35-216c-d3c1-618b-d0faaa2fce8d', 'c6c50fc6-ff35-db3d-9235-5a257e692be4', 'Program', 'update', false, 'program_admin'),
   ('c81530ca-9f23-2139-e352-8b01884e67d3', 'c6c50fc6-ff35-db3d-9235-5a257e692be4', 'Program', 'archive', true, 'cab'),
@@ -1711,14 +1715,14 @@ insert into approval_matrix (id, project_id, area, action, approval_required, ap
 on conflict do nothing;
 
 -- ── promotions ──
-insert into promotions (id, wave_id, artefact_type, artefact_id, artefact_name, from_env, to_env, requested_by, requested_at, status) values
+insert into promotions (id, subproject_id, artefact_type, artefact_id, artefact_name, from_env, to_env, requested_by, requested_at, status) values
   ('973068e9-1b36-43ef-0546-d206a090d3ae', '40e9d9dd-3e65-4085-c909-942a671fda16', 'fmd', null, 'FMD — MARA/MARC Core Fields', 'DEV', 'QSA', 'J. Alvarez', '2026-08-04T22:00:00.000Z', 'Pending'),
   ('64218cab-4c25-6b65-9197-91e3ab986ede', '40e9d9dd-3e65-4085-c909-942a671fda16', 'rules', null, 'Rule — Plant Code Validation', 'QSA', 'QSA', 'S. Chen', '2026-08-05T22:00:00.000Z', 'Approved'),
   ('6e0ba0c4-9097-cbf2-c546-cf5e61367ad0', '40e9d9dd-3e65-4085-c909-942a671fda16', 'xref', null, 'XREF_MATTYPE', 'DEV', 'QSA', 'J. Alvarez', '2026-08-06T22:00:00.000Z', 'Pending')
 on conflict do nothing;
 
 -- ── check_tables ──
-insert into check_tables (id, wave_id, table_name, domain, field, used_by, description, columns) values
+insert into check_tables (id, subproject_id, table_name, domain, field, used_by, description, columns) values
   ('c2b570a1-4adb-a0ed-95dd-a887fdbc9511', '40e9d9dd-3e65-4085-c909-942a671fda16', 'T001W', 'Plant', 'MARC-WERKS', 'Material Master (MARC), Selection Criteria — Plant', 'Plants / branches master check table.', ARRAY['WERKS', 'NAME1', 'LAND1', 'REGIO']::text[]),
   ('263b2877-bd48-6454-e00a-9789469bb652', '40e9d9dd-3e65-4085-c909-942a671fda16', 'T134', 'Material Type', 'MARA-MTART', 'Material Master (MARA), Rule GLB-021', 'Material type attributes and number-range control.', ARRAY['MTART', 'MTBEZ', 'MATNR_LEN']::text[]),
   ('8eb490fe-991b-5cfe-406b-65d2683c8373', '40e9d9dd-3e65-4085-c909-942a671fda16', 'T006', 'Unit of Measure', 'MARA-MEINS', 'Material Master (MARA), XREF_UOM, Rule STD-030', 'Dimension / unit of measure check table.', ARRAY['MSEHI', 'MSEHL', 'DIMID']::text[]),
@@ -1754,13 +1758,13 @@ insert into check_table_rows (id, check_table_id, seq, values) values
 on conflict do nothing;
 
 -- ── golden_library ──
-insert into golden_library (id, project_id, kind, name, reference, version, created_by, created_at, changed_by, changed_at) values
+insert into golden_library (id, program_id, kind, name, reference, version, created_by, created_at, changed_by, changed_at) values
   ('b58ca118-dbe5-7581-baa8-91d1295541ab', 'c6c50fc6-ff35-db3d-9235-5a257e692be4', 'fmd', 'Golden FMD Template', 'Material Master (Legacy ECC, 2014–2019)', 'v1.0.0', 'S. Chen', '2025-03-15 09:12:00', 'J. Alvarez', '2026-07-28 11:40:00'),
   ('98132ca2-4e3c-0b8a-7acd-25ace31af462', 'c6c50fc6-ff35-db3d-9235-5a257e692be4', 'xref', 'Golden XREF Template', 'Plant / Valuation Class Mapping (Legacy Excel, 2016)', 'v1.0.0', 'S. Chen', '2025-03-15 09:20:00', 'M. Okafor', '2026-06-02 16:05:00')
 on conflict do nothing;
 
 -- ── unmapped_values ──
-insert into unmapped_values (id, wave_id, set_name, migration_object_id, field, value, occurrences, owner, status, suggestion) values
+insert into unmapped_values (id, subproject_id, set_name, migration_object_id, field, value, occurrences, owner, status, suggestion) values
   ('6ec74a3a-50cb-bf90-6333-abad3cf6048b', '40e9d9dd-3e65-4085-c909-942a671fda16', 'Material Type', 'fc95a79e-1ed6-cc01-2ee2-25d7e37eb1c0', 'MTART', 'SPAR', 3120, 'M. Okafor', 'Open', 'ERSA'),
   ('57b8e309-1728-50c8-cdb3-9393e221caca', '40e9d9dd-3e65-4085-c909-942a671fda16', 'Material Type', 'fc95a79e-1ed6-cc01-2ee2-25d7e37eb1c0', 'MTART', 'PKGM', 812, 'M. Okafor', 'Open', 'VERP'),
   ('f526510c-2b8f-bce7-84d0-9e317946ff12', '40e9d9dd-3e65-4085-c909-942a671fda16', 'Unit of Measure', '39738519-1d52-fd39-aee5-bafe414a5fa1', 'MEINS', 'CTN', 4410, 'J. Alvarez', 'Proposed', 'CAR'),
@@ -1770,7 +1774,7 @@ insert into unmapped_values (id, wave_id, set_name, migration_object_id, field, 
 on conflict do nothing;
 
 -- ── timeline_categories ──
-insert into timeline_categories (id, project_id, name, seq) values
+insert into timeline_categories (id, program_id, name, seq) values
   ('7e02c161-bdb3-3252-9780-b7bfe73ed1ad', 'c6c50fc6-ff35-db3d-9235-5a257e692be4', 'Design & Build', 1),
   ('15624fef-1e35-dd95-d4d3-f2e4e6bcf8b4', 'c6c50fc6-ff35-db3d-9235-5a257e692be4', 'Cycles', 2),
   ('cd7e3e59-bdb8-9ee5-32ae-1662fc23c184', 'c6c50fc6-ff35-db3d-9235-5a257e692be4', 'Cutover', 3)
@@ -1799,17 +1803,17 @@ insert into app_users (id, name, email, status)
 select id, 'Priya Nair', 'p.nair@client.com', 'Invited' from auth.users where email = 'p.nair@client.com'
 on conflict (id) do nothing;
 
--- ── memberships (programme-wide, wave_id null) — same auth.users guard as above ──
-insert into memberships (id, user_id, project_id, wave_id, role_id)
+-- ── memberships (programme-wide, subproject_id null) — same auth.users guard as above ──
+insert into memberships (id, user_id, program_id, subproject_id, role_id)
 select 'f92ee4ef-bf83-1522-21cf-2ea0af782fd5', au.id, 'c6c50fc6-ff35-db3d-9235-5a257e692be4', null, 'program_admin' from app_users au where au.email = 'jordan.alvarez@client.com'
-on conflict (user_id, project_id, wave_id, role_id) do nothing;
-insert into memberships (id, user_id, project_id, wave_id, role_id)
+on conflict (id) do nothing;
+insert into memberships (id, user_id, program_id, subproject_id, role_id)
 select '4fdb484c-b0f4-4e63-d5b0-1e725c95f989', au.id, 'c6c50fc6-ff35-db3d-9235-5a257e692be4', null, 'data_governance_lead' from app_users au where au.email = 's.chen@client.com'
-on conflict (user_id, project_id, wave_id, role_id) do nothing;
-insert into memberships (id, user_id, project_id, wave_id, role_id)
+on conflict (id) do nothing;
+insert into memberships (id, user_id, program_id, subproject_id, role_id)
 select 'a54e0585-247d-b581-18ab-05379ffbe209', au.id, 'c6c50fc6-ff35-db3d-9235-5a257e692be4', null, 'data_owner' from app_users au where au.email = 'm.okafor@client.com'
-on conflict (user_id, project_id, wave_id, role_id) do nothing;
-insert into memberships (id, user_id, project_id, wave_id, role_id)
+on conflict (id) do nothing;
+insert into memberships (id, user_id, program_id, subproject_id, role_id)
 select 'f39d4929-4336-199d-7b55-b52e8e1af7ee', au.id, 'c6c50fc6-ff35-db3d-9235-5a257e692be4', null, 'etl_developer' from app_users au where au.email = 'p.nair@client.com'
-on conflict (user_id, project_id, wave_id, role_id) do nothing;
+on conflict (id) do nothing;
 

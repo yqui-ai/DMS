@@ -12,10 +12,10 @@ import { useSelectionCriteria, useSelectionCriteriaMutations } from '../../lib/q
 import type { SelectionCriterion } from '../../types/entities';
 
 export function ScopeCriteria() {
-  const { waveId } = useParams();
+  const { subprojectId } = useParams();
   const toast = useToast();
-  const { data: criteria = [], isLoading } = useSelectionCriteria(waveId);
-  const mutations = useSelectionCriteriaMutations(waveId!);
+  const { data: criteria = [], isLoading } = useSelectionCriteria(subprojectId);
+  const mutations = useSelectionCriteriaMutations(subprojectId!);
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState({ tableName: '', mode: 'Simple' as 'Simple' | 'Complex', field: '', condition: '', value: '', scope: 'Table' as 'Table' | 'Cross-table' });
 

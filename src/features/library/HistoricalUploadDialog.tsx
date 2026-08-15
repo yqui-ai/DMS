@@ -6,7 +6,7 @@ import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
 import { useToast } from '../../components/Toast';
 import { useMigrationObjects } from '../../lib/queries/scope';
-import { useDefaultProject, useReleases, useWaves } from '../../lib/queries/programme';
+import { useDefaultProgram, useProjects, useSubprojects } from '../../lib/queries/programme';
 import { supabase } from '../../lib/supabase';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -14,29 +14,29 @@ import { useQueryClient } from '@tanstack/react-query';
 export function HistoricalUploadDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const { waveId: paramWaveId } = useParams();
-  const { data: project } = useDefaultProject();
-  const { data: releases = [] } = useReleases(project?.id);
-  const releaseIds = useMemo(() => releases.map((r) => r.id), [releases]);
-  const { data: waves = [] } = useWaves(releaseIds);
+  const { subprojectId: paramSubprojectId } = useParams();
+  const { data: program } = useDefaultProgram();
+  const { data: projects = [] } = useProjects(program?.id);
+  const projectIds = useMemo(() => projects.map((r) => r.id), [projects]);
+  const { data: subprojects = [] } = useSubprojects(projectIds);
   const { data: objects = [] } = useMigrationObjects();
   const [objectId, setObjectId] = useState('');
-  const [waveId, setWaveId] = useState('');
+  const [subprojectId, setSubprojectId] = useState('');
   const [era, setEra] = useState('');
   const [fileName, setFileName] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const effectiveWaveId = paramWaveId ?? waveId ?? waves[0]?.id;
+  const effectiveSubprojectId = paramSubprojectId ?? subprojectId ?? subprojects[0]?.id;
   const targetObjects = objects.filter((o) => o.category === 'Master data').slice(0, 30);
 
   const upload = async () => {
     if (!objectId) { toast.error('Pick a migration object.'); return; }
-    if (!effectiveWaveId) { toast.error('Pick a wave.'); return; }
+    if (!effectiveSubprojectId) { toast.error('Pick a subproject.'); return; }
     setBusy(true);
     try {
       const obj = objects.find((o) => o.id === objectId);
       const { error } = await supabase.from('fmds').insert({
-        wave_id: effectiveWaveId, migration_object_id: objectId,
+        subproject_id: effectiveSubprojectId, migration_object_id: objectId,
         name: `Historical FMD — ${obj?.objectId ?? ''}${era ? ` (${era})` : ''}`,
       });
       if (error) throw error;
@@ -60,11 +60,11 @@ export function HistoricalUploadDialog({ open, onClose }: { open: boolean; onClo
     }>
       <p className="text-sm text-muted mb-4">Bring old Excel-based FMDs into the catalog for reference, then standardize them when ready.</p>
       <div className="flex flex-col gap-3.5">
-        {!paramWaveId && (
-          <Field label="Wave">
-            <select value={waveId} onChange={(e) => setWaveId(e.target.value)} className="w-full text-base bg-surface border border-[#d6dbe2] rounded-[8px] px-[11px] py-2 min-h-[38px]">
-              <option value="">Select a wave…</option>
-              {waves.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+        {!paramSubprojectId && (
+          <Field label="Subproject">
+            <select value={subprojectId} onChange={(e) => setSubprojectId(e.target.value)} className="w-full text-base bg-surface border border-[#d6dbe2] rounded-[8px] px-[11px] py-2 min-h-[38px]">
+              <option value="">Select a subproject…</option>
+              {subprojects.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           </Field>
         )}

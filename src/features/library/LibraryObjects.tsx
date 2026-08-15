@@ -28,7 +28,7 @@ export function LibraryObjects() {
 
   return (
     <div>
-      <PageHeader title="Migration Objects" description="Programme-wide SAP migration-object catalogue." />
+      <PageHeader title="Migration Object" description="Programme-wide SAP migration-object catalogue." />
       <div className="relative mb-3 w-72">
         <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
         <input

@@ -5,8 +5,8 @@ import { useFallout } from '../../lib/queries/quality';
 import type { FalloutRecord } from '../../types/entities';
 
 export function FalloutPage() {
-  const { waveId } = useParams();
-  const { data: rows = [], isLoading } = useFallout(waveId);
+  const { subprojectId } = useParams();
+  const { data: rows = [], isLoading } = useFallout(subprojectId);
 
   const columns: Column<FalloutRecord>[] = [
     { key: 'rule', header: 'Rule', render: (f) => <span className="font-mono font-bold text-sm2">{f.ruleCode ?? '—'}</span> },

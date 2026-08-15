@@ -9,10 +9,10 @@ import { useAiProviderKeys, useAiProviderKeyMutations } from '../../lib/queries/
 
 const PROVIDERS = ['Anthropic Claude API', 'OpenAI API', 'Azure OpenAI', 'Custom endpoint'];
 
-export function AiSettingsTab({ projectId }: { projectId: string }) {
+export function AiSettingsTab({ programId }: { programId: string }) {
   const toast = useToast();
-  const { data: keys = [] } = useAiProviderKeys(projectId);
-  const mutations = useAiProviderKeyMutations(projectId);
+  const { data: keys = [] } = useAiProviderKeys(programId);
+  const mutations = useAiProviderKeyMutations(programId);
   const [setupOpen, setSetupOpen] = useState(false);
   const [form, setForm] = useState({ provider: PROVIDERS[0], label: '', endpoint: '', key: '', budget: '400' });
 

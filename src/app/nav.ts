@@ -4,12 +4,12 @@ export interface NavItem { key: ScreenKey; label: string; icon: string; to: stri
 export interface NavGroup { title: string; items: NavItem[] }
 
 /** Nav structure — realigned to match the current prototype (artifact-sourced; Timeline lives on
- * the Dashboard, Audit Log and Golden Library aren't modeled). `to` is relative to /p/:projectId/w/:waveId */
+ * the Dashboard, Audit Log isn't modeled). `to` is relative to /pg/:programId/sp/:subprojectId */
 export const NAV_GROUPS: NavGroup[] = [
   { title: 'MY WORK', items: [{ key: 'myWork', label: 'My Work', icon: 'inbox', to: 'my-work' }] },
   { title: 'PROJECT', items: [
     { key: 'dashboard', label: 'Dashboard', icon: 'layout-dashboard', to: 'dashboard' },
-    { key: 'projectSettings', label: 'Program Settings', icon: 'settings', to: '../../settings' },
+    { key: 'programSettings', label: 'Program Settings', icon: 'settings', to: '../../settings' },
   ]},
   { title: 'DESIGN', items: [
     { key: 'preparation', label: 'Scope', icon: 'layers', to: 'scope' },
@@ -26,9 +26,10 @@ export const NAV_GROUPS: NavGroup[] = [
     { key: 'jobMonitor', label: 'Job Monitor', icon: 'activity', to: 'job-monitor' },
   ]},
   { title: 'LIBRARY', items: [
-    { key: 'catalogObjects', label: 'Migration Objects', icon: 'database', to: '/library/objects' },
-    { key: 'catalogFmds', label: 'Field Mapping Documents', icon: 'files', to: '/library/fmds' },
-    { key: 'catalogRules', label: 'Rules', icon: 'list-checks', to: '/library/rules' },
+    { key: 'catalogObjects', label: 'Migration Object', icon: 'database', to: '/library/objects' },
+    { key: 'catalogFmds', label: 'Field Mapping', icon: 'files', to: '/library/fmds' },
+    { key: 'catalogRules', label: 'Rule', icon: 'list-checks', to: '/library/rules' },
+    { key: 'catalogGolden', label: 'Golden Library', icon: 'star', to: '/library/golden' },
   ]},
   { title: 'SYSTEMS', items: [{ key: 'connections', label: 'Connections', icon: 'plug', to: '/systems/connections' }] },
 ];

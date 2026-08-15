@@ -29,6 +29,7 @@ import { JobMonitorPage } from '../features/governance/JobMonitorPage';
 import { LibraryObjects } from '../features/library/LibraryObjects';
 import { LibraryRules } from '../features/library/LibraryRules';
 import { LibraryFmds } from '../features/library/LibraryFmds';
+import { GoldenLibraryPage } from '../features/library/GoldenLibraryPage';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { MyProfilePage } from '../features/profile/MyProfilePage';
 import { MyWorkPage } from '../features/mywork/MyWorkPage';
@@ -78,11 +79,11 @@ export const router = createBrowserRouter([
       { index: true, element: <SubprojectPicker /> },
       { path: 'me', element: <MyProfilePage /> },
       {
-        path: 'p/:projectId',
+        path: 'pg/:programId',
         children: [
-          { path: 'settings', element: <ScreenGate screen="projectSettings"><ProgramSettingsPage /></ScreenGate> },
+          { path: 'settings', element: <ScreenGate screen="programSettings"><ProgramSettingsPage /></ScreenGate> },
           {
-            path: 'w/:waveId',
+            path: 'sp/:subprojectId',
             children: [
               { path: 'my-work', element: <ScreenGate screen="myWork"><MyWorkPage /></ScreenGate> },
               { path: 'dashboard', element: <ScreenGate screen="dashboard"><DashboardPage /></ScreenGate> },
@@ -152,6 +153,7 @@ export const router = createBrowserRouter([
       { path: 'library/objects', element: <ScreenGate screen="catalogObjects"><LibraryObjects /></ScreenGate> },
       { path: 'library/fmds', element: <ScreenGate screen="catalogFmds"><LibraryFmds /></ScreenGate> },
       { path: 'library/rules', element: <ScreenGate screen="catalogRules"><LibraryRules /></ScreenGate> },
+      { path: 'library/golden', element: <ScreenGate screen="catalogGolden"><GoldenLibraryPage /></ScreenGate> },
       { path: 'systems/connections', element: <ScreenGate screen="connections"><ConnectionsPage /></ScreenGate> },
       { path: '*', element: <Placeholder title="Page not found" description="Nothing lives at this address." /> },
     ],

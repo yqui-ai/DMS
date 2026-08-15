@@ -4,8 +4,8 @@ import { StatStrip } from '../../components/Kpi';
 import { useCheckTables } from '../../lib/queries/referenceData';
 
 export function ReferenceDataOverview() {
-  const { waveId } = useParams();
-  const { data: tables = [] } = useCheckTables(waveId);
+  const { subprojectId } = useParams();
+  const { data: tables = [] } = useCheckTables(subprojectId);
   const domains = new Set(tables.map((t) => t.domain).filter(Boolean));
 
   return (

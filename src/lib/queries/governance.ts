@@ -2,24 +2,24 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../supabase';
 import type { ApprovalMatrixEntry, RoleId } from '../../types/entities';
 
-export function useApprovalMatrix(projectId?: string) {
+export function useApprovalMatrix(programId?: string) {
   return useQuery({
-    queryKey: ['approval-matrix', projectId],
-    enabled: !!projectId,
+    queryKey: ['approval-matrix', programId],
+    enabled: !!programId,
     queryFn: async (): Promise<ApprovalMatrixEntry[]> => {
-      const { data, error } = await supabase.from('approval_matrix').select('*').eq('project_id', projectId!).order('area');
+      const { data, error } = await supabase.from('approval_matrix').select('*').eq('program_id', programId!).order('area');
       if (error) throw error;
       return (data ?? []).map((a) => ({
-        id: a.id, projectId: a.project_id, area: a.area, action: a.action,
+        id: a.id, programId: a.program_id, area: a.area, action: a.action,
         approvalRequired: a.approval_required, approverRoleId: a.approver_role_id ?? undefined,
       }));
     },
   });
 }
 
-export function useApprovalMutations(projectId: string) {
+export function useApprovalMutations(programId: string) {
   const queryClient = useQueryClient();
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['approval-matrix', projectId] });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['approval-matrix', programId] });
 
   return {
     async update(id: string, patch: { approvalRequired?: boolean; approverRoleId?: RoleId | null }) {

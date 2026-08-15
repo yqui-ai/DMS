@@ -3,7 +3,7 @@ import { Tag } from '../../components/Tag';
 import { PageHeader } from '../../components/PageHeader';
 import { EmptyState } from '../../components/EmptyState';
 import { useConnections, useConnectionMutations } from '../../lib/queries/connections';
-import { useDefaultProject } from '../../lib/queries/programme';
+import { useDefaultProgram } from '../../lib/queries/programme';
 import { useToast } from '../../components/Toast';
 import type { Connection } from '../../types/entities';
 
@@ -11,10 +11,10 @@ const STATUS_VARIANT = { Connected: 'accent', Error: 'danger', 'Not Configured':
 const STATUSES: Connection['status'][] = ['Connected', 'Error', 'Not Configured'];
 
 export function ConnectionsPage() {
-  const { data: project } = useDefaultProject();
+  const { data: program } = useDefaultProgram();
   const toast = useToast();
-  const { data: connections = [], isLoading } = useConnections(project?.id);
-  const mutations = useConnectionMutations(project?.id ?? '');
+  const { data: connections = [], isLoading } = useConnections(program?.id);
+  const mutations = useConnectionMutations(program?.id ?? '');
 
   const cycleStatus = async (c: Connection) => {
     const next = STATUSES[(STATUSES.indexOf(c.status) + 1) % STATUSES.length];
@@ -40,7 +40,7 @@ export function ConnectionsPage() {
     <div>
       <PageHeader title="Connections" description="System landscape — SID, host, client, role and status." />
       {!isLoading && connections.length === 0 ? (
-        <EmptyState title="No connections configured" description="Connections created for this project will list here." />
+        <EmptyState title="No connections configured" description="Connections created for this programme will list here." />
       ) : (
         <Table columns={columns} rows={connections} rowKey={(c) => c.id} emptyMessage="Loading…" />
       )}

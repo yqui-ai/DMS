@@ -23,15 +23,15 @@ export function LibraryFmds() {
   return (
     <div>
       <PageHeader
-        title="Field Mapping Documents"
-        description="FMDs across every wave you have access to."
+        title="Field Mapping"
+        description="Field mapping documents across every subproject you have access to."
         actions={<>
           <Button variant="secondary" onClick={() => setUploadOpen(true)}><Upload size={13} /> Upload Historical FMD</Button>
           <Button variant="secondary" onClick={() => setStandardizerOpen(true)}><Wand2 size={13} /> FMD Standardizer</Button>
         </>}
       />
       {!isLoading && fmds.length === 0 ? (
-        <EmptyState title="No FMDs yet" description="Field mapping documents created for any wave will list here." />
+        <EmptyState title="No FMDs yet" description="Field mapping documents created for any subproject will list here." />
       ) : (
         <Table columns={columns} rows={fmds} rowKey={(f) => f.id} onRowClick={setOpenFmd} emptyMessage="Loading…" />
       )}

@@ -5,15 +5,15 @@ import clsx from 'clsx';
 import { NAV_GROUPS } from '../nav';
 import { canView, SCOPE_GATED } from '../../lib/rbac';
 import { useCurrentRole } from '../../lib/queries/memberships';
-import { useDefaultProject, useWave } from '../../lib/queries/programme';
+import { useDefaultProgram, useSubproject } from '../../lib/queries/programme';
 import type { ScreenKey } from '../../types/entities';
 
 const toPascal = (s: string) => s.split('-').map((p) => p[0].toUpperCase() + p.slice(1)).join('');
 
-function resolveHref(to: string, projectId?: string, waveId?: string): string {
+function resolveHref(to: string, programId?: string, subprojectId?: string): string {
   if (to.startsWith('/')) return to;
-  if (to.startsWith('../../')) return `/p/${projectId}/${to.replace('../../', '')}`;
-  return `/p/${projectId}/w/${waveId}/${to}`;
+  if (to.startsWith('../../')) return `/pg/${programId}/${to.replace('../../', '')}`;
+  return `/pg/${programId}/sp/${subprojectId}/${to}`;
 }
 
 export interface SidebarProps {
@@ -22,12 +22,12 @@ export interface SidebarProps {
 }
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
-  const { projectId, waveId } = useParams();
-  // routes with no :projectId in the URL (Library, Connections, /, /me) still need a role to check against
-  const { data: defaultProject } = useDefaultProject();
-  const { data: role = 'guest' } = useCurrentRole(projectId ?? defaultProject?.id, waveId);
-  const { data: wave } = useWave(waveId);
-  const scopeFinalized = wave?.scopeFinalized ?? false;
+  const { programId, subprojectId } = useParams();
+  // routes with no :programId in the URL (Library, Connections, /, /me) still need a role to check against
+  const { data: defaultProgram } = useDefaultProgram();
+  const { data: role = 'guest' } = useCurrentRole(programId ?? defaultProgram?.id, subprojectId);
+  const { data: subproject } = useSubproject(subprojectId);
+  const scopeFinalized = subproject?.scopeFinalized ?? false;
 
   return (
     <aside
@@ -51,11 +51,11 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           const visibleItems = group.items.filter((item) => {
             if (!canView(role, item.key as ScreenKey)) return false;
             if (SCOPE_GATED.includes(item.key as ScreenKey) && !scopeFinalized) return false;
-            // relative links need real :projectId/:waveId in the URL to resolve — hide them
-            // rather than link to /p/undefined/... when browsing a project-less screen
+            // relative links need real :programId/:subprojectId in the URL to resolve — hide them
+            // rather than link to /pg/undefined/... when browsing a program-less screen
             if (!item.to.startsWith('/')) {
-              if (!projectId) return false;
-              if (!item.to.startsWith('../../') && !waveId) return false;
+              if (!programId) return false;
+              if (!item.to.startsWith('../../') && !subprojectId) return false;
             }
             return true;
           });
@@ -70,7 +70,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 return (
                   <NavLink
                     key={item.key}
-                    to={resolveHref(item.to, projectId, waveId)}
+                    to={resolveHref(item.to, programId, subprojectId)}
                     title={collapsed ? item.label : undefined}
                     className={({ isActive }) =>
                       clsx(

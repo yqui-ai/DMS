@@ -12,10 +12,10 @@ const STATUS_VARIANT = { Open: 'danger', Proposed: 'warn', Resolved: 'accent' } 
 const STATUS_CYCLE: UnmappedValue['status'][] = ['Open', 'Proposed', 'Resolved'];
 
 export function UnmappedValues() {
-  const { waveId } = useParams();
+  const { subprojectId } = useParams();
   const toast = useToast();
-  const { data: values = [], isLoading } = useUnmappedValues(waveId);
-  const mutations = useUnmappedValueMutations(waveId!);
+  const { data: values = [], isLoading } = useUnmappedValues(subprojectId);
+  const mutations = useUnmappedValueMutations(subprojectId!);
   const [statusFilter, setStatusFilter] = useState<'All' | UnmappedValue['status']>('Open');
 
   const cycle = async (v: UnmappedValue) => {

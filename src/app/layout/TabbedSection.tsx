@@ -9,13 +9,13 @@ export interface TabbedSectionProps {
   title: string;
   description?: string;
   tabs: TabStripItem[];
-  segment: string; // path segment under /p/:projectId/w/:waveId
+  segment: string; // path segment under /pg/:programId/sp/:subprojectId
 }
 
 /** Section root for a nav item with a per-screen tab strip (Scope, Rules & XREF, Data Migration, Data Quality, …). */
 export function TabbedSection({ screen, title, description, tabs, segment }: TabbedSectionProps) {
-  const { projectId, waveId } = useParams();
-  const basePath = `/p/${projectId}/w/${waveId}/${segment}`;
+  const { programId, subprojectId } = useParams();
+  const basePath = `/pg/${programId}/sp/${subprojectId}/${segment}`;
 
   return (
     <ScreenGate screen={screen}>

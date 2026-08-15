@@ -13,9 +13,9 @@ const RUN_DOT = { Running: 'running', Completed: 'ok', 'Completed with rejects':
 const JOB_DOT = { Running: 'running', Success: 'ok', Idle: 'idle', Failed: 'error' } as const;
 
 export function JobMonitorPage() {
-  const { waveId } = useParams();
-  const { data: runs = [], isLoading: loadingRuns } = useRuns(waveId);
-  const { data: jobs = [], isLoading: loadingJobs } = useExtractionJobs(waveId);
+  const { subprojectId } = useParams();
+  const { data: runs = [], isLoading: loadingRuns } = useRuns(subprojectId);
+  const { data: jobs = [], isLoading: loadingJobs } = useExtractionJobs(subprojectId);
 
   const runColumns: Column<Run>[] = [
     { key: 'dot', header: '', width: 24, render: (r) => <StatDot state={RUN_DOT[r.status]} /> },

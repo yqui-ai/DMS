@@ -3,26 +3,26 @@ import { supabase } from '../supabase';
 import type { UnmappedValue } from '../../types/entities';
 
 const toUnmapped = (u: any): UnmappedValue => ({
-  id: u.id, waveId: u.wave_id, setName: u.set_name, migrationObjectId: u.migration_object_id ?? undefined,
+  id: u.id, subprojectId: u.subproject_id, setName: u.set_name, migrationObjectId: u.migration_object_id ?? undefined,
   field: u.field ?? undefined, value: u.value, occurrences: u.occurrences ?? 0, owner: u.owner ?? undefined,
   status: u.status, suggestion: u.suggestion ?? undefined,
 });
 
-export function useUnmappedValues(waveId?: string) {
+export function useUnmappedValues(subprojectId?: string) {
   return useQuery({
-    queryKey: ['unmapped-values', waveId],
-    enabled: !!waveId,
+    queryKey: ['unmapped-values', subprojectId],
+    enabled: !!subprojectId,
     queryFn: async (): Promise<UnmappedValue[]> => {
-      const { data, error } = await supabase.from('unmapped_values').select('*').eq('wave_id', waveId!).order('occurrences', { ascending: false });
+      const { data, error } = await supabase.from('unmapped_values').select('*').eq('subproject_id', subprojectId!).order('occurrences', { ascending: false });
       if (error) throw error;
       return (data ?? []).map(toUnmapped);
     },
   });
 }
 
-export function useUnmappedValueMutations(waveId: string) {
+export function useUnmappedValueMutations(subprojectId: string) {
   const queryClient = useQueryClient();
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['unmapped-values', waveId] });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['unmapped-values', subprojectId] });
   return {
     async setStatus(id: string, status: UnmappedValue['status']) {
       const { error } = await supabase.from('unmapped_values').update({ status }).eq('id', id);
