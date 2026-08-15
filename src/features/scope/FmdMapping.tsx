@@ -7,6 +7,7 @@ import { Button } from '../../components/Button';
 import { useToast } from '../../components/Toast';
 import { useMigrationObjects, useSubprojectObjects } from '../../lib/queries/scope';
 import { useAllFmds } from '../../lib/queries/fmds';
+import { sanitizeName } from '../../lib/sanitize';
 import { supabase } from '../../lib/supabase';
 import { useQueryClient } from '@tanstack/react-query';
 import { FmdEditorDialog } from './FmdEditorDialog';
@@ -32,11 +33,12 @@ export function FmdMapping() {
     setCreating(obj.id);
     try {
       const { data, error } = await supabase
-        .from('fmds').insert({ subproject_id: subprojectId, migration_object_id: obj.id, name: `FMD — ${obj.objectId}` })
-        .select('id, subproject_id, migration_object_id, name').single();
+        .from('fmds').insert({ subproject_id: subprojectId, migration_object_id: obj.id, name: sanitizeName(`FMD_${obj.objectId}`) })
+        .select('id, subproject_id, migration_object_id, name, class, type').single();
       if (error) throw error;
       await queryClient.invalidateQueries({ queryKey: ['fmds-all'] });
-      setOpenFmd({ id: data.id, subprojectId: data.subproject_id, migrationObjectId: data.migration_object_id, name: data.name });
+      await queryClient.invalidateQueries({ queryKey: ['fmds-library'] });
+      setOpenFmd({ id: data.id, subprojectId: data.subproject_id, migrationObjectId: data.migration_object_id, name: data.name, class: data.class, type: data.type });
     } catch (err: any) {
       toast.error(err.message ?? 'Could not create FMD.');
     } finally {

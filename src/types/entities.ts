@@ -12,7 +12,7 @@ export type RoleId =
 export type ScreenKey =
   | 'myWork' | 'programSettings' | 'preparation' | 'rules' | 'referenceData'
   | 'dashboard' | 'migration' | 'quality' | 'cutover' | 'promotions'
-  | 'jobMonitor' | 'catalogObjects' | 'catalogFmds' | 'catalogRules' | 'catalogGolden' | 'connections';
+  | 'jobMonitor' | 'catalogObjects' | 'catalogFmds' | 'catalogRules' | 'catalogXref' | 'connections';
 
 export interface AppUser { id: UUID; name: string; email: string; status: 'Active' | 'Invited' | 'Disabled'; lastLogin?: string }
 export interface Role { id: RoleId; name: string; description?: string; isStandard: boolean }
@@ -27,11 +27,30 @@ export interface Cycle { id: UUID; subprojectId: UUID; name: string; seq: number
 
 /* catalogue */
 export type ObjectCategory = 'Master data' | 'Transactional data' | 'Not classified';
-export type ObjectApproachSap = 'Direct Transfer - ERP' | 'Direct Transfer - AFS' | 'Staging Table' | 'Not classified';
+export type ObjectApproachSap = 'Direct Transfer - ERP' | 'Direct Transfer - AFS' | 'Direct Transfer - EWM' | 'Staging Table' | 'Not classified';
+export type ObjectClass = 'Global' | 'Local';
 export interface MigrationObject {
   id: UUID; guid?: string; objectId: string; technicalName?: string; description?: string;
   category?: ObjectCategory; approach?: ObjectApproachSap; component?: string;
+  class: ObjectClass; programId: UUID;
+  /** SAP DMC_COBJ sender/receiver container guids — join key for a future structure/field drill-down. */
+  scontainer?: string; rcontainer?: string;
+  url?: string; customFieldSupport?: string; analyzeSelection?: string; invalid?: boolean;
 }
+
+/** Object deep-dive: sender/receiver structure tree (DMC_STREE + DMC_STRUCT) and field list (DMC_FIELD). */
+export type DmcStructureSide = 'sender' | 'receiver';
+export interface DmcStructure {
+  id: UUID; migrationObjectId: UUID; side: DmcStructureSide; guid: string; structGuid: string;
+  ident: string; description?: string; seq?: number; level?: number; parentGuid?: string;
+  ddicName?: string; tabClass?: string; technical?: boolean;
+}
+export interface DmcField {
+  id: UUID; structureId: UUID; fieldName: string; seq?: number; keyFlag: boolean;
+  dataType?: string; length?: number; outputLength?: number; decimals?: number;
+  domName?: string; rollName?: string; checkTable?: string; description?: string;
+}
+
 export interface ObjectStructure {
   id: UUID; migrationObjectId: UUID; name: string; tableName?: string; seq: number;
   fields: number; mapped: number; mandatory: boolean; owner?: string;
@@ -69,19 +88,46 @@ export interface SelectionCriterion {
 }
 
 /* mapping & rules */
-export interface Fmd { id: UUID; subprojectId: UUID; migrationObjectId?: UUID; name: string }
+export type FmdType = 'Standard' | 'Golden' | 'Historical' | 'Custom';
+export interface Fmd { id: UUID; subprojectId?: UUID; migrationObjectId?: UUID; name: string; class: ObjectClass; type: FmdType; displayId?: string }
 export interface FmdVersion {
   id: UUID; fmdId: UUID; version: string; state: GovState;
-  sheets: { source?: Record<string, string>[]; target?: Record<string, string>[]; mapping?: Record<string, string>[] };
-  createdBy?: string; createdAt?: string; approvedBy?: string; approvedAt?: string;
+  sheets: {
+    source?: Record<string, string>[]; target?: Record<string, string>[]; mapping?: Record<string, string>[];
+    goldenStructure?: GoldenFmdStructure;
+    /** A Standard/Custom FMD generated from the Golden FMD ("Generate FMD" on a migration object)
+     * snapshots the Golden structure's columns (with each field's originating section color, so
+     * the generated grid's headers stay color-coded like the Golden FMD) and one data table per
+     * selected sender structure, shown as tabs — a plain excel-style grid, not the old
+     * source/target/mapping sheet split. */
+    generatedColumns?: GeneratedColumn[]; generatedTables?: GeneratedTable[];
+  };
+  /** What changed to produce this version — Golden FMDs create a new version row per save
+   * instead of overwriting the latest one, so this is a real per-version note, not a running log. */
+  comment?: string;
+  createdBy?: string; createdAt?: string; approvedBy?: string; approvedAt?: string; changedBy?: string; changedAt?: string;
 }
+
+export interface GeneratedColumn { field: string; sectionName: string; color: string; description?: string }
+export interface GeneratedTable { structureId: string; structureIdent: string; structureDescription?: string; rows: Record<string, string>[] }
+
+/** A Golden FMD is a template *structure*, not data — the designer edits the set of fields that
+ * make up the FMD, grouped into user-orderable, user-named, color-coded sections, and what each
+ * field means or which values it allows — not actual source -> target row instances. */
+export interface GoldenFmdFieldDef { id: string; field: string; description: string }
+export interface GoldenFmdSection { id: string; name: string; color: string; fields: GoldenFmdFieldDef[] }
+export interface GoldenFmdStructure { sections: GoldenFmdSection[] }
 export interface Rule {
   id: UUID; subprojectId: UUID; code: string; name: string; migrationObjectId?: UUID;
   type: 'Validation' | 'Transformation' | 'Enrichment';
   severity: 'Critical' | 'High' | 'Medium' | 'Low';
-  status: GovState; expression?: string; owner?: string; version?: string;
+  status: GovState; expression?: string; owner?: string; version?: string; class: ObjectClass;
+  origin: 'Standard' | 'Custom'; displayId?: string;
 }
-export interface XrefTable { id: UUID; subprojectId: UUID; name: string; purpose?: string; version?: string }
+export interface XrefTable { id: UUID; subprojectId: UUID; name: string; purpose?: string; version?: string; class: ObjectClass; displayId?: string }
+/** Library-list row shape shared by the FMD/Rule/XREF catalogue screens — `reference` and
+ * `latestVersion` are derived at query time (see src/lib/libraryReference.ts), not stored. */
+export interface LibraryListing { class: ObjectClass; reference: string }
 export interface XrefRow { id: UUID; xrefTableId: UUID; legacyValue?: string; s4Value?: string; validFrom?: string; status: 'Active' | 'Retired' }
 
 /* ─────────────── ETL designer ─────────────── */
@@ -169,10 +215,9 @@ export interface ApprovalMatrixEntry { id: UUID; programId: UUID; area: string; 
 export interface Promotion { id: UUID; subprojectId: UUID; artefactType: 'fmd' | 'rules' | 'xref' | 'etl_object'; artefactId?: UUID; artefactName?: string; fromEnv?: Env; toEnv?: Env; requestedBy?: string; requestedAt?: string; status: 'Pending' | 'Approved' | 'Rejected' | 'Promoted' }
 export interface AuditEntry { id: number; programId?: UUID; subprojectId?: UUID; at: string; actor?: string; action: string; entity?: string; entityId?: string; before?: unknown; after?: unknown }
 
-/* reference data & golden library */
+/* reference data */
 export interface CheckTable { id: UUID; subprojectId: UUID; tableName: string; domain?: string; field?: string; usedBy?: string; description?: string; columns: string[] }
 export interface CheckTableRow { id: UUID; checkTableId: UUID; seq: number; values: string[] }
-export interface GoldenLibraryEntry { id: UUID; programId: UUID; kind: 'fmd' | 'xref'; name: string; reference?: string; version?: string; createdBy?: string; createdAt?: string; changedBy?: string; changedAt?: string }
 
 /* artifact-aligned additions: unmapped values, AI settings, timeline admin */
 export interface UnmappedValue { id: UUID; subprojectId: UUID; setName: string; migrationObjectId?: UUID; field?: string; value: string; occurrences: number; owner?: string; status: 'Open' | 'Proposed' | 'Resolved'; suggestion?: string }

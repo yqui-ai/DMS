@@ -1,13 +1,16 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
+import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import clsx from 'clsx';
 
 export interface Column<T> {
   key: string;
-  header: string;
+  header: ReactNode;
   render: (row: T) => ReactNode;
   numeric?: boolean;
   frozen?: boolean;
   width?: number;
+  /** Raw comparable value for this column — presence of this makes the column's header clickable to sort. */
+  sortValue?: (row: T) => string | number | boolean | null | undefined;
 }
 
 export interface TableProps<T> {
@@ -20,10 +23,39 @@ export interface TableProps<T> {
   emptyMessage?: string;
 }
 
+type SortDir = 'asc' | 'desc';
+
 export function Table<T>({ columns, rows, rowKey, onRowClick, selectedKey, pageSize = 25, emptyMessage = 'No records.' }: TableProps<T>) {
   const [page, setPage] = useState(0);
-  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
-  const paged = rows.slice(page * pageSize, page * pageSize + pageSize);
+  const [sort, setSort] = useState<{ key: string; dir: SortDir } | null>(null);
+
+  const sortCol = sort ? columns.find((c) => c.key === sort.key) : undefined;
+  const sorted = useMemo(() => {
+    if (!sort || !sortCol?.sortValue) return rows;
+    const dir = sort.dir === 'asc' ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      const av = sortCol.sortValue!(a);
+      const bv = sortCol.sortValue!(b);
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (typeof av === 'string' && typeof bv === 'string') return av.localeCompare(bv) * dir;
+      return av < bv ? -dir : av > bv ? dir : 0;
+    });
+  }, [rows, sort, sortCol]);
+
+  const toggleSort = (col: Column<T>) => {
+    if (!col.sortValue) return;
+    setPage(0);
+    setSort((s) => {
+      if (s?.key !== col.key) return { key: col.key, dir: 'asc' };
+      if (s.dir === 'asc') return { key: col.key, dir: 'desc' };
+      return null;
+    });
+  };
+
+  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const paged = sorted.slice(page * pageSize, page * pageSize + pageSize);
 
   return (
     <div className="rounded-lg shadow-card overflow-hidden">
@@ -31,19 +63,33 @@ export function Table<T>({ columns, rows, rowKey, onRowClick, selectedKey, pageS
         <table className="w-full border-collapse text-base">
           <thead>
             <tr>
-              {columns.map((col) => (
-                <th
-                  key={col.key}
-                  style={{ width: col.width }}
-                  className={clsx(
-                    'text-xs font-bold uppercase tracking-[.04em] text-muted bg-[#eef1f5] px-3.5 py-2.5 sticky top-0 text-left z-[1]',
-                    col.numeric && 'text-right',
-                    col.frozen && 'sticky right-0 shadow-frozenCol',
-                  )}
-                >
-                  {col.header}
-                </th>
-              ))}
+              {columns.map((col) => {
+                const active = sort?.key === col.key;
+                return (
+                  <th
+                    key={col.key}
+                    style={{ width: col.width }}
+                    onClick={() => toggleSort(col)}
+                    className={clsx(
+                      'text-xs font-bold uppercase tracking-[.04em] text-muted bg-[#eef1f5] px-3.5 py-2.5 sticky top-0 text-left z-[1]',
+                      col.numeric && 'text-right',
+                      col.frozen && 'sticky right-0 shadow-frozenCol',
+                      col.sortValue && 'cursor-pointer select-none hover:text-text',
+                    )}
+                  >
+                    <span className={clsx('inline-flex items-center gap-1', col.numeric && 'flex-row-reverse')}>
+                      {col.header}
+                      {col.sortValue && (
+                        active ? (
+                          sort!.dir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
+                        ) : (
+                          <ChevronsUpDown size={12} className="opacity-30" />
+                        )
+                      )}
+                    </span>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>

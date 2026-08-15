@@ -3,7 +3,15 @@
  * Generates supabase/seed/seed.sql from the design prototype's fixture data.
  *
  * Sources (read at runtime, never copied by hand — see design_handoff_dms_app/supabase/seed/README.md):
- *   - design_handoff_dms_app/reference/dmc_data.js                    (real SAP DMC catalogue export)
+ *   - design_handoff_dms_app/reference/dmc_cobj/DMC_COBJ.xlsx          (real SAP DMC catalogue, one row per object)
+ *   - design_handoff_dms_app/reference/dmc_cobj/DMC_COBJT.xlsx         (per-language object descriptions)
+ *   - design_handoff_dms_app/reference/dmc_cobj/DMC_DMOL_REF_v2.xlsx   (standard-object reference: category/approach/component/url)
+ *   - design_handoff_dms_app/reference/dmc_struct/DMC_STREE.xlsx       (structure tree node per sender/receiver structure)
+ *   - design_handoff_dms_app/reference/dmc_struct/DMC_STREET.xlsx      (per-language structure descriptions)
+ *   - design_handoff_dms_app/reference/dmc_struct/DMC_STRUCT.xlsx      (structure detail, 1:1 with DMC_STREE)
+ *   - design_handoff_dms_app/reference/dmc_struct/DMC_FIELD_1.xlsx,    (field list per structure — split across 2 files
+ *     DMC_FIELD_2.xlsx                                                  upstream due to an export size limit, combined here)
+ *   - design_handoff_dms_app/reference/dmc_cobj/DMC_SIN_SCOBJSEQ.xlsx  (object load-sequence prerequisites, IDENT-keyed)
  *   - design_handoff_dms_app/reference/Data Migration Solution v2.dc.html  (prototype's `state = {...}` class field)
  *
  * Run: node scripts/build-seed.mjs
@@ -12,6 +20,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import XLSX from 'xlsx';
 
 /**
  * Deterministic id from a stable natural key (SHA-256, formatted as a UUID). Regenerating this
@@ -28,9 +37,25 @@ function stableId(key) {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
-const DMC_PATH = path.join(ROOT, 'design_handoff_dms_app/reference/dmc_data.js');
 const HTML_PATH = path.join(ROOT, 'design_handoff_dms_app/reference/Data Migration Solution v2.dc.html');
+const DMC_COBJ_XLSX = path.join(ROOT, 'design_handoff_dms_app/reference/dmc_cobj/DMC_COBJ.xlsx');
+const DMC_COBJT_XLSX = path.join(ROOT, 'design_handoff_dms_app/reference/dmc_cobj/DMC_COBJT.xlsx');
+const DMC_DMOL_REF_XLSX = path.join(ROOT, 'design_handoff_dms_app/reference/dmc_cobj/DMC_DMOL_REF_v2.xlsx');
+const DMC_SIN_SCOBJSEQ_XLSX = path.join(ROOT, 'design_handoff_dms_app/reference/dmc_cobj/DMC_SIN_SCOBJSEQ.xlsx');
+const DMC_STREE_XLSX = path.join(ROOT, 'design_handoff_dms_app/reference/dmc_struct/DMC_STREE.xlsx');
+const DMC_STREET_XLSX = path.join(ROOT, 'design_handoff_dms_app/reference/dmc_struct/DMC_STREET.xlsx');
+const DMC_STRUCT_XLSX = path.join(ROOT, 'design_handoff_dms_app/reference/dmc_struct/DMC_STRUCT.xlsx');
+const DMC_FIELD1_XLSX = path.join(ROOT, 'design_handoff_dms_app/reference/dmc_struct/DMC_FIELD_1.xlsx');
+const DMC_FIELD2_XLSX = path.join(ROOT, 'design_handoff_dms_app/reference/dmc_struct/DMC_FIELD_2.xlsx');
 const OUT_PATH = path.join(ROOT, 'supabase/seed/seed.sql');
+
+/** Reads every row of an .xlsx sheet as an array of plain objects keyed by header row. */
+function readSheet(filePath, sheetName) {
+  const wb = XLSX.readFile(filePath);
+  const ws = wb.Sheets[sheetName];
+  if (!ws) throw new Error(`Sheet "${sheetName}" not found in ${filePath} (sheets: ${wb.SheetNames.join(', ')})`);
+  return XLSX.utils.sheet_to_json(ws, { defval: null, raw: true });
+}
 
 // ── string-aware balanced-bracket extraction (handles nested {}/[]/() and quoted strings) ──
 function extractBalanced(text, openIndex) {
@@ -51,15 +76,6 @@ function extractBalanced(text, openIndex) {
     }
   }
   throw new Error('extractBalanced: unbalanced brackets from index ' + openIndex);
-}
-
-function extractNamedExport(text, name) {
-  const marker = `export const ${name} = `;
-  const idx = text.indexOf(marker);
-  if (idx === -1) throw new Error(`export ${name} not found`);
-  const openIndex = idx + marker.length;
-  const literal = extractBalanced(text, openIndex);
-  return new Function(`return (${literal});`)();
 }
 
 // ── SQL helpers ──
@@ -93,21 +109,47 @@ const parseDurationSeconds = (s) => {
   return total || null;
 };
 
-function insertStatement(table, columns, rows) {
+/** Batches rows into multiple INSERT statements of at most `chunkSize` rows each — a single
+ * statement covering tens of thousands of rows (dmc_fields is 200k+) is a multi-MB string that's
+ * unreliable to paste into a browser SQL editor; chunking keeps each statement a manageable size
+ * without changing what actually gets inserted. */
+function insertStatement(table, columns, rows, { chunkSize = 1000, onConflict = 'do nothing' } = {}) {
   if (rows.length === 0) return `-- ${table}: nothing to insert\n`;
-  const values = rows.map((r) => `  (${columns.map((c) => r[c]).join(', ')})`).join(',\n');
-  return `insert into ${table} (${columns.join(', ')}) values\n${values}\non conflict do nothing;\n`;
+  const statements = [];
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const chunk = rows.slice(i, i + chunkSize);
+    const values = chunk.map((r) => `  (${columns.map((c) => r[c]).join(', ')})`).join(',\n');
+    statements.push(`insert into ${table} (${columns.join(', ')}) values\n${values}\non conflict ${onConflict};`);
+  }
+  return statements.join('\n') + '\n';
 }
 
 async function main() {
-  const dmcText = await readFile(DMC_PATH, 'utf8');
   const htmlText = await readFile(HTML_PATH, 'utf8');
 
-  console.log('Extracting DMC_CATALOG and DMC_DEPENDENCIES…');
-  const DMC_CATALOG = extractNamedExport(dmcText, 'DMC_CATALOG');
-  const DMC_DEPENDENCIES = extractNamedExport(dmcText, 'DMC_DEPENDENCIES');
-  console.log(`  DMC_CATALOG: ${DMC_CATALOG.length} rows`);
-  console.log(`  DMC_DEPENDENCIES: ${Object.keys(DMC_DEPENDENCIES).length} keys`);
+  console.log('Reading DMC_COBJ / DMC_COBJT / DMC_DMOL_REF / DMC_SIN_SCOBJSEQ workbooks…');
+  const dmcCobj = readSheet(DMC_COBJ_XLSX, 'Data');
+  const dmcCobjt = readSheet(DMC_COBJT_XLSX, 'Data');
+  const dmcDmolRef = readSheet(DMC_DMOL_REF_XLSX, 'DMC_DMOL_REF');
+  const dmcSinScobjseq = readSheet(DMC_SIN_SCOBJSEQ_XLSX, 'Data');
+  console.log(`  DMC_COBJ: ${dmcCobj.length} rows`);
+  console.log(`  DMC_COBJT: ${dmcCobjt.length} rows`);
+  console.log(`  DMC_DMOL_REF: ${dmcDmolRef.length} rows`);
+  console.log(`  DMC_SIN_SCOBJSEQ: ${dmcSinScobjseq.length} rows`);
+
+  console.log('Reading DMC_STREE / DMC_STREET / DMC_STRUCT / DMC_FIELD workbooks…');
+  const dmcStree = readSheet(DMC_STREE_XLSX, 'Data');
+  const dmcStreet = readSheet(DMC_STREET_XLSX, 'Data');
+  const dmcStruct = readSheet(DMC_STRUCT_XLSX, 'Data');
+  // split across 2 files upstream — combined here, deduped by GUID since the split overlapped
+  // (DMC_FIELD_1 and DMC_FIELD_2 share ~36k identical rows at the boundary, not a clean split)
+  const dmcField = [...new Map(
+    [...readSheet(DMC_FIELD1_XLSX, 'Data'), ...readSheet(DMC_FIELD2_XLSX, 'Data')].map((r) => [r.GUID, r]),
+  ).values()];
+  console.log(`  DMC_STREE: ${dmcStree.length} rows`);
+  console.log(`  DMC_STREET: ${dmcStreet.length} rows`);
+  console.log(`  DMC_STRUCT: ${dmcStruct.length} rows`);
+  console.log(`  DMC_FIELD: ${dmcField.length} rows (combined)`);
 
   console.log('Extracting prototype state…');
   const stateMarkerRe = /\n {2}state = \{/;
@@ -144,14 +186,14 @@ async function main() {
   const ALL_SCREENS = [
     'myWork', 'programSettings', 'preparation', 'rules', 'referenceData', 'dashboard',
     'migration', 'quality', 'cutover', 'promotions', 'jobMonitor', 'catalogObjects',
-    'catalogFmds', 'catalogRules', 'catalogGolden', 'connections',
+    'catalogFmds', 'catalogRules', 'catalogXref', 'connections',
   ];
   const ROLE_SCREENS = {
     program_admin: 'all',
-    data_owner: ['myWork', 'dashboard', 'preparation', 'rules', 'referenceData', 'quality', 'cutover', 'catalogObjects', 'catalogFmds', 'catalogRules', 'catalogGolden'],
+    data_owner: ['myWork', 'dashboard', 'preparation', 'rules', 'referenceData', 'quality', 'cutover', 'catalogObjects', 'catalogFmds', 'catalogRules', 'catalogXref'],
     etl_developer: ['myWork', 'dashboard', 'migration', 'quality', 'jobMonitor', 'catalogObjects'],
-    etl_lead: ['myWork', 'dashboard', 'migration', 'quality', 'cutover', 'promotions', 'jobMonitor', 'connections', 'catalogObjects', 'catalogFmds', 'catalogRules', 'catalogGolden'],
-    data_governance_lead: ['myWork', 'dashboard', 'preparation', 'rules', 'referenceData', 'quality', 'promotions', 'catalogObjects', 'catalogFmds', 'catalogRules', 'catalogGolden'],
+    etl_lead: ['myWork', 'dashboard', 'migration', 'quality', 'cutover', 'promotions', 'jobMonitor', 'connections', 'catalogObjects', 'catalogFmds', 'catalogRules', 'catalogXref'],
+    data_governance_lead: ['myWork', 'dashboard', 'preparation', 'rules', 'referenceData', 'quality', 'promotions', 'catalogObjects', 'catalogFmds', 'catalogRules', 'catalogXref'],
     cab: ['myWork', 'dashboard', 'promotions', 'cutover'],
     end_user: ['myWork', 'dashboard'],
     guest: [],
@@ -174,23 +216,103 @@ async function main() {
   out.push('-- ── role_screens ──');
   out.push(insertStatement('role_screens', ['role_id', 'screen_key', 'can_view', 'can_edit'], roleScreenRows));
 
-  // ── migration_objects: real SAP DMC catalogue (verbatim) ──
+  // computed early — migration_objects rows below are tagged with it (same natural key as the
+  // 'programs' insert further down, so this is just the id, no duplicate insert)
+  const programId = stableId('project:' + state.config.project.code);
+
+  // ── migration_objects: real SAP DMC catalogue, from DMC_COBJ + DMC_COBJT + DMC_DMOL_REF ──
+  // DMC_COBJT holds the authoritative per-language description (GUID + LANGU keyed); DMC_COBJ's
+  // own "Description" column is a fallback for the rare case a GUID has no EN row. DMC_DMOL_REF
+  // is SAP's published standard-object reference (IDENT keyed) — not every DMC_COBJ row has a
+  // match there, since it also includes internal/replication/custom-ish objects.
+  const enDescByGuid = new Map(
+    dmcCobjt.filter((r) => r.LANGU === 'EN').map((r) => [r.GUID, r.DESCR]),
+  );
+  const dmolRefByIdent = new Map(dmcDmolRef.map((r) => [r.IDENT, r])); // last row wins on duplicate IDENT
+
   const migObjMap = new Map(); // ident -> uuid (last write wins if idents repeat)
-  const catalogRows = DMC_CATALOG.map(([guid, ident, alias, descr, objType, approach, component]) => {
-    const id = stableId('mo-dmc:' + guid);
-    migObjMap.set(ident, id);
+  const catalogRows = dmcCobj.map((r) => {
+    const id = stableId('mo-dmc:' + r.GUID);
+    migObjMap.set(r.IDENT, id);
+    const ref = dmolRefByIdent.get(r.IDENT);
     return {
-      id: q(id), guid: q(guid), object_id: q(ident), technical_name: q(alias || null),
-      description: q(descr || null), category: q(objType || null), approach: q(approach || null),
-      component: q(component || null),
+      id: q(id), guid: q(r.GUID), object_id: q(r.IDENT), technical_name: q(r.COBJ_ALIAS || null),
+      description: q(enDescByGuid.get(r.GUID) ?? r.Description ?? null),
+      category: q(ref?.OBJECT_TYPE ?? 'Not classified'), approach: q(ref?.MIGRATION_APPROACH ?? 'Not classified'),
+      component: q(ref?.COMPONENT ?? null), class: q('Global'), program_id: q(programId),
+      scontainer: q(r.SCONTAINER || null), rcontainer: q(r.RCONTAINER || null),
+      url: q(ref?.URL ?? null), custom_field_support: q(ref?.CUSTOM_FIELD_SUPPORT ?? null),
+      analyze_selection: q(ref?.ANALYZE_SELECTION ?? null), invalid: b(r.INVALID === 'X'),
     };
   });
-  out.push('-- ── migration_objects: real SAP DMC catalogue (verbatim, from dmc_data.js DMC_CATALOG) ──');
+  out.push('-- ── migration_objects: real SAP DMC catalogue (from DMC_COBJ + DMC_COBJT + DMC_DMOL_REF) ──');
   out.push(insertStatement(
     'migration_objects',
-    ['id', 'guid', 'object_id', 'technical_name', 'description', 'category', 'approach', 'component'],
+    ['id', 'guid', 'object_id', 'technical_name', 'description', 'category', 'approach', 'component', 'class',
+      'program_id', 'scontainer', 'rcontainer', 'url', 'custom_field_support', 'analyze_selection', 'invalid'],
     catalogRows,
   ));
+
+  // ── dmc_structures + dmc_fields: sender/receiver structure tree + field list behind each real
+  // DMC object, joined via SCONTAINER/RCONTAINER -> DMC_STREE.CONTAINER -> DMC_STRUCT (1:1 with
+  // DMC_STREE via STREE.STRUCT = STRUCT.GUID) -> DMC_FIELD (via FIELD.DSTRUCTURE = STRUCT.GUID).
+  // A single physical structure (e.g. a generic "HEADER" BAPI structure) can be reused across many
+  // different objects, so ids are hashed with the owning migration object/structure folded in —
+  // otherwise the second object to reference a shared structure/field would silently lose its row
+  // to "on conflict do nothing" colliding on a primary key that ignored which object it belonged to.
+  const enStreeDescByGuid = new Map(
+    dmcStreet.filter((r) => r.LANGU === 'EN').map((r) => [r.GUID, r.DESCR]),
+  );
+  const streeByContainer = new Map(); // container guid -> stree rows
+  for (const r of dmcStree) {
+    if (!streeByContainer.has(r.CONTAINER)) streeByContainer.set(r.CONTAINER, []);
+    streeByContainer.get(r.CONTAINER).push(r);
+  }
+  const structByGuid = new Map(dmcStruct.map((r) => [r.GUID, r]));
+  const fieldsByStructure = new Map(); // DSTRUCTURE guid -> field rows
+  for (const r of dmcField) {
+    if (!fieldsByStructure.has(r.DSTRUCTURE)) fieldsByStructure.set(r.DSTRUCTURE, []);
+    fieldsByStructure.get(r.DSTRUCTURE).push(r);
+  }
+
+  const structureRows = [];
+  const fieldRows = [];
+  for (const r of dmcCobj) {
+    const moId = stableId('mo-dmc:' + r.GUID);
+    const sides = [{ container: r.SCONTAINER, side: 'sender' }, { container: r.RCONTAINER, side: 'receiver' }];
+    for (const { container, side } of sides) {
+      if (!container) continue;
+      for (const stree of streeByContainer.get(container) ?? []) {
+        const struct = structByGuid.get(stree.STRUCT);
+        if (!struct) continue;
+        const structureId = stableId('dmc-structure:' + moId + ':' + stree.GUID);
+        structureRows.push({
+          id: q(structureId), migration_object_id: q(moId), side: q(side), guid: q(stree.GUID),
+          struct_guid: q(struct.GUID), ident: q(stree.IDENT),
+          description: q(enStreeDescByGuid.get(stree.GUID) ?? stree.Description ?? struct.DESCR ?? null),
+          seq: n(parseNum(stree.SEQNUM)), level: n(parseNum(stree.STRUCLEVEL)), parent_guid: q(stree.PARENTID || null),
+          ddic_name: q(struct.DDICNAME || null), tab_class: q(struct.TABCLASS || null), technical: b(struct.TECHNICAL === 'X'),
+        });
+        for (const f of fieldsByStructure.get(struct.GUID) ?? []) {
+          fieldRows.push({
+            id: q(stableId('dmc-field:' + structureId + ':' + f.GUID)), structure_id: q(structureId), field_name: q(f.FIELDNAME),
+            seq: n(parseNum(f.POS)), key_flag: b(f.KEYFLAG === 'X'), data_type: q(f.DATATYPE || null),
+            length: n(parseNum(f.LEN)), output_length: n(parseNum(f.OUTPUTLEN)), decimals: n(parseNum(f.DECS)),
+            dom_name: q(f.DOMNAME || null), roll_name: q(f.ROLLNAME || null), check_table: q(f.CHECKTABLE || null),
+            description: q(f.SCRTEXT_L || f.DESCR || null),
+          });
+        }
+      }
+    }
+  }
+  // dmc_structures (8,809 rows) and dmc_fields (170k+ rows) are NOT emitted into seed.sql or
+  // part files — even the smaller dmc_structures insert was unreliable via the SQL editor (a
+  // 2-3MB pasted query silently fails there). Both load via scripts/load-dmc-structures-fields.mjs
+  // instead, which hits the Supabase API directly using these exact same row shapes/ids —
+  // `npm run seed:load-structures` after this file has been applied.
+  out.push(`-- ── dmc_structures (${structureRows.length} rows) + dmc_fields (${fieldRows.length} rows) ──`);
+  out.push('-- Not included here — run `npm run seed:load-structures` after this file (see scripts/load-dmc-structures-fields.mjs).');
+  out.push('');
 
   // ── synthetic wave-scope objects — the prototype's demo scope (MARA, MARC, …) uses bare SAP table
   // mnemonics as identifiers, not DMC idents, so we add them as additional catalogue rows the wave
@@ -204,29 +326,33 @@ async function main() {
     return {
       id: q(id), guid: 'null', object_id: q(s.table), technical_name: q(s.table), description: q(s.name),
       category: q('Master data'), approach: q('Not classified'), component: q(SYNTHETIC_COMPONENT[s.table] ?? null),
+      class: q('Global'), program_id: q(programId),
     };
   });
   out.push('-- ── migration_objects: synthetic wave-scope objects (demo scope, keyed by SAP table code) ──');
   out.push(insertStatement(
     'migration_objects',
-    ['id', 'guid', 'object_id', 'technical_name', 'description', 'category', 'approach', 'component'],
+    ['id', 'guid', 'object_id', 'technical_name', 'description', 'category', 'approach', 'component', 'class', 'program_id'],
     syntheticRows,
   ));
 
-  // ── object_dependencies (real, from DMC_DEPENDENCIES) ──
+  // ── object_dependencies (real, from DMC_SIN_SCOBJSEQ — IDENT-keyed: TEMPL_COBJ requires
+  // PREDECESSOR, PREDEC_MANDATORY flags whether it's blocking or advisory) ──
   const depRows = [];
   let depSkipped = 0;
-  for (const [ident, prereqs] of Object.entries(DMC_DEPENDENCIES)) {
-    const objId = migObjMap.get(ident);
-    if (!objId) { depSkipped++; continue; }
-    for (const [prereqIdent] of prereqs) {
-      const prereqId = migObjMap.get(prereqIdent);
-      if (!prereqId) { depSkipped++; continue; }
-      depRows.push({ migration_object_id: q(objId), requires_object_id: q(prereqId) });
-    }
+  for (const r of dmcSinScobjseq) {
+    const objId = migObjMap.get(r.TEMPL_COBJ);
+    const prereqId = r.PREDECESSOR ? migObjMap.get(r.PREDECESSOR) : null;
+    if (!objId || !prereqId) { depSkipped++; continue; }
+    depRows.push({ migration_object_id: q(objId), requires_object_id: q(prereqId), mandatory: b(r.PREDEC_MANDATORY === 'X') });
   }
-  out.push(`-- ── object_dependencies (${depSkipped} pairs skipped — ident not present in DMC_CATALOG) ──`);
-  out.push(insertStatement('object_dependencies', ['migration_object_id', 'requires_object_id'], depRows));
+  out.push(`-- ── object_dependencies (${depSkipped} pairs skipped — ident not present in DMC_COBJ) ──`);
+  // do-update (not do-nothing): these rows have existed since the very first seed run (same
+  // deterministic ids, since DMC_COBJ hasn't changed), so a plain do-nothing insert would leave
+  // `mandatory` stuck at its column default forever instead of picking up the real source value.
+  out.push(insertStatement('object_dependencies', ['migration_object_id', 'requires_object_id', 'mandatory'], depRows, {
+    onConflict: '(migration_object_id, requires_object_id) do update set mandatory = excluded.mandatory',
+  }));
 
   // ── programme hierarchy: program / projects / subprojects / cycles ──
   // Local variable/DB-column names below follow the new Program > Project > Subproject > Cycle
@@ -236,7 +362,6 @@ async function main() {
   // script against an already-seeded database still no-ops via "on conflict do nothing" instead
   // of inserting duplicates under new ids.
   const proj = state.config.project;
-  const programId = stableId('project:' + proj.code);
   out.push('-- ── programs ──');
   out.push(insertStatement('programs', ['id', 'code', 'name', 'description', 'start_date'], [{
     id: q(programId), code: q(proj.code), name: q(proj.name), description: q(proj.description),
@@ -308,36 +433,9 @@ async function main() {
   out.push('-- ── object_structures ──');
   out.push(insertStatement('object_structures', ['id', 'migration_object_id', 'name', 'table_name', 'seq', 'fields', 'mapped', 'mandatory', 'owner', 'status'], structRows));
 
-  // ── fmds + fmd_versions — the one real FMD the prototype models in depth (Wave 1A's
-  // legacyRows/mappingRows), attached to the synthetic MARA object. Sheets follow FmdVersion's
-  // { source, target, mapping } shape from types/entities.ts.
-  const wave1Fixture = state.config.releases[0].waves[0];
-  const fmdId = stableId('fmd:MARA');
-  const fmdVersionId = stableId('fmd-version:MARA:v2.1.0');
-  out.push('-- ── fmds ──');
-  out.push(insertStatement('fmds', ['id', 'subproject_id', 'migration_object_id', 'name'], [{
-    id: q(fmdId), subproject_id: q(subproject1Id), migration_object_id: q(migObjSyntheticMap.get('MARA')), name: q('FMD — MARA/MARC Core Fields'),
-  }]));
-
-  const sourceSheet = (wave1Fixture.legacyRows ?? []).map((r) => ({ field: r.field, desc: r.desc, sample: r.sample, sheet: r.sheet }));
-  const mappingSheet = (wave1Fixture.mappingRows ?? []).map((r) => ({
-    source: r.source, target: r.target, dataType: r.dataType, rule: r.rule,
-    mandatory: r.mandatory ? 'Yes' : 'No', defaultValue: r.defaultValue, dqRule: r.dqRule, comments: r.comments,
-  }));
-  const seenTargets = new Set();
-  const targetSheet = [];
-  for (const r of wave1Fixture.mappingRows ?? []) {
-    if (seenTargets.has(r.target)) continue;
-    seenTargets.add(r.target);
-    const [table, field] = String(r.target).split('.');
-    targetSheet.push({ table: table ?? r.target, field: field ?? '', dataType: r.dataType });
-  }
-  out.push('-- ── fmd_versions ──');
-  out.push(insertStatement('fmd_versions', ['id', 'fmd_id', 'version', 'state', 'sheets', 'created_by', 'created_at', 'approved_by', 'approved_at'], [{
-    id: q(fmdVersionId), fmd_id: q(fmdId), version: q('v2.1.0'), state: q('Approved'),
-    sheets: q(JSON.stringify({ source: sourceSheet, target: targetSheet, mapping: mappingSheet })) + '::jsonb',
-    created_by: q('J. Alvarez'), created_at: q(parseDate('Jul 20, 2026')), approved_by: q('S. Chen'), approved_at: q(parseDate('Jul 30, 2026')),
-  }]));
+  // fmds/fmd_versions are no longer seeded with fixture data — the FMD list starts empty and is
+  // populated by real Standard FMDs (created per-object during scoping) and Golden FMDs (built
+  // via the Golden FMD Designer in Library > Field Mapping).
 
   // ── connections (state.landscape) ──
   const connectionMap = new Map(); // sid -> uuid
@@ -424,31 +522,35 @@ async function main() {
   // schema's rules.type check constraint only allows these three; the prototype also uses
   // 'Standardization' and 'Cleansing', which fold into 'Validation' here.
   const RULE_TYPES = new Set(['Validation', 'Transformation', 'Enrichment']);
-  const ruleRows = state.rules.map((r) => ({
+  const ruleRows = state.rules.map((r, i) => ({
     id: q(stableId('rule:' + r.id)), subproject_id: q(subproject1Id), code: q(r.id), name: q(r.name),
     migration_object_id: q(migObjSyntheticMap.get(r.object) ?? null),
     type: q(RULE_TYPES.has(r.type) ? r.type : 'Validation'),
     severity: q(r.severity), status: q(RULE_STATUS[r.status] ?? 'Draft'), expression: 'null',
-    owner: q(r.owners?.[0] ?? null), version: q(r.version),
+    owner: q(r.owners?.[0] ?? null), version: q(r.version), class: q(i === 0 ? 'Global' : 'Local'),
   }));
   out.push('-- ── rules ──');
-  out.push(insertStatement('rules', ['id', 'subproject_id', 'code', 'name', 'migration_object_id', 'type', 'severity', 'status', 'expression', 'owner', 'version'], ruleRows));
+  out.push(insertStatement('rules', ['id', 'subproject_id', 'code', 'name', 'migration_object_id', 'type', 'severity', 'status', 'expression', 'owner', 'version', 'class'], ruleRows, {
+    onConflict: '(id) do update set class = excluded.class',
+  }));
 
   // ── xref_tables + xref_rows (state.xrefs) ──
   const xrefTableRows = [];
   const xrefRowRows = [];
-  for (const x of state.xrefs) {
+  state.xrefs.forEach((x, xi) => {
     const xrefId = stableId('xref-table:' + x.id);
-    xrefTableRows.push({ id: q(xrefId), subproject_id: q(subproject1Id), name: q(x.name), purpose: q(x.desc), version: q(x.version) });
+    xrefTableRows.push({ id: q(xrefId), subproject_id: q(subproject1Id), name: q(x.name), purpose: q(x.desc), version: q(x.version), class: q(xi === 0 ? 'Global' : 'Local') });
     x.rows.forEach((row, i) => {
       xrefRowRows.push({
         id: q(stableId('xref-row:' + x.id + ':' + i)), xref_table_id: q(xrefId), legacy_value: q(row.source), s4_value: q(row.target),
         valid_from: 'null', status: q('Active'),
       });
     });
-  }
+  });
   out.push('-- ── xref_tables ──');
-  out.push(insertStatement('xref_tables', ['id', 'subproject_id', 'name', 'purpose', 'version'], xrefTableRows));
+  out.push(insertStatement('xref_tables', ['id', 'subproject_id', 'name', 'purpose', 'version', 'class'], xrefTableRows, {
+    onConflict: '(id) do update set class = excluded.class',
+  }));
   out.push('-- ── xref_rows ──');
   out.push(insertStatement('xref_rows', ['id', 'xref_table_id', 'legacy_value', 's4_value', 'valid_from', 'status'], xrefRowRows));
 
@@ -644,6 +746,7 @@ async function main() {
   await writeFile(OUT_PATH, out.join('\n') + '\n', 'utf8');
   console.log(`\nWrote ${OUT_PATH}`);
   console.log(`  migration_objects: ${catalogRows.length + syntheticRows.length} (${catalogRows.length} DMC + ${syntheticRows.length} synthetic)`);
+  console.log(`  dmc_structures: ${structureRows.length}, dmc_fields: ${fieldRows.length}`);
   console.log(`  object_dependencies: ${depRows.length}`);
   console.log(`  projects: ${projectRows.length}, subprojects: ${subprojectRows.length}, cycles: ${cycleRows.length}`);
   console.log(`  connections: ${connectionRows.length}, source_tables: ${sourceTableRows.length}, selection_criteria: ${criteriaRows.length}`);

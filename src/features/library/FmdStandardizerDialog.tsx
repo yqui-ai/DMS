@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Dialog } from '../../components/Dialog';
 import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
 import { Tag } from '../../components/Tag';
 import { useToast } from '../../components/Toast';
+import { supabase } from '../../lib/supabase';
 import { useAllFmds, useLatestFmdVersion, useFmdVersionMutations } from '../../lib/queries/fmds';
 
 /** Standardizes a historical/custom FMD's source columns into the standard mapping template.
@@ -14,6 +16,7 @@ function suggestTarget(field: string): string {
 
 export function FmdStandardizerDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const toast = useToast();
+  const queryClient = useQueryClient();
   const { data: fmds = [] } = useAllFmds();
   const [fmdId, setFmdId] = useState('');
   const { data: version } = useLatestFmdVersion(fmdId || undefined);
@@ -27,6 +30,10 @@ export function FmdStandardizerDialog({ open, onClose }: { open: boolean; onClos
     try {
       const mapping = suggestions.map((sg) => ({ source: sg.source, target: `STANDARD.${sg.target}`, dataType: '', rule: 'Direct copy', mandatory: 'No', defaultValue: '', dqRule: '', comments: 'Auto-suggested by FMD Standardizer' }));
       await mutations.saveSheets(version.id, { ...version.sheets, mapping });
+      const { error } = await supabase.from('fmds').update({ type: 'Standard' }).eq('id', fmdId);
+      if (error) throw error;
+      await queryClient.invalidateQueries({ queryKey: ['fmds-all'] });
+      await queryClient.invalidateQueries({ queryKey: ['fmds-library'] });
       toast.success('Saved as standard FMD.');
       onClose();
     } catch (err: any) {

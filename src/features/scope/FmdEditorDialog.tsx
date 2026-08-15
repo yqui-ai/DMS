@@ -5,7 +5,10 @@ import { Dialog } from '../../components/Dialog';
 import { Button } from '../../components/Button';
 import { Tag } from '../../components/Tag';
 import { useToast } from '../../components/Toast';
-import { useLatestFmdVersion, useFmdVersionMutations } from '../../lib/queries/fmds';
+import {
+  useLatestFmdVersion, useFmdVersionMutations,
+  useGoldenFmdSummary, useFmdGoldenLink, useApplyGoldenTemplateMutation,
+} from '../../lib/queries/fmds';
 import { fmtDateTime } from '../../lib/format';
 import type { Fmd, FmdVersion, GovState } from '../../types/entities';
 
@@ -22,6 +25,10 @@ export function FmdEditorDialog({ fmd, onClose }: { fmd: Fmd | null; onClose: ()
   const toast = useToast();
   const { data: version, isLoading } = useLatestFmdVersion(fmd?.id);
   const mutations = useFmdVersionMutations(fmd?.id ?? '');
+  const { data: golden } = useGoldenFmdSummary();
+  const { data: goldenLink } = useFmdGoldenLink(fmd?.id);
+  const goldenMutations = useApplyGoldenTemplateMutation(fmd?.id ?? '');
+  const [applyingGolden, setApplyingGolden] = useState(false);
   const [tab, setTab] = useState<SheetKey>('source');
   const [sheets, setSheets] = useState<FmdVersion['sheets']>({});
   const [dirty, setDirty] = useState(false);
@@ -76,6 +83,19 @@ export function FmdEditorDialog({ fmd, onClose }: { fmd: Fmd | null; onClose: ()
     catch (err: any) { toast.error(err.message ?? 'Could not update state.'); }
   };
 
+  const applyGoldenTemplate = async () => {
+    if (!golden?.latestVersionId) return;
+    setApplyingGolden(true);
+    try {
+      await goldenMutations.apply(golden.latestVersionId);
+      toast.success(`Linked to Golden FMD ${golden.latestVersion}.`);
+    } catch (err: any) {
+      toast.error(err.message ?? 'Could not apply the Golden FMD template.');
+    } finally {
+      setApplyingGolden(false);
+    }
+  };
+
   return (
     <Dialog
       open={!!fmd} onClose={onClose} title={fmd.name} size="win"
@@ -105,7 +125,27 @@ export function FmdEditorDialog({ fmd, onClose }: { fmd: Fmd | null; onClose: ()
                 <option>Draft</option><option>In Review</option><option>Approved</option><option>Rejected</option>
               </select>
               <Tag variant={STATE_VARIANT[version.state]}>{version.state}</Tag>
-              {version.approvedBy && <span className="text-2xs text-muted ml-auto">Approved by {version.approvedBy} · {fmtDateTime(version.approvedAt)}</span>}
+              {version.approvedBy && <span className="text-2xs text-muted">Approved by {version.approvedBy} · {fmtDateTime(version.approvedAt)}</span>}
+              {golden?.latestVersionId && (
+                <div className="ml-auto flex items-center gap-2">
+                  {goldenLink ? (
+                    <>
+                      <Tag variant={goldenLink === golden.latestVersionId ? 'accent' : 'warn'}>
+                        {goldenLink === golden.latestVersionId ? 'Up to date' : 'Outdated'} · Golden FMD
+                      </Tag>
+                      {goldenLink !== golden.latestVersionId && (
+                        <Button variant="ghost" onClick={applyGoldenTemplate} disabled={applyingGolden}>
+                          {applyingGolden ? 'Updating…' : `Update to ${golden.latestVersion}`}
+                        </Button>
+                      )}
+                    </>
+                  ) : (
+                    <Button variant="ghost" onClick={applyGoldenTemplate} disabled={applyingGolden}>
+                      {applyingGolden ? 'Applying…' : 'Apply Golden Template'}
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-1 border-b border-line mb-3">

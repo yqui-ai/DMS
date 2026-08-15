@@ -29,7 +29,7 @@ import { JobMonitorPage } from '../features/governance/JobMonitorPage';
 import { LibraryObjects } from '../features/library/LibraryObjects';
 import { LibraryRules } from '../features/library/LibraryRules';
 import { LibraryFmds } from '../features/library/LibraryFmds';
-import { GoldenLibraryPage } from '../features/library/GoldenLibraryPage';
+import { LibraryXref } from '../features/library/LibraryXref';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { MyProfilePage } from '../features/profile/MyProfilePage';
 import { MyWorkPage } from '../features/mywork/MyWorkPage';
@@ -153,7 +153,7 @@ export const router = createBrowserRouter([
       { path: 'library/objects', element: <ScreenGate screen="catalogObjects"><LibraryObjects /></ScreenGate> },
       { path: 'library/fmds', element: <ScreenGate screen="catalogFmds"><LibraryFmds /></ScreenGate> },
       { path: 'library/rules', element: <ScreenGate screen="catalogRules"><LibraryRules /></ScreenGate> },
-      { path: 'library/golden', element: <ScreenGate screen="catalogGolden"><GoldenLibraryPage /></ScreenGate> },
+      { path: 'library/xref', element: <ScreenGate screen="catalogXref"><LibraryXref /></ScreenGate> },
       { path: 'systems/connections', element: <ScreenGate screen="connections"><ConnectionsPage /></ScreenGate> },
       { path: '*', element: <Placeholder title="Page not found" description="Nothing lives at this address." /> },
     ],

@@ -9,6 +9,7 @@ import { useToast } from '../../components/Toast';
 import { useMigrationObjects } from '../../lib/queries/scope';
 import { useDefaultProgram, useProjects, useSubprojects } from '../../lib/queries/programme';
 import { supabase } from '../../lib/supabase';
+import { sanitizeName } from '../../lib/sanitize';
 import { useQueryClient } from '@tanstack/react-query';
 
 /** Turns a plain-language description into a rule expression. Deterministic keyword-matching,
@@ -56,9 +57,9 @@ export function RuleGeneratorDialog({ open, onClose }: { open: boolean; onClose:
       const obj = objects.find((o) => o.id === objectId);
       const code = `GEN-${Math.floor(1000 + Math.random() * 9000)}`;
       const { error } = await supabase.from('rules').insert({
-        subproject_id: effectiveSubprojectId, code, name: description.slice(0, 60) || 'Generated rule',
+        subproject_id: effectiveSubprojectId, code, name: sanitizeName(description.slice(0, 60) || 'Generated rule'),
         migration_object_id: objectId || null, type: 'Validation', severity: 'Medium', status: 'Draft',
-        expression, version: 'v1.0.0',
+        expression, version: 'v1.0.0', class: scope, origin: 'Custom',
       });
       if (error) throw error;
       await queryClient.invalidateQueries({ queryKey: ['rules', effectiveSubprojectId] });

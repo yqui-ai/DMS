@@ -36,7 +36,7 @@ const SCREEN_GROUPS: { title: string; screens: { key: ScreenKey; label: string }
     title: 'Library',
     screens: [
       { key: 'catalogObjects', label: 'Migration Object' }, { key: 'catalogFmds', label: 'Field Mapping' },
-      { key: 'catalogRules', label: 'Rule' }, { key: 'catalogGolden', label: 'Golden Library' },
+      { key: 'catalogRules', label: 'Rule' }, { key: 'catalogXref', label: 'Cross Reference (XREF)' },
     ],
   },
 ];

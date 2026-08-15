@@ -1,11 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../supabase';
-import type { GovState, Rule, XrefRow, XrefTable } from '../../types/entities';
+import { formatLibraryReference } from '../libraryReference';
+import type { GovState, LibraryListing, Rule, XrefRow, XrefTable } from '../../types/entities';
 
 const toRule = (r: any): Rule => ({
   id: r.id, subprojectId: r.subproject_id, code: r.code, name: r.name, migrationObjectId: r.migration_object_id ?? undefined,
   type: r.type, severity: r.severity, status: r.status, expression: r.expression ?? undefined,
-  owner: r.owner ?? undefined, version: r.version ?? undefined,
+  owner: r.owner ?? undefined, version: r.version ?? undefined, class: r.class,
+  origin: r.origin, displayId: r.display_id ?? undefined,
 });
 
 export function useRules(subprojectId?: string) {
@@ -32,6 +34,27 @@ export function useAllRules() {
   });
 }
 
+export interface LibraryRuleRow extends Rule, LibraryListing {}
+
+/** Rules enriched with the program/project reference — for the Library > Rule catalogue. */
+export function useLibraryRules() {
+  return useQuery({
+    queryKey: ['rules-library'],
+    queryFn: async (): Promise<LibraryRuleRow[]> => {
+      const { data, error } = await supabase
+        .from('rules')
+        .select('*, subprojects(projects(code, programs(code)))')
+        .order('code');
+      if (error) throw error;
+      return (data ?? []).map((r: any) => {
+        const programCode = r.subprojects?.projects?.programs?.code as string | undefined;
+        const projectCode = r.subprojects?.projects?.code as string | undefined;
+        return { ...toRule(r), reference: formatLibraryReference(r.class, programCode, projectCode) };
+      });
+    },
+  });
+}
+
 export function useRuleMutations(subprojectId: string) {
   const queryClient = useQueryClient();
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['rules', subprojectId] });
@@ -44,6 +67,11 @@ export function useRuleMutations(subprojectId: string) {
   };
 }
 
+const toXrefTable = (x: any): XrefTable => ({
+  id: x.id, subprojectId: x.subproject_id, name: x.name, purpose: x.purpose ?? undefined, version: x.version ?? undefined, class: x.class,
+  displayId: x.display_id ?? undefined,
+});
+
 export function useXrefTables(subprojectId?: string) {
   return useQuery({
     queryKey: ['xref-tables', subprojectId],
@@ -51,7 +79,29 @@ export function useXrefTables(subprojectId?: string) {
     queryFn: async (): Promise<XrefTable[]> => {
       const { data, error } = await supabase.from('xref_tables').select('*').eq('subproject_id', subprojectId!).order('name');
       if (error) throw error;
-      return (data ?? []).map((x) => ({ id: x.id, subprojectId: x.subproject_id, name: x.name, purpose: x.purpose ?? undefined, version: x.version ?? undefined }));
+      return (data ?? []).map(toXrefTable);
+    },
+  });
+}
+
+export interface LibraryXrefRow extends XrefTable, LibraryListing {}
+
+/** XREF tables across every subproject the user can access, enriched with the program/project
+ * reference — for the Library > Cross Reference (XREF) catalogue. */
+export function useLibraryXrefTables() {
+  return useQuery({
+    queryKey: ['xref-tables-library'],
+    queryFn: async (): Promise<LibraryXrefRow[]> => {
+      const { data, error } = await supabase
+        .from('xref_tables')
+        .select('*, subprojects(projects(code, programs(code)))')
+        .order('name');
+      if (error) throw error;
+      return (data ?? []).map((x: any) => {
+        const programCode = x.subprojects?.projects?.programs?.code as string | undefined;
+        const projectCode = x.subprojects?.projects?.code as string | undefined;
+        return { ...toXrefTable(x), reference: formatLibraryReference(x.class, programCode, projectCode) };
+      });
     },
   });
 }

@@ -25,6 +25,21 @@ export const dmyToIso = (dmy: string): string | null => {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
 };
 
+/** DMC migration-approach values are the plain SAP domain values ('Staging Table', 'Direct
+ * Transfer - ERP', …) — prefixed for display since they're specifically Migration Cockpit
+ * approaches. 'Not classified' is our own fallback for objects with no DMC_DMOL_REF match, not
+ * a real approach, so it's left alone. */
+export const fmtApproach = (approach?: string | null): string =>
+  !approach || approach === 'Not classified' ? (approach ?? '—') : `Migration Cockpit - ${approach}`;
+
+/** 'YYYYMMDD_HHMMSS' (local time) — appended to every file this app exports, so re-downloading
+ * the same report never silently overwrites an earlier copy. */
+export const exportTimestamp = (): string => {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+};
+
 export const fmtDuration = (seconds?: number | null): string => {
   if (seconds == null) return '—';
   const h = Math.floor(seconds / 3600);

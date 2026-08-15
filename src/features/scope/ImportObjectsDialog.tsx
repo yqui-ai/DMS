@@ -4,6 +4,7 @@ import { Dialog } from '../../components/Dialog';
 import { Button } from '../../components/Button';
 import { useToast } from '../../components/Toast';
 import { useScopeMutations } from '../../lib/queries/scope';
+import { exportTimestamp } from '../../lib/format';
 import type { MigrationObject, SubprojectObject } from '../../types/entities';
 
 /** Minimal CSV parser — handles quoted fields containing commas ("a, b"). */
@@ -55,7 +56,7 @@ export function ImportObjectsDialog({
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'migration-object-scope-template.csv';
+    a.href = url; a.download = `migration-object-scope-template_${exportTimestamp()}.csv`;
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
   };

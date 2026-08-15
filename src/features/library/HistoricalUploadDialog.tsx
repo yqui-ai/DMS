@@ -8,6 +8,7 @@ import { useToast } from '../../components/Toast';
 import { useMigrationObjects } from '../../lib/queries/scope';
 import { useDefaultProgram, useProjects, useSubprojects } from '../../lib/queries/programme';
 import { supabase } from '../../lib/supabase';
+import { sanitizeName } from '../../lib/sanitize';
 import { useQueryClient } from '@tanstack/react-query';
 
 /** Historical FMD upload — brings a legacy Excel-based FMD into the catalog as a Draft reference. */
@@ -37,7 +38,7 @@ export function HistoricalUploadDialog({ open, onClose }: { open: boolean; onClo
       const obj = objects.find((o) => o.id === objectId);
       const { error } = await supabase.from('fmds').insert({
         subproject_id: effectiveSubprojectId, migration_object_id: objectId,
-        name: `Historical FMD — ${obj?.objectId ?? ''}${era ? ` (${era})` : ''}`,
+        name: sanitizeName(`Historical_FMD_${obj?.objectId ?? ''}${era ? `_${era}` : ''}`), type: 'Historical',
       });
       if (error) throw error;
       await queryClient.invalidateQueries({ queryKey: ['fmds-all'] });

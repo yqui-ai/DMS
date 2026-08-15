@@ -5,7 +5,10 @@ import type { MigrationObject, SubprojectObject } from '../../types/entities';
 const toMigrationObject = (o: any): MigrationObject => ({
   id: o.id, guid: o.guid ?? undefined, objectId: o.object_id, technicalName: o.technical_name ?? undefined,
   description: o.description ?? undefined, category: o.category ?? undefined, approach: o.approach ?? undefined,
-  component: o.component ?? undefined,
+  component: o.component ?? undefined, class: o.class, programId: o.program_id,
+  scontainer: o.scontainer ?? undefined, rcontainer: o.rcontainer ?? undefined,
+  url: o.url ?? undefined, customFieldSupport: o.custom_field_support ?? undefined,
+  analyzeSelection: o.analyze_selection ?? undefined, invalid: o.invalid ?? undefined,
 });
 const toSubprojectObject = (w: any): SubprojectObject => ({
   id: w.id, subprojectId: w.subproject_id, migrationObjectId: w.migration_object_id, inScope: w.in_scope,
@@ -34,6 +37,53 @@ export function useSubprojectObjects(subprojectId?: string) {
       const { data, error } = await supabase.from('subproject_objects').select('*').eq('subproject_id', subprojectId!);
       if (error) throw error;
       return (data ?? []).map(toSubprojectObject);
+    },
+  });
+}
+
+export interface ObjectScopeUsage { subprojectId: string; subprojectName: string; projectCode?: string; programCode?: string }
+
+/** Every subproject that has this object in scope, program-wide — used by "Generate FMD" to
+ * decide Standard (not in scope anywhere) vs Custom (in scope somewhere), and to let the user
+ * pick which subproject/project a Custom FMD is generated for when there's more than one. */
+export function useObjectScopeUsage(migrationObjectId?: string) {
+  return useQuery({
+    queryKey: ['object-scope-usage', migrationObjectId],
+    enabled: !!migrationObjectId,
+    queryFn: async (): Promise<ObjectScopeUsage[]> => {
+      const { data, error } = await supabase
+        .from('subproject_objects')
+        .select('subproject_id, subprojects(name, projects(code, programs(code)))')
+        .eq('migration_object_id', migrationObjectId!).eq('in_scope', true);
+      if (error) throw error;
+      return (data ?? []).map((r: any) => ({
+        subprojectId: r.subproject_id, subprojectName: r.subprojects?.name ?? '—',
+        projectCode: r.subprojects?.projects?.code as string | undefined,
+        programCode: r.subprojects?.projects?.programs?.code as string | undefined,
+      }));
+    },
+  });
+}
+
+export interface ObjectPrerequisite {
+  requiresObjectId: string; requiresIdent: string; requiresDescription?: string; mandatory: boolean;
+}
+
+/** Prerequisite objects for a single migration object (from DMC_SIN_SCOBJSEQ), for the Library
+ * object detail dialog's Details tab. */
+export function useObjectDependencies(migrationObjectId?: string) {
+  return useQuery({
+    queryKey: ['object-dependencies', migrationObjectId],
+    enabled: !!migrationObjectId,
+    queryFn: async (): Promise<ObjectPrerequisite[]> => {
+      const { data, error } = await supabase
+        .from('object_dependencies')
+        .select('mandatory, req:migration_objects!object_dependencies_requires_object_id_fkey(id, object_id, description)')
+        .eq('migration_object_id', migrationObjectId!);
+      if (error) throw error;
+      return (data ?? []).map((d: any) => ({
+        requiresObjectId: d.req.id, requiresIdent: d.req.object_id, requiresDescription: d.req.description ?? undefined, mandatory: d.mandatory,
+      }));
     },
   });
 }

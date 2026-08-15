@@ -29,7 +29,7 @@ export const NAV_GROUPS: NavGroup[] = [
     { key: 'catalogObjects', label: 'Migration Object', icon: 'database', to: '/library/objects' },
     { key: 'catalogFmds', label: 'Field Mapping', icon: 'files', to: '/library/fmds' },
     { key: 'catalogRules', label: 'Rule', icon: 'list-checks', to: '/library/rules' },
-    { key: 'catalogGolden', label: 'Golden Library', icon: 'star', to: '/library/golden' },
+    { key: 'catalogXref', label: 'Cross Reference (XREF)', icon: 'shuffle', to: '/library/xref' },
   ]},
   { title: 'SYSTEMS', items: [{ key: 'connections', label: 'Connections', icon: 'plug', to: '/systems/connections' }] },
 ];
