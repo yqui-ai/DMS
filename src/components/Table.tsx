@@ -21,11 +21,14 @@ export interface TableProps<T> {
   selectedKey?: string;
   pageSize?: number;
   emptyMessage?: string;
+  /** Tighter row height/padding and smaller text — for data-dense lists (e.g. a structure's field
+   * list) where the default row height wastes space without adding readability. */
+  dense?: boolean;
 }
 
 type SortDir = 'asc' | 'desc';
 
-export function Table<T>({ columns, rows, rowKey, onRowClick, selectedKey, pageSize = 25, emptyMessage = 'No records.' }: TableProps<T>) {
+export function Table<T>({ columns, rows, rowKey, onRowClick, selectedKey, pageSize = 25, emptyMessage = 'No records.', dense = false }: TableProps<T>) {
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<{ key: string; dir: SortDir } | null>(null);
 
@@ -58,7 +61,7 @@ export function Table<T>({ columns, rows, rowKey, onRowClick, selectedKey, pageS
   const paged = sorted.slice(page * pageSize, page * pageSize + pageSize);
 
   return (
-    <div className="rounded-lg shadow-card overflow-hidden">
+    <div className={clsx('overflow-hidden', !dense && 'rounded-lg shadow-card')}>
       <div className="overflow-auto max-h-[70vh]">
         <table className="w-full border-collapse text-base">
           <thead>
@@ -71,7 +74,8 @@ export function Table<T>({ columns, rows, rowKey, onRowClick, selectedKey, pageS
                     style={{ width: col.width }}
                     onClick={() => toggleSort(col)}
                     className={clsx(
-                      'text-xs font-bold uppercase tracking-[.04em] text-muted bg-[#eef1f5] px-3.5 py-2.5 sticky top-0 text-left z-[1]',
+                      'font-bold uppercase tracking-[.04em] text-muted bg-[#eef1f5] sticky top-0 text-left z-[1]',
+                      dense ? 'text-2xs px-2.5 py-1.5' : 'text-xs px-3.5 py-2.5',
                       col.numeric && 'text-right',
                       col.frozen && 'sticky right-0 shadow-frozenCol',
                       col.sortValue && 'cursor-pointer select-none hover:text-text',
@@ -108,7 +112,7 @@ export function Table<T>({ columns, rows, rowKey, onRowClick, selectedKey, pageS
                   {columns.map((col) => (
                     <td
                       key={col.key}
-                      className={clsx('px-3.5 py-2.5', col.numeric && 'text-right tabular-nums', col.frozen && 'sticky right-0 bg-surface shadow-frozenCol')}
+                      className={clsx(dense ? 'px-2.5 py-1.5 text-sm2' : 'px-3.5 py-2.5', col.numeric && 'text-right tabular-nums', col.frozen && 'sticky right-0 bg-surface shadow-frozenCol')}
                     >
                       {col.render(row)}
                     </td>

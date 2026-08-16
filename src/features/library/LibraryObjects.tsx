@@ -1,30 +1,33 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Boxes, Files, Network, X } from 'lucide-react';
 import { Table, type Column } from '../../components/Table';
 import { Tag } from '../../components/Tag';
 import { ColorTag } from '../../components/ColorTag';
+import { ApproachTag } from '../../components/ApproachTag';
 import { MultiSelectFilter } from '../../components/MultiSelectFilter';
 import { PageHeader } from '../../components/PageHeader';
 import { ToolbarButton } from '../../components/ToolbarButton';
 import { ToolbarSearch } from '../../components/ToolbarSearch';
 import { useToast } from '../../components/Toast';
 import { useMigrationObjects } from '../../lib/queries/scope';
-import { useStandardFmdLinks } from '../../lib/queries/fmds';
+import { useStandardFmdLinks, useLibraryFmds, type LibraryFmdRow } from '../../lib/queries/fmds';
 import { componentMainGroup } from '../../lib/tagColor';
 import { fmtApproach } from '../../lib/format';
 import { GenerateFmdDialog } from './GenerateFmdDialog';
 import { LibraryObjectDialog } from './LibraryObjectDialog';
+import { FmdVersionHistoryDialog } from './FmdVersionHistoryDialog';
 import type { MigrationObject } from '../../types/entities';
 
 const STATUS_OPTIONS = ['Deprecated', 'Unrestricted'];
 
 export function LibraryObjects() {
   const toast = useToast();
-  const navigate = useNavigate();
   const { data: allObjects = [], isLoading } = useMigrationObjects();
   const { data: standardFmdLinks = [] } = useStandardFmdLinks();
   const standardFmdByObject = useMemo(() => new Map(standardFmdLinks.map((l) => [l.migrationObjectId, l])), [standardFmdLinks]);
+  const { data: allFmds = [] } = useLibraryFmds();
+  const fmdById = useMemo(() => new Map(allFmds.map((f) => [f.id, f])), [allFmds]);
+  const [viewFmd, setViewFmd] = useState<LibraryFmdRow | null>(null);
   const [query, setQuery] = useState('');
   const [klass, setKlass] = useState<string[]>([]);
   const [category, setCategory] = useState<string[]>([]);
@@ -95,7 +98,7 @@ export function LibraryObjects() {
     { key: 'description', header: 'Description', render: (o) => o.description ?? '—', sortValue: (o) => o.description },
     { key: 'class', header: 'Class', render: (o) => <ColorTag colorKey={o.class}>{o.class}</ColorTag>, width: 90, sortValue: (o) => o.class },
     { key: 'category', header: 'Object Type', render: (o) => o.category ? <ColorTag colorKey={o.category}>{o.category}</ColorTag> : '—', sortValue: (o) => o.category },
-    { key: 'approach', header: 'Approach', render: (o) => o.approach ? <ColorTag colorKey={o.approach}>{fmtApproach(o.approach)}</ColorTag> : '—', sortValue: (o) => o.approach },
+    { key: 'approach', header: 'Approach', render: (o) => <ApproachTag approach={o.approach} />, sortValue: (o) => o.approach },
     { key: 'component', header: 'Component', render: (o) => o.component ? <ColorTag colorKey={componentMainGroup(o.component)}>{o.component}</ColorTag> : '—', sortValue: (o) => o.component },
     {
       key: 'standardFmd', header: 'Standard FMD',
@@ -103,7 +106,7 @@ export function LibraryObjects() {
         const link = standardFmdByObject.get(o.id);
         return link ? (
           <button
-            onClick={(e) => { e.stopPropagation(); navigate(`/library/fmds?open=${link.fmdId}`); }}
+            onClick={(e) => { e.stopPropagation(); setViewFmd(fmdById.get(link.fmdId) ?? null); }}
             className="font-mono text-sm2 text-blue hover:underline"
           >
             {link.displayId ?? link.name}
@@ -151,6 +154,7 @@ export function LibraryObjects() {
         onSelectObject={(id) => { const next = allObjects.find((o) => o.id === id); if (next) setDetailObject(next); }}
       />
       <GenerateFmdDialog objects={generateTargets} onClose={() => setGenerateTargets(null)} />
+      <FmdVersionHistoryDialog fmd={viewFmd} onClose={() => setViewFmd(null)} />
     </div>
   );
 }

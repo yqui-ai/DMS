@@ -20,9 +20,11 @@ function hashString(s: string): number {
   return Math.abs(h);
 }
 
-/** Tailwind bg/text class pair for a categorical value, e.g. `groupColorClasses(rule.approach)`. */
-export function groupColorClasses(key: string): string {
-  const p = PALETTE[hashString(key) % PALETTE.length];
+/** Tailwind bg/text class pair for a categorical value, e.g. `groupColorClasses(rule.approach)`.
+ * Tolerates a missing key (e.g. a row fetched before a new column's data has caught up) instead of
+ * throwing — falls back to the first palette entry. */
+export function groupColorClasses(key: string | null | undefined): string {
+  const p = PALETTE[hashString(key ?? '') % PALETTE.length];
   return `${p.bg} ${p.text}`;
 }
 

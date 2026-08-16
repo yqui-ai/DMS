@@ -7,6 +7,7 @@ import { MIGRATION_TABS } from './nav';
 import type { TabStripItem } from './layout/TabStrip';
 import { SubprojectPicker } from '../features/programme/SubprojectPicker';
 import { ProgramSettingsPage } from '../features/programme/ProgramSettingsPage';
+import { ProgramAdminPage } from '../features/programme/ProgramAdminPage';
 import { MigrationObjectCatalogue } from '../features/scope/MigrationObjectCatalogue';
 import { ScopeOverview } from '../features/scope/ScopeOverview';
 import { ScopeCriteria } from '../features/scope/ScopeCriteria';
@@ -82,6 +83,7 @@ export const router = createBrowserRouter([
         path: 'pg/:programId',
         children: [
           { path: 'settings', element: <ScreenGate screen="programSettings"><ProgramSettingsPage /></ScreenGate> },
+          { path: 'admin', element: <ScreenGate screen="programAdmin"><ProgramAdminPage /></ScreenGate> },
           {
             path: 'sp/:subprojectId',
             children: [
@@ -146,6 +148,21 @@ export const router = createBrowserRouter([
               { path: 'cutover', element: <ScreenGate screen="cutover"><CutoverPage /></ScreenGate> },
               { path: 'promotions', element: <ScreenGate screen="promotions"><PromotionsPage /></ScreenGate> },
               { path: 'job-monitor', element: <ScreenGate screen="jobMonitor"><JobMonitorPage /></ScreenGate> },
+              {
+                path: 'library',
+                // Same Library screens as the standalone /library/* routes — program-wide
+                // content (global and local alike), just reachable without leaving the
+                // current project's URL/breadcrumb/nav context.
+                children: [
+                  { path: 'objects', element: <ScreenGate screen="catalogObjects"><LibraryObjects /></ScreenGate> },
+                  { path: 'fmds', element: <ScreenGate screen="catalogFmds"><LibraryFmds /></ScreenGate> },
+                  { path: 'rules', element: <ScreenGate screen="catalogRules"><LibraryRules /></ScreenGate> },
+                  { path: 'xref', element: <ScreenGate screen="catalogXref"><LibraryXref /></ScreenGate> },
+                ],
+              },
+              // Same page as the standalone /pg/:programId/admin route — program-wide
+              // administration, reachable without leaving the current project's context.
+              { path: 'admin', element: <ScreenGate screen="programAdmin"><ProgramAdminPage /></ScreenGate> },
             ],
           },
         ],

@@ -10,22 +10,16 @@ import { Button } from '../../components/Button';
 import { Field, Input } from '../../components/Field';
 import { useToast } from '../../components/Toast';
 import { isoToDmy, dmyToIso } from '../../lib/format';
-import { UsersTab } from './UsersTab';
-import { RolesTab } from './RolesTab';
-import { ApprovalsTab } from './ApprovalsTab';
-import { AiSettingsTab } from './AiSettingsTab';
 import { TimelinesSettingsTab } from './TimelinesSettingsTab';
 import { InternalDataDictionary } from './InternalDataDictionary';
 import type { Cycle, Program, Project, Subproject } from '../../types/entities';
 
+// Users, Roles and Auth, AI Usage, and Workflow Approvals moved to ProgramAdminPage — reachable
+// nested under the current project (doesn't drop project context) or standalone, like Library.
 const TABS = [
   { key: 'configure', label: 'Configure' },
   { key: 'internal', label: 'Internal' },
-  { key: 'ai', label: 'AI Usage & Billing' },
-  { key: 'users', label: 'Users' },
   { key: 'timelines', label: 'Timelines' },
-  { key: 'roles', label: 'Roles' },
-  { key: 'approvals', label: 'Approvals' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 
@@ -60,11 +54,7 @@ export function ProgramSettingsPage() {
       </div>
       {tab === 'configure' && <ConfigureTab programId={programId!} />}
       {tab === 'internal' && <InternalDataDictionary />}
-      {tab === 'ai' && <AiSettingsTab programId={programId!} />}
-      {tab === 'users' && <UsersTab programId={programId!} />}
       {tab === 'timelines' && <TimelinesSettingsTab programId={programId!} />}
-      {tab === 'roles' && <RolesTab />}
-      {tab === 'approvals' && <ApprovalsTab programId={programId!} />}
     </div>
   );
 }

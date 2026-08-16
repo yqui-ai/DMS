@@ -1,23 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ChevronDown, ChevronRight, Download, Upload, Wand2, X } from 'lucide-react';
+import clsx from 'clsx';
+import { ChevronDown, ChevronRight, Download, Sparkles, X } from 'lucide-react';
 import { PageHeader } from '../../components/PageHeader';
 import { EmptyState } from '../../components/EmptyState';
 import { Table, type Column } from '../../components/Table';
 import { ColorTag } from '../../components/ColorTag';
+import { Tag } from '../../components/Tag';
 import { GoldenToggle } from '../../components/GoldenToggle';
 import { MultiSelectFilter } from '../../components/MultiSelectFilter';
 import { ToolbarButton } from '../../components/ToolbarButton';
+import { AiButton } from '../../components/AiButton';
 import { ToolbarSearch } from '../../components/ToolbarSearch';
 import { fmtDateTime } from '../../lib/format';
 import { exportFmdsAsExcel } from '../../lib/fmdZipExport';
 import { useLibraryFmds, type LibraryFmdRow } from '../../lib/queries/fmds';
+import { markFmdSeen, isFmdSeen } from '../../lib/fmdSeen';
 import { useToast } from '../../components/Toast';
-import { FmdViewerDialog } from './FmdViewerDialog';
 import { GoldenFmdDesignerDialog } from './GoldenFmdDesignerDialog';
 import { FmdVersionHistoryDialog } from './FmdVersionHistoryDialog';
-import { HistoricalUploadDialog } from './HistoricalUploadDialog';
-import { FmdStandardizerDialog } from './FmdStandardizerDialog';
+import { ConvertHistoricalFmdWizard } from './ConvertHistoricalFmdWizard';
 
 const CLASS_OPTIONS = ['Global', 'Local'];
 const TYPE_OPTIONS = ['Standard', 'Golden', 'Historical', 'Custom'];
@@ -30,21 +32,33 @@ const GROUP_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: 'reference', label: 'Group by Program/Project/Subproject' },
 ];
 
-const isNew = (f: LibraryFmdRow) => !!f.createdAt && Date.now() - new Date(f.createdAt).getTime() < NEW_WINDOW_MS;
-/** Golden and Custom FMDs open the full version-history viewer (Golden also gets Where-used);
- * Standard/Historical use the simpler version-strip viewer instead. */
-const usesVersionHistory = (f: LibraryFmdRow) => f.type === 'Golden' || f.type === 'Custom';
+/** Deliberately fixed, not hash-derived like ColorTag — so Type stays visually distinct and
+ * semantically consistent (Golden=amber, Standard=blue, Custom=violet, Historical=archival grey)
+ * instead of whatever a hash happens to land on. */
+const FMD_TYPE_STYLE: Record<string, string> = {
+  Golden: 'bg-amber-bg text-amber-ink',
+  Standard: 'bg-blue-light text-blue-deep',
+  Custom: 'bg-violet-bg text-violet-deep',
+  Historical: 'bg-neutralTag-bg text-neutralTag-ink',
+};
 
+/** "New" tracks the most recent activity (a fresh version counts, not just the FMD's original
+ * creation date) so re-generating an existing Standard/Custom FMD surfaces it again too — and
+ * clears as soon as that version's actually been opened, rather than sitting until the window
+ * expires on its own. */
+const isNew = (f: LibraryFmdRow) => {
+  const at = f.changedAt ?? f.createdAt;
+  if (!at || Date.now() - new Date(at).getTime() >= NEW_WINDOW_MS) return false;
+  return !isFmdSeen(f.id, f.latestVersionId);
+};
 export function LibraryFmds() {
   const { data: fmds = [], isLoading } = useLibraryFmds();
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [exporting, setExporting] = useState(false);
-  const [openFmd, setOpenFmd] = useState<LibraryFmdRow | null>(null);
   const [openHistory, setOpenHistory] = useState<LibraryFmdRow | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [goldenTarget, setGoldenTarget] = useState<LibraryFmdRow | 'new' | null>(null);
-  const [uploadOpen, setUploadOpen] = useState(false);
-  const [standardizerOpen, setStandardizerOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [klass, setKlass] = useState<string[]>([]);
   const [type, setType] = useState<string[]>([]);
@@ -81,13 +95,21 @@ export function LibraryFmds() {
   /** Only one Golden FMD ever exists — the button edits it if present, otherwise starts one. */
   const openGoldenDesigner = () => setGoldenTarget(existingGolden ?? 'new');
 
+  /** Opening a row is what dismisses its "New" badge, not just viewing the list. Every FMD type
+   * uses the same full version-history viewer now — Version Updates and Where-used apply equally
+   * to Golden, Standard, Custom, and Historical, not just the AI-converted ones. */
+  const openRow = (f: LibraryFmdRow) => {
+    markFmdSeen(f.id, f.latestVersionId);
+    setOpenHistory(f);
+  };
+
   /** Deep link from a "View FMD" toast action (?open=<fmdId>) — opens the right viewer and clears
    * the param so a refresh doesn't reopen it. */
   useEffect(() => {
     const openId = searchParams.get('open');
     if (!openId || fmds.length === 0) return;
     const target = fmds.find((f) => f.id === openId);
-    if (target) (usesVersionHistory(target) ? setOpenHistory : setOpenFmd)(target);
+    if (target) openRow(target);
     setSearchParams((params) => { params.delete('open'); return params; }, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fmds]);
@@ -138,21 +160,62 @@ export function LibraryFmds() {
     },
     { key: 'displayId', header: 'ID', width: 100, render: (f) => <span className="font-mono text-sm2">{f.displayId ?? '—'}</span>, sortValue: (f) => f.displayId },
     {
-      key: 'name', header: 'Name', width: 260,
+      key: 'name', header: 'Name', width: 280,
       render: (f) => (
         <span className="flex items-center gap-2">
-          {f.name}
-          {isNew(f) && <span className="inline-flex items-center text-2xs px-1.5 py-[1px] rounded-pill bg-amber-bg text-amber-ink">New</span>}
+          <span className="truncate">{f.name}</span>
+          {f.aiGenerated && (
+            <span title="AI-converted" className="shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-gradient-to-r from-[#3b82f6] to-[#a855f7] text-white">
+              <Sparkles size={10} />
+            </span>
+          )}
+          {isNew(f) && <span className="inline-flex items-center text-2xs px-1.5 py-[1px] rounded-pill bg-amber-bg text-amber-ink shrink-0">New</span>}
         </span>
       ),
       sortValue: (f) => f.name,
     },
     { key: 'class', header: 'Class', width: 90, render: (f) => <ColorTag colorKey={f.class}>{f.class}</ColorTag>, sortValue: (f) => f.class },
-    { key: 'type', header: 'Type', width: 90, render: (f) => <ColorTag colorKey={f.type}>{f.type}</ColorTag>, sortValue: (f) => f.type },
+    {
+      key: 'type', header: 'Type', width: 90,
+      render: (f) => <span className={clsx('inline-flex items-center text-xs font-semibold px-2.5 py-[3px] rounded-pill', FMD_TYPE_STYLE[f.type] ?? 'bg-neutralTag-bg text-neutralTag-ink')}>{f.type}</span>,
+      sortValue: (f) => f.type,
+    },
     { key: 'reference', header: 'Reference', width: 150, render: (f) => <span className="font-mono text-sm2">{f.reference}</span>, sortValue: (f) => f.reference },
     { key: 'latestVersion', header: 'Version', width: 90, render: (f) => f.latestVersion ?? '—', sortValue: (f) => f.latestVersion },
-    { key: 'createdBy', header: 'Created', width: 190, render: (f) => f.createdBy ? <span className="text-2xs text-muted">{f.createdBy} · {fmtDateTime(f.createdAt)}</span> : '—', sortValue: (f) => f.createdAt },
-    { key: 'changedBy', header: 'Changed', width: 190, render: (f) => f.changedBy ? <span className="text-2xs text-muted">{f.changedBy} · {fmtDateTime(f.changedAt)}</span> : '—', sortValue: (f) => f.changedAt },
+    {
+      key: 'goldenVersionLabel', header: 'Golden FMD Version', width: 150,
+      render: (f) => f.goldenVersionLabel ? (
+        <span className="inline-flex items-center gap-1.5 font-mono text-sm2">
+          {f.goldenVersionLabel}{f.goldenOutdated && <Tag variant="warn">Outdated</Tag>}
+        </span>
+      ) : '—',
+      sortValue: (f) => f.goldenVersionLabel,
+    },
+    {
+      key: 'standardRefVersionLabel', header: 'Reference FMD Version', width: 160,
+      render: (f) => f.standardRefVersionLabel ? (
+        <span className="inline-flex items-center gap-1.5 font-mono text-sm2">
+          {f.standardRefVersionLabel}{f.standardRefOutdated && <Tag variant="warn">Outdated</Tag>}
+        </span>
+      ) : '—',
+      sortValue: (f) => f.standardRefVersionLabel,
+    },
+    {
+      // Falls back to Created when an FMD hasn't been changed yet — a brand-new FMD's most recent
+      // activity IS its creation, so the column shouldn't just read "—" until a second version exists.
+      key: 'changedBy', header: 'Changed', width: 160,
+      render: (f) => {
+        const by = f.changedBy ?? f.createdBy;
+        const at = f.changedAt ?? f.createdAt;
+        return by ? (
+          <div className="text-2xs leading-tight">
+            <div className="font-semibold text-text truncate">{by}</div>
+            <div className="text-muted">{fmtDateTime(at)}</div>
+          </div>
+        ) : '—';
+      },
+      sortValue: (f) => f.changedAt ?? f.createdAt,
+    },
   ];
 
   return (
@@ -178,9 +241,8 @@ export function LibraryFmds() {
           <ToolbarButton onClick={exportSelected} disabled={selected.size === 0 || exporting}>
             <Download size={14} /> {exporting ? 'Exporting…' : `Export to Excel${selected.size > 0 ? ` (${selected.size})` : ''}`}
           </ToolbarButton>
-          <ToolbarButton onClick={() => setUploadOpen(true)}><Upload size={14} /> Upload Historical FMD</ToolbarButton>
-          <ToolbarButton onClick={() => setStandardizerOpen(true)}><Wand2 size={14} /> FMD Standardizer</ToolbarButton>
           <GoldenToggle onClick={openGoldenDesigner} label="Golden FMD" />
+          <AiButton onClick={() => setWizardOpen(true)}><Sparkles size={14} /> Convert Historical FMD</AiButton>
         </div>
       </div>
       {!isLoading && filtered.length === 0 ? (
@@ -208,7 +270,7 @@ export function LibraryFmds() {
                 {!collapsed && (
                   <Table
                     columns={columns} rows={g.rows} rowKey={(f) => f.id} pageSize={30} emptyMessage="Loading…"
-                    onRowClick={(f) => (usesVersionHistory(f) ? setOpenHistory(f) : setOpenFmd(f))}
+                    onRowClick={openRow}
                   />
                 )}
               </div>
@@ -216,11 +278,9 @@ export function LibraryFmds() {
           })}
         </div>
       )}
-      <FmdViewerDialog fmd={openFmd} onClose={() => setOpenFmd(null)} />
-      <FmdVersionHistoryDialog fmd={openHistory} onClose={() => setOpenHistory(null)} showWhereUsed={openHistory?.type === 'Golden'} />
+      <FmdVersionHistoryDialog fmd={openHistory} onClose={() => setOpenHistory(null)} />
       <GoldenFmdDesignerDialog target={goldenTarget} onClose={() => setGoldenTarget(null)} />
-      <HistoricalUploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} />
-      <FmdStandardizerDialog open={standardizerOpen} onClose={() => setStandardizerOpen(false)} />
+      <ConvertHistoricalFmdWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
     </div>
   );
 }

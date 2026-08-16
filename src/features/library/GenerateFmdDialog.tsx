@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { Dialog } from '../../components/Dialog';
 import { Button } from '../../components/Button';
@@ -11,6 +11,7 @@ import { useFmdVersions, useGenerateFmdMutation, useGoldenFmdSummary } from '../
 import { useProgram } from '../../lib/queries/programme';
 import { supabase } from '../../lib/supabase';
 import { sanitizeName } from '../../lib/sanitize';
+import { libraryPath } from '../../lib/libraryNav';
 import type { GeneratedColumn, GeneratedTable, GoldenFmdStructure, MigrationObject } from '../../types/entities';
 
 const SRC_SYSTEM_DEFAULT = 'SAP ECC';
@@ -28,7 +29,7 @@ interface ResolvedTarget {
 const goldenColumns = (structure: GoldenFmdStructure): GeneratedColumn[] =>
   structure.sections.flatMap((sec) => sec.fields.filter((f) => f.field).map((f) => ({ field: f.field, sectionName: sec.name, color: sec.color, description: f.description || undefined })));
 
-function buildRow(f: any, columnFields: string[], structureIdent: string, populateSource: boolean, populateTarget: boolean): Record<string, string> {
+function buildRow(f: any, columnFields: string[], structureIdent: string, populateSource: boolean, populateTarget: boolean, applyMappingDefaults: boolean): Record<string, string> {
   const row: Record<string, string> = Object.fromEntries(columnFields.map((c) => [c, '']));
   if (populateSource) {
     if ('SRC_SYSTEM' in row) row.SRC_SYSTEM = SRC_SYSTEM_DEFAULT;
@@ -53,12 +54,21 @@ function buildRow(f: any, columnFields: string[], structureIdent: string, popula
     if ('TGT_FIELD_DECIMAL' in row) row.TGT_FIELD_DECIMAL = f.decimals != null ? String(f.decimals) : '';
     if ('TGT_CHECK_TABLE' in row) row.TGT_CHECK_TABLE = f.check_table ?? '';
   }
+  // Standard FMDs are program-wide reference templates, not a specific project's real mapping
+  // work — a straight 1:1 copy is the sensible starting point until someone overrides it. Custom
+  // FMDs stay blank: that mapping needs a real decision (or the Mapping Review AI check), not a
+  // default that could be mistaken for one.
+  if (applyMappingDefaults) {
+    if ('MAPPING_TYPE' in row) row.MAPPING_TYPE = 'COPY';
+    if ('TRANSFORMATION_RULE' in row) row.TRANSFORMATION_RULE = '1:1';
+    if ('TECHNICAL_RULE' in row) row.TECHNICAL_RULE = `${structureIdent}-${f.field_name ?? ''}`;
+  }
   return row;
 }
 
 /** One table per structure that actually has fields, in the order given — the viewer shows one
  * tab per table, structure ident as the default label. */
-function buildGeneratedTables(fieldRows: any[], columns: GeneratedColumn[], structures: StructureRef[], populateSource: boolean, populateTarget: boolean): GeneratedTable[] {
+function buildGeneratedTables(fieldRows: any[], columns: GeneratedColumn[], structures: StructureRef[], populateSource: boolean, populateTarget: boolean, applyMappingDefaults: boolean): GeneratedTable[] {
   const columnFields = columns.map((c) => c.field);
   const byStructure = new Map<string, any[]>();
   for (const f of fieldRows) {
@@ -72,7 +82,7 @@ function buildGeneratedTables(fieldRows: any[], columns: GeneratedColumn[], stru
     if (!rowsForStructure?.length) continue;
     tables.push({
       structureId: s.id, structureIdent: s.ident, structureDescription: s.description,
-      rows: rowsForStructure.map((f) => buildRow(f, columnFields, s.ident, populateSource, populateTarget)),
+      rows: rowsForStructure.map((f) => buildRow(f, columnFields, s.ident, populateSource, populateTarget, applyMappingDefaults)),
     });
   }
   return tables;
@@ -82,6 +92,40 @@ const resolveName = (objectId: string, scope: ObjectScopeUsage | undefined, fall
   scope
     ? sanitizeName(`ZFMD_${scope.programCode ?? 'PROG'}_${scope.projectCode ?? 'PROJ'}_${objectId}`)
     : sanitizeName(`FMD_${fallbackProgramCode ?? 'PROG'}_${objectId}`);
+
+/** A Custom FMD must always have a Standard FMD to reference — mirroring how an in-scope object
+ * always implicitly references its Standard definition. If the object doesn't have a Standard FMD
+ * yet, one is generated automatically (right now, silently, with Standard's own default 1:1-copy
+ * mapping) before the Custom FMD is, so "Reference FMD version" is never blank. Returns the
+ * Standard FMD's current latest version id either way — freshly created or already existing. */
+async function ensureStandardReference(
+  object: MigrationObject, columns: GeneratedColumn[], goldenVersionId: string, goldenVersionLabel: string,
+  generate: ReturnType<typeof useGenerateFmdMutation>['generate'], programCode: string | undefined,
+): Promise<string> {
+  const { data: existingRows } = await supabase
+    .from('fmds').select('id, fmd_versions!fmd_id(id, created_at)')
+    .eq('type', 'Standard').eq('migration_object_id', object.id).is('subproject_id', null).limit(1);
+  const existing = existingRows?.[0] as any;
+  if (existing) {
+    const versions = [...(existing.fmd_versions ?? [])].sort((a: any, b: any) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
+    if (versions[0]?.id) return versions[0].id as string;
+  }
+
+  const { data: structuresData } = await supabase.from('dmc_structures').select('*').eq('migration_object_id', object.id).eq('side', 'sender');
+  const objStructures: StructureRef[] = (structuresData ?? []).map((s: any) => ({ id: s.id, ident: s.ident, description: s.description ?? undefined }));
+  const structureIds = objStructures.map((s) => s.id);
+  const { data: fieldRows } = structureIds.length
+    ? await supabase.from('dmc_fields').select('*').in('structure_id', structureIds).order('seq')
+    : { data: [] };
+  const tables = buildGeneratedTables(fieldRows ?? [], columns, objStructures, true, true, true);
+  const name = resolveName(object.objectId, undefined, programCode);
+  const { versionId } = await generate({
+    migrationObjectId: object.id, name, type: 'Standard', class: 'Global', subprojectId: null,
+    goldenVersionId, goldenVersionLabel, columns, tables,
+    comment: 'Auto-generated as the reference Standard FMD for this object.',
+  });
+  return versionId;
+}
 
 /** Which scope (if any) a migration object is in, and whether an FMD of the matching type already
  * exists for it — used both to build the bulk confirmation panes and, at generation time, to
@@ -123,6 +167,7 @@ async function resolveTarget(object: MigrationObject): Promise<ResolvedTarget> {
 export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObject[] | null; onClose: () => void }) {
   const toast = useToast();
   const navigate = useNavigate();
+  const { programId, subprojectId: routeSubprojectId } = useParams();
   const single = objects && objects.length === 1 ? objects[0] : null;
   const isBulk = !!objects && objects.length > 1;
 
@@ -170,7 +215,7 @@ export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObje
   const selectAll = () => setSelectedStructureIds(new Set(filteredStructures.map((s) => s.id)));
   const deselectAll = () => setSelectedStructureIds(new Set());
 
-  const viewAction = (fmdId: string) => ({ label: 'View FMD', onClick: () => navigate(`/library/fmds?open=${fmdId}`) });
+  const viewAction = (fmdId: string) => ({ label: 'View FMD', onClick: () => navigate(`${libraryPath('fmds', programId, routeSubprojectId)}?open=${fmdId}`) });
 
   const generateSingle = async () => {
     if (!single || !goldenStructure || !goldenVersion) return;
@@ -184,13 +229,18 @@ export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObje
       if (error) throw error;
       const selectedStructures = senderStructures.filter((s) => selectedStructureIds.has(s.id));
       const columns = goldenColumns(goldenStructure);
-      const tables = buildGeneratedTables(fieldRows ?? [], columns, selectedStructures, populateSource, populateTarget);
+      const tables = buildGeneratedTables(fieldRows ?? [], columns, selectedStructures, populateSource, populateTarget, !isCustom);
       const name = resolveName(single.objectId, chosenScope, objectProgram?.code);
 
-      const fmdId = await generateMutation.generate({
+      const basedOnStandardFmdVersionId = isCustom
+        ? await ensureStandardReference(single, columns, goldenVersionId, goldenVersion.version, generateMutation.generate, objectProgram?.code)
+        : undefined;
+
+      const { fmdId } = await generateMutation.generate({
         migrationObjectId: single.id, name, type: isCustom ? 'Custom' : 'Standard', class: isCustom ? 'Local' : 'Global',
         subprojectId: isCustom ? subprojectId : null,
         goldenVersionId, goldenVersionLabel: goldenVersion.version, columns, tables,
+        basedOnStandardFmdVersionId,
       });
       toast.success(`${name} generated.`, viewAction(fmdId));
       onClose();
@@ -230,7 +280,7 @@ export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObje
           const { data: fieldRows } = structureIds.length
             ? await supabase.from('dmc_fields').select('*').in('structure_id', structureIds).order('seq')
             : { data: [] };
-          const tables = buildGeneratedTables(fieldRows ?? [], columns, objStructures, populateSource, populateTarget);
+          const tables = buildGeneratedTables(fieldRows ?? [], columns, objStructures, populateSource, populateTarget, !r.isCustom);
           let programCode = r.scope?.programCode;
           if (!programCode) {
             const { data: program } = await supabase.from('programs').select('code').eq('id', r.object.programId).maybeSingle();
@@ -238,17 +288,22 @@ export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObje
           }
           const name = resolveName(r.object.objectId, r.scope, programCode);
 
+          const basedOnStandardFmdVersionId = r.isCustom
+            ? await ensureStandardReference(r.object, columns, goldenVersionId, goldenVersion.version, generateMutation.generate, programCode)
+            : undefined;
+
           await generateMutation.generate({
             migrationObjectId: r.object.id, name, type: r.isCustom ? 'Custom' : 'Standard', class: r.isCustom ? 'Local' : 'Global',
             subprojectId: r.scope?.subprojectId ?? null,
             goldenVersionId, goldenVersionLabel: goldenVersion.version, columns, tables,
+            basedOnStandardFmdVersionId,
           });
           created += 1;
         } catch (err: any) {
           toast.error(`${r.object.objectId}: ${err.message ?? 'generation failed'}`);
         }
       }
-      if (created > 0) toast.success(`${created} FMD${created === 1 ? '' : 's'} generated.`, { label: 'View Field Mapping list', onClick: () => navigate('/library/fmds') });
+      if (created > 0) toast.success(`${created} FMD${created === 1 ? '' : 's'} generated.`, { label: 'View Field Mapping list', onClick: () => navigate(libraryPath('fmds', programId, routeSubprojectId)) });
       setResolvedTargets(null);
       onClose();
     } finally {

@@ -1,14 +1,26 @@
+import { supabase } from './supabase';
 import { colorByKey } from './goldenFmdColors';
 import { sanitizeName } from './sanitize';
 import { exportTimestamp, fmtDateTime } from './format';
-import type { GeneratedColumn, GeneratedTable } from '../types/entities';
+import { buildDependencySvg, svgToPngBase64 } from './dependencyDiagramImage';
+import { getErdTheme } from './erdTheme';
+import type { GeneratedColumn, GeneratedTable, MappingReview } from '../types/entities';
 
 export interface GeneratedFmdMeta {
   fmdName: string; fmdDisplayId?: string;
   objectId?: string; objectDescription?: string;
+  /** Migration object's real UUID (not its ident) — when present, the export adds a Dependencies
+   * sheet listing this object's prerequisites plus a picture of the dependency diagram. */
+  migrationObjectUuid?: string;
   klass: string; type: string; reference: string;
   versionLabel: string; createdBy?: string; createdAt?: string;
   goldenVersionLabel?: string; goldenOutdated?: boolean;
+  /** Every version of this FMD, OLDEST first — powers the exported Version History sheet. Omitted
+   * (or empty) simply skips that sheet, e.g. for a caller that hasn't loaded the full version list. */
+  versions?: { version: string; changedBy?: string; changedAt?: string; comment?: string }[];
+  /** The Custom FMD "Review Mapping" AI check's result for this version — powers the exported
+   * Mapping Review sheet, right after Version History. Omitted (or no findings) skips the sheet. */
+  mappingReview?: MappingReview;
 }
 
 /** Groups consecutive same-section columns into merged header-band spans. */
@@ -24,6 +36,22 @@ function sectionRuns(columns: GeneratedColumn[]): { sectionName: string; color: 
 
 const sanitizeSheetName = (name: string): string => (name.replace(/[\\/*?:[\]]/g, '_').slice(0, 31) || 'Sheet');
 
+/** Excel sheet names must be unique within a workbook — appends "_2", "_3", … if the structure
+ * name (or its ident fallback) collides with one already used. */
+function uniqueSheetName(base: string, used: Set<string>): string {
+  const candidate = sanitizeSheetName(base);
+  if (!used.has(candidate.toLowerCase())) { used.add(candidate.toLowerCase()); return candidate; }
+  let suffix = 2;
+  let next = candidate;
+  while (used.has(next.toLowerCase())) {
+    const tag = `_${suffix}`;
+    next = candidate.slice(0, 31 - tag.length) + tag;
+    suffix += 1;
+  }
+  used.add(next.toLowerCase());
+  return next;
+}
+
 /** Builds the workbook buffer for a generated Standard/Custom FMD: an Overview sheet (object, FMD
  * and Golden-reference details, audit, and a technical/actual-name index of every structure),
  * then one sheet per source structure with the same merged color-band header the on-screen view
@@ -33,7 +61,7 @@ export async function buildGeneratedFmdBuffer(meta: GeneratedFmdMeta, columns: G
   const { default: ExcelJS } = await import('exceljs');
   const workbook = new ExcelJS.Workbook();
 
-  const overview = workbook.addWorksheet('Overview');
+  const overview = workbook.addWorksheet('Overview', { properties: { tabColor: { argb: 'FFE2A900' } } });
   overview.getColumn(1).width = 20;
   overview.getColumn(2).width = 55;
   const title = overview.getCell('A1');
@@ -68,21 +96,129 @@ export async function buildGeneratedFmdBuffer(meta: GeneratedFmdMeta, columns: G
     r += 1;
   }
 
+  if (meta.versions && meta.versions.length > 0) {
+    const vh = workbook.addWorksheet('Version History', { properties: { tabColor: { argb: 'FFE2A900' } } });
+    vh.getColumn(1).width = 12; vh.getColumn(2).width = 26; vh.getColumn(3).width = 20; vh.getColumn(4).width = 70;
+    ['Version', 'Changed By', 'Date', 'Comment'].forEach((h, i) => {
+      const cell = vh.getCell(1, i + 1);
+      cell.value = h;
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2F6FED' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+    vh.getRow(1).height = 20;
+    // Always oldest first — meta.versions is expected to already be ordered that way, but this
+    // sheet's whole point is a reliable chronology, so it doesn't just trust the caller blindly.
+    const chronological = [...meta.versions].sort((a, b) => (a.changedAt ?? '').localeCompare(b.changedAt ?? ''));
+    chronological.forEach((v, i) => {
+      const row = i + 2;
+      vh.getCell(row, 1).value = v.version;
+      vh.getCell(row, 2).value = v.changedBy ?? '—';
+      vh.getCell(row, 3).value = v.changedAt ? fmtDateTime(v.changedAt) : '—';
+      const commentCell = vh.getCell(row, 4);
+      commentCell.value = v.comment ?? '—';
+      commentCell.alignment = { wrapText: true, vertical: 'top' };
+    });
+  }
+
+  if (meta.mappingReview && meta.mappingReview.findings.length > 0) {
+    const mr = workbook.addWorksheet('Mapping Review', { properties: { tabColor: { argb: 'FFA81409' } } });
+    mr.getColumn(1).width = 20; mr.getColumn(2).width = 20; mr.getColumn(3).width = 20;
+    mr.getColumn(4).width = 12; mr.getColumn(5).width = 18; mr.getColumn(6).width = 70;
+    const note = mr.getCell('A1');
+    note.value = `Reviewed by ${meta.mappingReview.reviewedBy} on ${fmtDateTime(meta.mappingReview.reviewedAt)}`;
+    note.font = { italic: true, color: { argb: 'FF6B7280' } };
+    const headerRow = 3;
+    ['Structure', 'Source Field', 'Target Field', 'Severity', 'Field', 'Issue'].forEach((h, i) => {
+      const cell = mr.getCell(headerRow, i + 1);
+      cell.value = h;
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2F6FED' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+    mr.getRow(headerRow).height = 20;
+    meta.mappingReview.findings.forEach((f, i) => {
+      const row = headerRow + 1 + i;
+      mr.getCell(row, 1).value = f.structureIdent;
+      mr.getCell(row, 2).value = f.srcField ?? '—';
+      mr.getCell(row, 3).value = f.tgtField ?? '—';
+      const sevCell = mr.getCell(row, 4);
+      sevCell.value = f.severity;
+      sevCell.font = { bold: true, color: { argb: f.severity === 'error' ? 'FFA81409' : 'FFB45309' } };
+      mr.getCell(row, 5).value = f.field ?? '—';
+      const issueCell = mr.getCell(row, 6);
+      issueCell.value = f.issue;
+      issueCell.alignment = { wrapText: true, vertical: 'top' };
+    });
+  }
+
+  if (meta.migrationObjectUuid) {
+    const { data: depsData } = await supabase
+      .from('object_dependencies')
+      .select('mandatory, req:migration_objects!object_dependencies_requires_object_id_fkey(object_id, description, category, component)')
+      .eq('migration_object_id', meta.migrationObjectUuid);
+
+    if (depsData && depsData.length > 0) {
+      const deps = [...depsData]
+        .map((d: any) => ({
+          requiresIdent: d.req.object_id as string, requiresDescription: d.req.description as string | undefined,
+          requiresCategory: d.req.category as string | undefined, requiresComponent: d.req.component as string | undefined,
+          mandatory: d.mandatory as boolean,
+        }))
+        .sort((a, b) => Number(b.mandatory) - Number(a.mandatory));
+
+      const depSheet = workbook.addWorksheet('Dependencies', { properties: { tabColor: { argb: 'FFE2A900' } } });
+      depSheet.getColumn(1).width = 22; depSheet.getColumn(2).width = 34;
+      depSheet.getColumn(3).width = 18; depSheet.getColumn(4).width = 18; depSheet.getColumn(5).width = 14;
+
+      ['Object ID', 'Name / Description', 'Object Type', 'Component', 'Dependency'].forEach((h, i) => {
+        const cell = depSheet.getCell(1, i + 1);
+        cell.value = h;
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2F6FED' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      });
+      depSheet.getRow(1).height = 20;
+
+      deps.forEach((d, i) => {
+        const row = i + 2;
+        depSheet.getCell(row, 1).value = d.requiresIdent;
+        depSheet.getCell(row, 2).value = d.requiresDescription ?? '—';
+        depSheet.getCell(row, 3).value = d.requiresCategory ?? '—';
+        depSheet.getCell(row, 4).value = d.requiresComponent ?? '—';
+        const depCell = depSheet.getCell(row, 5);
+        depCell.value = d.mandatory ? 'Mandatory' : 'Optional';
+        depCell.font = { bold: true, color: { argb: d.mandatory ? 'FFA81409' : 'FF6B7280' } };
+      });
+
+      const diagramTopRow = deps.length + 4;
+      const titleCell = depSheet.getCell(diagramTopRow, 1);
+      titleCell.value = 'Dependency Diagram';
+      titleCell.font = { bold: true, size: 12 };
+
+      const { svg, width, height } = buildDependencySvg({ objectId: meta.objectId ?? '—', description: meta.objectDescription }, deps, getErdTheme());
+      const base64 = await svgToPngBase64(svg, width, height);
+      const imageId = workbook.addImage({ base64, extension: 'png' });
+      depSheet.addImage(imageId, { tl: { col: 0, row: diagramTopRow }, ext: { width, height } });
+    }
+  }
+
+  const usedSheetNames = new Set<string>();
   for (const t of tables) {
-    const sheet = workbook.addWorksheet(sanitizeSheetName(t.structureIdent));
+    const sheet = workbook.addWorksheet(uniqueSheetName(t.structureDescription || t.structureIdent, usedSheetNames));
     let col = 1;
     for (const run of sectionRuns(columns)) {
       const startCol = col;
       const endCol = col + run.span - 1;
       const color = colorByKey(run.color);
       if (endCol > startCol) sheet.mergeCells(1, startCol, 1, endCol);
-      for (let c = startCol; c <= endCol; c++) {
-        const cell = sheet.getCell(1, c);
-        cell.value = c === startCol ? run.sectionName.toUpperCase() : undefined;
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${color.band.replace('#', '')}` } };
-        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        cell.alignment = { horizontal: 'center', vertical: 'middle' };
-      }
+      // Merged cells become aliases of the master (top-left) cell — writing to any other cell in
+      // the range clobbers the whole merge's value, so only the master is ever touched.
+      const master = sheet.getCell(1, startCol);
+      master.value = run.sectionName.toUpperCase();
+      master.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${color.band.replace('#', '')}` } };
+      master.font = { bold: true, color: { argb: `FF${color.bandText.replace('#', '')}` } };
+      master.alignment = { horizontal: 'center', vertical: 'middle' };
       col = endCol + 1;
     }
 

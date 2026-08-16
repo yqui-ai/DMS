@@ -30,7 +30,7 @@ const defaultStructure = (): GoldenFmdStructure => ({
       ],
     },
     {
-      id: newId(), name: 'Mapping Section', color: 'amber',
+      id: newId(), name: 'Mapping Section', color: 'orange',
       fields: [
         { id: newId(), field: 'MAPPING_TYPE', description: 'Copy, Default, Transform, XREF' },
         { id: newId(), field: 'TRANSFORMATION_RULE', description: '' },
@@ -111,7 +111,7 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
   };
   const addSection = () => {
     const id = newId();
-    setStructure((s) => ({ sections: [...s.sections, { id, name: 'New Section', color: nextColor(s.sections.length).key, fields: [] }] }));
+    setStructure((s) => ({ sections: [...s.sections, { id, name: 'New Section', color: nextColor(s.sections.map((sec) => sec.color)).key, fields: [] }] }));
     setActiveSectionId(id);
     setDirty(true);
   };
@@ -249,14 +249,23 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
                     style={{ color: colorByKey(activeSection.color).text }}
                   />
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {SECTION_COLORS.map((c) => (
-                      <button
-                        key={c.key} onClick={() => updateSection(activeSection.id, { color: c.key })}
-                        aria-label={c.label}
-                        className={clsx('w-4 h-4 rounded-full shrink-0 border', activeSection.color === c.key && 'ring-2 ring-offset-1 ring-text')}
-                        style={{ backgroundColor: c.text, borderColor: c.border }}
-                      />
-                    ))}
+                    {SECTION_COLORS.map((c) => {
+                      const usedBy = structure.sections.find((sec) => sec.id !== activeSection.id && sec.color === c.key);
+                      return (
+                        <button
+                          key={c.key} onClick={() => !usedBy && updateSection(activeSection.id, { color: c.key })}
+                          disabled={!!usedBy}
+                          aria-label={c.label}
+                          title={usedBy ? `Already used by "${usedBy.name || 'Untitled section'}"` : c.label}
+                          className={clsx(
+                            'w-4 h-4 rounded-full shrink-0 border',
+                            activeSection.color === c.key && 'ring-2 ring-offset-1 ring-text',
+                            usedBy && 'opacity-25 cursor-not-allowed',
+                          )}
+                          style={{ backgroundColor: c.text, borderColor: c.border }}
+                        />
+                      );
+                    })}
                   </div>
                 </div>
                 <div className="flex-1 overflow-auto">

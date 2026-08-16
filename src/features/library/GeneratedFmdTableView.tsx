@@ -1,11 +1,20 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
-import { ArrowUpDown, ChevronLeft, ChevronRight, Columns3, Download } from 'lucide-react';
-import { ToolbarButton } from '../../components/ToolbarButton';
-import { useToast } from '../../components/Toast';
+import { ArrowUpDown, ChevronLeft, ChevronRight, Columns3 } from 'lucide-react';
 import { colorByKey } from '../../lib/goldenFmdColors';
-import { exportGeneratedFmdToExcel, type GeneratedFmdMeta } from '../../lib/generatedFmdExport';
+import { rowKey } from '../../lib/rowDiff';
 import type { GeneratedColumn, GeneratedTable } from '../../types/entities';
+
+/** These fields carry free-text paragraphs, not short codes — capped width + wrapping so one long
+ * rule/description doesn't stretch the whole table sideways; every other field stays a tight
+ * single line. */
+const FIELD_MAX_WIDTH: Record<string, number> = {
+  TRANSFORMATION_RULE: 600, TECHNICAL_RULE: 600,
+  SRC_FIELD_DESC: 400, TGT_FIELD_DESC: 400,
+};
+const CHANGED_BG = '#fef9c3';
+const REVIEW_ERROR_BG = '#fecaca';
+const REVIEW_WARNING_BG = '#fed7aa';
 
 function IconPopoverButton({ icon, label, active, children }: { icon: ReactNode; label: string; active?: boolean; children: ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -47,15 +56,26 @@ function sectionRuns(columns: GeneratedColumn[]): { sectionName: string; color: 
 /** The excel-style grid for a Standard/Custom FMD generated from the Golden FMD — one tab per
  * source structure (arrow-paged, no scrollbar), a merged color band above the field-name header
  * row, and no filler for columns that were never populated. Shared by the plain Standard viewer
- * and the Custom FMD's version-history viewer. */
-export function GeneratedFmdTableView({ meta, columns, tables }: { meta: GeneratedFmdMeta; columns: GeneratedColumn[]; tables: GeneratedTable[] }) {
-  const toast = useToast();
+ * and the Custom FMD's version-history viewer. Export/download lives one level up, in the dialog's
+ * tab bar, since it applies to the whole FMD version, not just this table. */
+export interface ReviewCellFinding { severity: 'error' | 'warning'; issue: string }
+
+export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, reviewFindingsByTable }: {
+  columns: GeneratedColumn[]; tables: GeneratedTable[];
+  /** structureId -> rowKey -> changed field names, vs. the previous version — yellow-highlights
+   * exactly the cells that changed since then. Undefined/absent means "nothing to compare against
+   * (first version)", not "nothing changed". */
+  changedCellsByTable?: Map<string, Map<string, Set<string>>>;
+  /** structureId -> rowKey -> field -> Mapping Review finding — red/orange-highlights the exact
+   * cell a review flagged, with the finding text as a hover tooltip. Takes visual priority over
+   * the "changed" yellow when both apply to the same cell. */
+  reviewFindingsByTable?: Map<string, Map<string, Map<string, ReviewCellFinding>>>;
+}) {
   const [activeTableId, setActiveTableId] = useState<string | null>(tables[0]?.structureId ?? null);
   const [tabLabelMode, setTabLabelMode] = useState<'ident' | 'description'>('ident');
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
-  const [exporting, setExporting] = useState(false);
   const tabsRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -81,6 +101,8 @@ export function GeneratedFmdTableView({ meta, columns, tables }: { meta: Generat
   const activeTable = tables.find((t) => t.structureId === activeTableId) ?? tables[0];
   const visibleColumns = useMemo(() => columns.filter((c) => !hiddenColumns.has(c.field)), [columns, hiddenColumns]);
   const runs = useMemo(() => sectionRuns(visibleColumns), [visibleColumns]);
+  const changedCells = changedCellsByTable?.get(activeTable?.structureId ?? '');
+  const reviewFindings = reviewFindingsByTable?.get(activeTable?.structureId ?? '');
   const processedRows = useMemo(() => {
     let rows = activeTable?.rows ?? [];
     if (sortField) {
@@ -102,17 +124,6 @@ export function GeneratedFmdTableView({ meta, columns, tables }: { meta: Generat
     if (next.has(field)) next.delete(field); else next.add(field);
     return next;
   });
-
-  const exportView = async () => {
-    setExporting(true);
-    try {
-      await exportGeneratedFmdToExcel(meta, columns, tables);
-    } catch (err: any) {
-      toast.error(err.message ?? 'Could not export this FMD.');
-    } finally {
-      setExporting(false);
-    }
-  };
 
   if (!activeTable) return <p className="text-sm text-muted py-8 text-center">No structure data on this version.</p>;
 
@@ -146,14 +157,11 @@ export function GeneratedFmdTableView({ meta, columns, tables }: { meta: Generat
             ))}
           </div>
         </IconPopoverButton>
-        <div className="ml-auto flex items-center gap-3">
-          {tables.length > 1 && (
-            <button onClick={() => setTabLabelMode((m) => (m === 'ident' ? 'description' : 'ident'))} className="text-sm2 font-semibold text-blue hover:underline">
-              {tabLabelMode === 'ident' ? 'Show structure name' : 'Show structure ID'}
-            </button>
-          )}
-          <ToolbarButton onClick={exportView} disabled={exporting}><Download size={14} /> {exporting ? 'Exporting…' : 'Export to Excel'}</ToolbarButton>
-        </div>
+        {tables.length > 1 && (
+          <button onClick={() => setTabLabelMode((m) => (m === 'ident' ? 'description' : 'ident'))} className="ml-auto text-sm2 font-semibold text-blue hover:underline">
+            {tabLabelMode === 'ident' ? 'Show structure name' : 'Show structure ID'}
+          </button>
+        )}
       </div>
 
       {tables.length > 1 && (
@@ -182,14 +190,19 @@ export function GeneratedFmdTableView({ meta, columns, tables }: { meta: Generat
       )}
 
       <div className="flex-1 overflow-auto rounded-lg shadow-[inset_0_0_0_1px_var(--line)]">
-        <table className="w-full border-collapse text-sm2">
+        {/* border-separate + border-spacing-0 (NOT border-collapse): two stacked sticky <tr>s
+            (the section band at top-0, the field-name row at top-[29px]) render with a visible
+            white seam between them under border-collapse — a browser quirk with sticky table rows,
+            not a real gap in the markup. border-separate removes it; the per-row divider moves from
+            <tr> (unreliable under border-separate) onto each <td> instead. */}
+        <table className="border-separate border-spacing-0 text-sm2">
           <thead>
             <tr>
               {runs.map((run, i) => (
                 <th
                   key={i} colSpan={run.span}
-                  className="text-2xs font-bold uppercase tracking-[.05em] px-2.5 py-1.5 sticky top-0 text-left whitespace-nowrap"
-                  style={{ backgroundColor: colorByKey(run.color).band, color: '#fff' }}
+                  className="text-2xs font-bold uppercase tracking-[.05em] px-2.5 py-1.5 sticky top-0 text-center whitespace-nowrap"
+                  style={{ backgroundColor: colorByKey(run.color).band, color: colorByKey(run.color).bandText }}
                 >
                   {run.sectionName}
                 </th>
@@ -199,7 +212,7 @@ export function GeneratedFmdTableView({ meta, columns, tables }: { meta: Generat
               {visibleColumns.map((c) => (
                 <th
                   key={c.field} onClick={() => toggleSort(c.field)}
-                  className="text-2xs font-bold uppercase tracking-[.04em] text-text px-2.5 py-2 sticky top-[29px] text-left whitespace-nowrap cursor-pointer select-none"
+                  className="text-2xs font-bold uppercase tracking-[.04em] text-text px-2.5 py-2 sticky top-[29px] text-center whitespace-nowrap cursor-pointer select-none z-[2]"
                   style={{ backgroundColor: colorByKey(c.color).bg }}
                 >
                   {c.field}{sortField === c.field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
@@ -211,11 +224,34 @@ export function GeneratedFmdTableView({ meta, columns, tables }: { meta: Generat
             {processedRows.length === 0 && (
               <tr><td colSpan={visibleColumns.length} className="px-2.5 py-6 text-center text-muted text-sm">No rows.</td></tr>
             )}
-            {processedRows.map((row, i) => (
-              <tr key={i} className="border-t border-line">
-                {visibleColumns.map((c) => <td key={c.field} className="px-2.5 py-1.5 text-sm2 whitespace-nowrap">{row[c.field]}</td>)}
-              </tr>
-            ))}
+            {processedRows.map((row, i) => {
+              const rk = rowKey(row, i);
+              const rowChanges = changedCells?.get(rk);
+              const rowFindings = reviewFindings?.get(rk);
+              return (
+                <tr key={i}>
+                  {visibleColumns.map((c) => {
+                    const maxWidth = FIELD_MAX_WIDTH[c.field];
+                    const finding = rowFindings?.get(c.field);
+                    const isChanged = rowChanges?.has(c.field);
+                    const bg = finding ? (finding.severity === 'error' ? REVIEW_ERROR_BG : REVIEW_WARNING_BG) : (isChanged ? CHANGED_BG : undefined);
+                    return (
+                      <td
+                        key={c.field}
+                        title={finding?.issue}
+                        className={clsx(
+                          'px-2.5 py-1.5 text-sm2 border-t border-line',
+                          maxWidth ? 'whitespace-normal break-words text-left' : 'text-center whitespace-nowrap',
+                        )}
+                        style={{ ...(maxWidth ? { maxWidth } : {}), backgroundColor: bg }}
+                      >
+                        {row[c.field]}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

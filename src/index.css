@@ -6,3 +6,19 @@
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
+
+/* AI dialog "processing" border — a light-blue-to-purple conic gradient that visibly sweeps
+   around the card while an AI dialog is actively working, replacing the static gradient border
+   from Dialog's variant="ai" only for the duration of the operation. */
+@property --ai-border-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes ai-border-spin {
+  to { --ai-border-angle: 360deg; }
+}
+.ai-border-processing {
+  background: conic-gradient(from var(--ai-border-angle), #3b82f6, #a855f7, #60a5fa, #3b82f6);
+  animation: ai-border-spin 2.2s linear infinite;
+}

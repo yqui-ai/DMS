@@ -12,7 +12,7 @@ import { buildGeneratedFmdBuffer } from './generatedFmdExport';
 export async function exportFmdsAsExcel(fmdIds: string[]): Promise<{ exported: number; skipped: string[] }> {
   const { data: fmdsData, error: fmdsError } = await supabase
     .from('fmds')
-    .select('id, name, display_id, class, type, based_on_golden_version_id, migration_objects(object_id, description), subprojects(projects(code, programs(code))), fmd_versions!fmd_id(id, version, sheets, created_by, created_at)')
+    .select('id, name, display_id, class, type, based_on_golden_version_id, migration_objects(id, object_id, description), subprojects(projects(code, programs(code))), fmd_versions!fmd_id(id, version, sheets, created_by, created_at)')
     .in('id', fmdIds);
   if (fmdsError) throw fmdsError;
 
@@ -46,6 +46,7 @@ export async function exportFmdsAsExcel(fmdIds: string[]): Promise<{ exported: n
         {
           fmdName: f.name, fmdDisplayId: f.display_id ?? undefined,
           objectId: (f as any).migration_objects?.object_id, objectDescription: (f as any).migration_objects?.description,
+          migrationObjectUuid: (f as any).migration_objects?.id,
           klass: f.class, type: f.type, reference: formatLibraryReference(f.class, programCode, projectCode),
           versionLabel: latest.version, createdBy: latest.created_by ?? undefined, createdAt: latest.created_at ?? undefined,
           goldenVersionLabel: basedOnLabel, goldenOutdated: !!f.based_on_golden_version_id && f.based_on_golden_version_id !== goldenLatestId,

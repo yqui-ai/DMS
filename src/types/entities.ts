@@ -10,7 +10,7 @@ export type RoleId =
   | 'etl_developer' | 'cab' | 'end_user' | 'guest';
 
 export type ScreenKey =
-  | 'myWork' | 'programSettings' | 'preparation' | 'rules' | 'referenceData'
+  | 'myWork' | 'programSettings' | 'programAdmin' | 'preparation' | 'rules' | 'referenceData'
   | 'dashboard' | 'migration' | 'quality' | 'cutover' | 'promotions'
   | 'jobMonitor' | 'catalogObjects' | 'catalogFmds' | 'catalogRules' | 'catalogXref' | 'connections';
 
@@ -89,7 +89,13 @@ export interface SelectionCriterion {
 
 /* mapping & rules */
 export type FmdType = 'Standard' | 'Golden' | 'Historical' | 'Custom';
-export interface Fmd { id: UUID; subprojectId?: UUID; migrationObjectId?: UUID; name: string; class: ObjectClass; type: FmdType; displayId?: string }
+export interface Fmd {
+  id: UUID; subprojectId?: UUID; migrationObjectId?: UUID; name: string; class: ObjectClass; type: FmdType; displayId?: string;
+  aiGenerated?: boolean;
+  /** Which source file + plant an AI-converted FMD came from — the identity re-upload matching
+   * keys on, independent of the (editable) display name. */
+  histSourceName?: string; histPlant?: string;
+}
 export interface FmdVersion {
   id: UUID; fmdId: UUID; version: string; state: GovState;
   sheets: {
@@ -101,6 +107,12 @@ export interface FmdVersion {
      * selected sender structure, shown as tabs — a plain excel-style grid, not the old
      * source/target/mapping sheet split. */
     generatedColumns?: GeneratedColumn[]; generatedTables?: GeneratedTable[];
+    /** Raw parsed content of an uploaded legacy file (Historical Upload) — headers + rows per
+     * sheet, before any AI conversion into the Golden FMD's structure. */
+    historicalRaw?: HistoricalRaw; sourceFileName?: string;
+    /** Result of the Custom FMD "Review Mapping" AI check (src/lib/queries/mappingReview.ts) —
+     * saved onto this version so past reviews stay visible without re-running the check. */
+    mappingReview?: MappingReview;
   };
   /** What changed to produce this version — Golden FMDs create a new version row per save
    * instead of overwriting the latest one, so this is a real per-version note, not a running log. */
@@ -110,6 +122,23 @@ export interface FmdVersion {
 
 export interface GeneratedColumn { field: string; sectionName: string; color: string; description?: string }
 export interface GeneratedTable { structureId: string; structureIdent: string; structureDescription?: string; rows: Record<string, string>[] }
+
+export interface MappingReviewFinding {
+  structureId: string; structureIdent: string; rowIndex: number;
+  /** The single column the AI pinned the violation on — used to highlight the exact offending
+   * cell in the viewer. Absent for a batch-level failure finding (nothing to point at). */
+  field?: string;
+  srcField?: string; tgtField?: string; severity: 'error' | 'warning'; issue: string;
+}
+export interface MappingReview { reviewedBy: string; reviewedAt: string; findings: MappingReviewFinding[] }
+
+/** Plain parsed content of an uploaded legacy FMD file — see src/lib/parseHistoricalFile.ts. */
+export interface HistoricalSheet { name: string; headers: string[]; rows: string[][] }
+/** Workbook-level metadata ExcelJS exposes (not available for .csv) — captured so the AI
+ * converter's initial-version comment can cite the real source file/author/dates instead of just
+ * "Generated from Golden FMD vX". */
+export interface HistoricalFileMeta { fileName: string; author?: string; lastModifiedBy?: string; created?: string; modified?: string }
+export interface HistoricalRaw { sheets: HistoricalSheet[]; fileMeta?: HistoricalFileMeta }
 
 /** A Golden FMD is a template *structure*, not data — the designer edits the set of fields that
  * make up the FMD, grouped into user-orderable, user-named, color-coded sections, and what each
@@ -124,7 +153,14 @@ export interface Rule {
   status: GovState; expression?: string; owner?: string; version?: string; class: ObjectClass;
   origin: 'Standard' | 'Custom'; displayId?: string;
 }
-export interface XrefTable { id: UUID; subprojectId: UUID; name: string; purpose?: string; version?: string; class: ObjectClass; displayId?: string }
+export type XrefType = 'Standard' | 'Golden';
+export interface XrefTable { id: UUID; subprojectId?: UUID; name: string; purpose?: string; version?: string; class: ObjectClass; type: XrefType; displayId?: string }
+/** A version snapshot of the (singleton) Golden XREF's field structure — same versioning model as
+ * FmdVersion: every save is a new row, never overwritten, so past structures stay inspectable. */
+export interface XrefVersion {
+  id: UUID; xrefTableId: UUID; version: string; state: GovState; structure: GoldenFmdStructure;
+  comment?: string; createdBy?: string; createdAt?: string;
+}
 /** Library-list row shape shared by the FMD/Rule/XREF catalogue screens — `reference` and
  * `latestVersion` are derived at query time (see src/lib/libraryReference.ts), not stored. */
 export interface LibraryListing { class: ObjectClass; reference: string }

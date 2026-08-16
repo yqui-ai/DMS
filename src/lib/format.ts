@@ -1,5 +1,6 @@
-/** Number/date formatters — en-US, tabular nums for financial/count columns. */
+import { approachLabelSet } from './approachLabels';
 
+/** Number/date formatters — en-US, tabular nums for financial/count columns. */
 const numberFmt = new Intl.NumberFormat('en-US');
 const decimalFmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const percentFmt = new Intl.NumberFormat('en-US', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -25,12 +26,10 @@ export const dmyToIso = (dmy: string): string | null => {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
 };
 
-/** DMC migration-approach values are the plain SAP domain values ('Staging Table', 'Direct
- * Transfer - ERP', …) — prefixed for display since they're specifically Migration Cockpit
- * approaches. 'Not classified' is our own fallback for objects with no DMC_DMOL_REF match, not
- * a real approach, so it's left alone. */
-export const fmtApproach = (approach?: string | null): string =>
-  !approach || approach === 'Not classified' ? (approach ?? '—') : `Migration Cockpit - ${approach}`;
+/** Full-length display name for a DMC migration-approach value — delegates to the approachLabels
+ * reference table (single source of truth for the big/medium/small variants; see ApproachTag for
+ * the size that actually adapts to available space). */
+export const fmtApproach = (approach?: string | null): string => approachLabelSet(approach).big;
 
 /** 'YYYYMMDD_HHMMSS' (local time) — appended to every file this app exports, so re-downloading
  * the same report never silently overwrites an earlier copy. */
@@ -38,6 +37,16 @@ export const exportTimestamp = (): string => {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+};
+
+/** "Created by X on Y · Changed by Z on W" for an FMD's title-bar subtitle — Changed is omitted
+ * entirely when there's no second version yet (an FMD that's only ever been created hasn't been
+ * "changed"), rather than repeating the creation info under a misleading label. */
+export const fmdAuditLine = (f: { createdBy?: string; createdAt?: string; changedBy?: string; changedAt?: string }): string => {
+  const parts: string[] = [];
+  if (f.createdBy) parts.push(`Created by ${f.createdBy} on ${fmtDateTime(f.createdAt)}`);
+  if (f.changedBy) parts.push(`Changed by ${f.changedBy} on ${fmtDateTime(f.changedAt)}`);
+  return parts.join(' · ');
 };
 
 export const fmtDuration = (seconds?: number | null): string => {

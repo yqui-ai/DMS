@@ -20,13 +20,13 @@ export async function buildGoldenFmdBuffer(structure: GoldenFmdStructure): Promi
     const color = colorByKey(section.color);
 
     if (endCol > startCol) sheet.mergeCells(1, startCol, 1, endCol);
-    for (let c = startCol; c <= endCol; c++) {
-      const cell = sheet.getCell(1, c);
-      cell.value = c === startCol ? section.name.toUpperCase() : undefined;
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${color.band.replace('#', '')}` } };
-      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.alignment = { horizontal: 'center', vertical: 'middle' };
-    }
+    // Merged cells become aliases of the master (top-left) cell — writing to any other cell in the
+    // range clobbers the whole merge's value, so only the master is ever touched.
+    const master = sheet.getCell(1, startCol);
+    master.value = section.name.toUpperCase();
+    master.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${color.band.replace('#', '')}` } };
+    master.font = { bold: true, color: { argb: `FF${color.bandText.replace('#', '')}` } };
+    master.alignment = { horizontal: 'center', vertical: 'middle' };
 
     section.fields.forEach((f, i) => {
       const c = startCol + i;

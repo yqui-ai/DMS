@@ -67,10 +67,11 @@ export function useObjectScopeUsage(migrationObjectId?: string) {
 
 export interface ObjectPrerequisite {
   requiresObjectId: string; requiresIdent: string; requiresDescription?: string; mandatory: boolean;
+  requiresCategory?: string; requiresComponent?: string;
 }
 
 /** Prerequisite objects for a single migration object (from DMC_SIN_SCOBJSEQ), for the Library
- * object detail dialog's Details tab. */
+ * object detail dialog's Details tab / dependency diagram. */
 export function useObjectDependencies(migrationObjectId?: string) {
   return useQuery({
     queryKey: ['object-dependencies', migrationObjectId],
@@ -78,11 +79,12 @@ export function useObjectDependencies(migrationObjectId?: string) {
     queryFn: async (): Promise<ObjectPrerequisite[]> => {
       const { data, error } = await supabase
         .from('object_dependencies')
-        .select('mandatory, req:migration_objects!object_dependencies_requires_object_id_fkey(id, object_id, description)')
+        .select('mandatory, req:migration_objects!object_dependencies_requires_object_id_fkey(id, object_id, description, category, component)')
         .eq('migration_object_id', migrationObjectId!);
       if (error) throw error;
       return (data ?? []).map((d: any) => ({
         requiresObjectId: d.req.id, requiresIdent: d.req.object_id, requiresDescription: d.req.description ?? undefined, mandatory: d.mandatory,
+        requiresCategory: d.req.category ?? undefined, requiresComponent: d.req.component ?? undefined,
       }));
     },
   });
