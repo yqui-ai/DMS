@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
-import { ArrowUpDown, ChevronLeft, ChevronRight, Columns3 } from 'lucide-react';
+import { ArrowUpDown, ChevronLeft, ChevronRight, Columns3, Maximize2 } from 'lucide-react';
 import { colorByKey } from '../../lib/goldenFmdColors';
 import { rowKey } from '../../lib/rowDiff';
 import type { GeneratedColumn, GeneratedTable } from '../../types/entities';
@@ -60,7 +60,7 @@ function sectionRuns(columns: GeneratedColumn[]): { sectionName: string; color: 
  * tab bar, since it applies to the whole FMD version, not just this table. */
 export interface ReviewCellFinding { severity: 'error' | 'warning'; issue: string }
 
-export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, reviewFindingsByTable }: {
+export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, reviewFindingsByTable, onOpenField }: {
   columns: GeneratedColumn[]; tables: GeneratedTable[];
   /** structureId -> rowKey -> changed field names, vs. the previous version — yellow-highlights
    * exactly the cells that changed since then. Undefined/absent means "nothing to compare against
@@ -70,6 +70,9 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
    * cell a review flagged, with the finding text as a hover tooltip. Takes visual priority over
    * the "changed" yellow when both apply to the same cell. */
   reviewFindingsByTable?: Map<string, Map<string, Map<string, ReviewCellFinding>>>;
+  /** When provided, every row gets a "view details" action opening the field-level drill-down for
+   * that row (its index within the active table's own row order, not the sorted display order). */
+  onOpenField?: (structureId: string, rowIndex: number) => void;
 }) {
   const [activeTableId, setActiveTableId] = useState<string | null>(tables[0]?.structureId ?? null);
   const [tabLabelMode, setTabLabelMode] = useState<'ident' | 'description'>('ident');
@@ -198,6 +201,9 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
         <table className="border-separate border-spacing-0 text-sm2">
           <thead>
             <tr>
+              {onOpenField && (
+                <th rowSpan={2} className="sticky top-0 z-[2] bg-[#eef1f5] w-8" style={{ verticalAlign: 'middle' }} />
+              )}
               {runs.map((run, i) => (
                 <th
                   key={i} colSpan={run.span}
@@ -222,14 +228,26 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
           </thead>
           <tbody>
             {processedRows.length === 0 && (
-              <tr><td colSpan={visibleColumns.length} className="px-2.5 py-6 text-center text-muted text-sm">No rows.</td></tr>
+              <tr><td colSpan={visibleColumns.length + (onOpenField ? 1 : 0)} className="px-2.5 py-6 text-center text-muted text-sm">No rows.</td></tr>
             )}
             {processedRows.map((row, i) => {
               const rk = rowKey(row, i);
               const rowChanges = changedCells?.get(rk);
               const rowFindings = reviewFindings?.get(rk);
+              const originalIndex = activeTable.rows.indexOf(row);
               return (
                 <tr key={i}>
+                  {onOpenField && (
+                    <td className="border-t border-line px-1.5 py-1.5 text-center">
+                      <button
+                        onClick={() => onOpenField(activeTable.structureId, originalIndex)}
+                        aria-label="View field details"
+                        className="p-1 rounded text-muted hover:text-blue hover:bg-blue-pale"
+                      >
+                        <Maximize2 size={12} />
+                      </button>
+                    </td>
+                  )}
                   {visibleColumns.map((c) => {
                     const maxWidth = FIELD_MAX_WIDTH[c.field];
                     const finding = rowFindings?.get(c.field);

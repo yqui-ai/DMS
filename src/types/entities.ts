@@ -95,6 +95,9 @@ export interface Fmd {
   /** Which source file + plant an AI-converted FMD came from — the identity re-upload matching
    * keys on, independent of the (editable) display name. */
   histSourceName?: string; histPlant?: string;
+  /** Plain email, same convention as createdBy/approvedBy — not a foreign key. Gates who can post
+   * a field note (src/lib/queries/fmdFieldNotes.ts); a workflow/UI gate, not an RLS boundary. */
+  owner?: string;
 }
 export interface FmdVersion {
   id: UUID; fmdId: UUID; version: string; state: GovState;
@@ -132,6 +135,14 @@ export interface MappingReviewFinding {
 }
 export interface MappingReview { reviewedBy: string; reviewedAt: string; findings: MappingReviewFinding[] }
 
+/** A note/comment on one specific field mapping (structure + row identity, not a version — see
+ * fmd_field_notes migration for why) — the field-level detail view's Review points panel. */
+export interface FmdFieldNote {
+  id: UUID; fmdId: UUID; structureId: string; rowKey: string;
+  tag: 'note' | 'todo'; body: string; resolved: boolean;
+  createdBy: string; createdAt: string;
+}
+
 /** Plain parsed content of an uploaded legacy FMD file — see src/lib/parseHistoricalFile.ts. */
 export interface HistoricalSheet { name: string; headers: string[]; rows: string[][] }
 /** Workbook-level metadata ExcelJS exposes (not available for .csv) — captured so the AI
@@ -154,7 +165,7 @@ export interface Rule {
   origin: 'Standard' | 'Custom'; displayId?: string;
 }
 export type XrefType = 'Standard' | 'Golden';
-export interface XrefTable { id: UUID; subprojectId?: UUID; name: string; purpose?: string; version?: string; class: ObjectClass; type: XrefType; displayId?: string }
+export interface XrefTable { id: UUID; subprojectId?: UUID; name: string; purpose?: string; class: ObjectClass; type: XrefType; displayId?: string }
 /** A version snapshot of the (singleton) Golden XREF's field structure — same versioning model as
  * FmdVersion: every save is a new row, never overwritten, so past structures stay inspectable. */
 export interface XrefVersion {

@@ -66,7 +66,13 @@ export function useLibraryRules() {
 
 export function useRuleMutations(subprojectId: string) {
   const queryClient = useQueryClient();
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['rules', subprojectId] });
+  // All three rule caches, not just the subproject-scoped one — the Library > Rule catalogue reads
+  // 'rules-library' and would otherwise keep showing the pre-change status until a hard refetch.
+  const invalidate = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['rules', subprojectId] }),
+    queryClient.invalidateQueries({ queryKey: ['rules-all'] }),
+    queryClient.invalidateQueries({ queryKey: ['rules-library'] }),
+  ]);
   return {
     async setStatus(id: string, status: GovState) {
       const { error } = await supabase.from('rules').update({ status }).eq('id', id);
@@ -76,8 +82,12 @@ export function useRuleMutations(subprojectId: string) {
   };
 }
 
+// x.version (a plain column on xref_tables from before xref_versions existed) is never written by
+// any mutation below — every real version lives in xref_versions now, so this is a dead field kept
+// around only for the odd row seeded before the versioning table existed. Never surface it as "the"
+// version; useLibraryXrefTables derives the real latest version from xref_versions instead.
 const toXrefTable = (x: any): XrefTable => ({
-  id: x.id, subprojectId: x.subproject_id ?? undefined, name: x.name, purpose: x.purpose ?? undefined, version: x.version ?? undefined, class: x.class,
+  id: x.id, subprojectId: x.subproject_id ?? undefined, name: x.name, purpose: x.purpose ?? undefined, class: x.class,
   type: x.type ?? 'Standard', displayId: x.display_id ?? undefined,
 });
 
@@ -93,7 +103,11 @@ export function useXrefTables(subprojectId?: string) {
   });
 }
 
-export interface LibraryXrefRow extends XrefTable, LibraryListing {}
+export interface LibraryXrefRow extends XrefTable, LibraryListing {
+  /** The real current version, derived from xref_versions (newest by created_at) — not the dead
+   * xref_tables.version column, which no mutation has written to since versioning was introduced. */
+  latestVersion?: string; latestVersionId?: string;
+}
 
 /** XREF tables across every subproject the user can access, enriched with the program/project
  * reference — for the Library > Cross Reference (XREF) catalogue. */
@@ -103,13 +117,17 @@ export function useLibraryXrefTables() {
     queryFn: async (): Promise<LibraryXrefRow[]> => {
       const { data, error } = await supabase
         .from('xref_tables')
-        .select('*, subprojects(projects(code, programs(code)))')
+        .select('*, subprojects(projects(code, programs(code))), xref_versions!xref_table_id(id, version, created_at)')
         .order('name');
       if (error) throw error;
       return (data ?? []).map((x: any) => {
         const programCode = x.subprojects?.projects?.programs?.code as string | undefined;
         const projectCode = x.subprojects?.projects?.code as string | undefined;
-        return { ...toXrefTable(x), reference: formatLibraryReference(x.class, programCode, projectCode) };
+        const versions = [...(x.xref_versions ?? [])].sort((a: any, b: any) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
+        return {
+          ...toXrefTable(x), reference: formatLibraryReference(x.class, programCode, projectCode),
+          latestVersion: versions[0]?.version as string | undefined, latestVersionId: versions[0]?.id as string | undefined,
+        };
       });
     },
   });

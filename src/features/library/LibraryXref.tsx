@@ -45,7 +45,7 @@ export function LibraryXref() {
     { key: 'class', header: 'Class', width: 90, render: (t) => <ColorTag colorKey={t.class}>{t.class}</ColorTag>, sortValue: (t) => t.class },
     { key: 'type', header: 'Type', width: 90, render: (t) => <ColorTag colorKey={t.type}>{t.type}</ColorTag>, sortValue: (t) => t.type },
     { key: 'reference', header: 'Reference', render: (t) => <span className="font-mono text-sm2">{t.reference}</span>, sortValue: (t) => t.reference },
-    { key: 'version', header: 'Version', render: (t) => t.version ?? '—', sortValue: (t) => t.version },
+    { key: 'latestVersion', header: 'Version', render: (t) => t.latestVersion ?? '—', sortValue: (t) => t.latestVersion },
     { key: 'purpose', header: 'Purpose', render: (t) => t.purpose ?? '—', sortValue: (t) => t.purpose },
   ];
 
@@ -71,7 +71,7 @@ export function LibraryXref() {
         : (
           <Table
             columns={columns} rows={filtered} rowKey={(t) => t.id} pageSize={30} emptyMessage="Loading…"
-            onRowClick={(t) => { if (t.type === 'Golden') setOpenGolden(t); }}
+            onRowClick={setOpenGolden} rowClickable={(t) => t.type === 'Golden'}
           />
         )}
       <GoldenXrefViewerDialog xref={openGolden} onClose={() => setOpenGolden(null)} />

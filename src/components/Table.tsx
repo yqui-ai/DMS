@@ -18,6 +18,11 @@ export interface TableProps<T> {
   rows: T[];
   rowKey: (row: T) => string;
   onRowClick?: (row: T) => void;
+  /** Which rows onRowClick actually applies to. Without this every row renders as clickable the
+   * moment onRowClick exists, so a list where only some rows open something (Library > XREF, where
+   * only the Golden row has a viewer) shows a pointer cursor and hover state on rows that do
+   * nothing. Rows returning false stay inert and un-hoverable. */
+  rowClickable?: (row: T) => boolean;
   selectedKey?: string;
   pageSize?: number;
   emptyMessage?: string;
@@ -28,7 +33,7 @@ export interface TableProps<T> {
 
 type SortDir = 'asc' | 'desc';
 
-export function Table<T>({ columns, rows, rowKey, onRowClick, selectedKey, pageSize = 25, emptyMessage = 'No records.', dense = false }: TableProps<T>) {
+export function Table<T>({ columns, rows, rowKey, onRowClick, rowClickable, selectedKey, pageSize = 25, emptyMessage = 'No records.', dense = false }: TableProps<T>) {
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<{ key: string; dir: SortDir } | null>(null);
 
@@ -62,8 +67,13 @@ export function Table<T>({ columns, rows, rowKey, onRowClick, selectedKey, pageS
 
   return (
     <div className={clsx('overflow-hidden', !dense && 'rounded-lg shadow-card')}>
+      {/* text-sm2 (not text-base) here is load-bearing for consistency: this is the ONE place body
+          text size was left to inherit the browser/Tailwind default instead of matching every
+          hand-rolled table in the app (FMD viewers, Roles/Approvals tabs, dense mode of this same
+          component) — which all already use text-sm2. Individual columns' own `sm2` overrides
+          elsewhere become redundant no-ops now, not a second competing size. */}
       <div className="overflow-auto max-h-[70vh]">
-        <table className="w-full border-collapse text-base">
+        <table className="w-full border-collapse text-sm2">
           <thead>
             <tr>
               {columns.map((col) => {
@@ -103,11 +113,12 @@ export function Table<T>({ columns, rows, rowKey, onRowClick, selectedKey, pageS
             {paged.map((row) => {
               const key = rowKey(row);
               const selected = key === selectedKey;
+              const clickable = !!onRowClick && (rowClickable?.(row) ?? true);
               return (
                 <tr
                   key={key}
-                  onClick={() => onRowClick?.(row)}
-                  className={clsx('border-t border-line', onRowClick && 'cursor-pointer hover:bg-blue-pale', selected && 'bg-blue-light')}
+                  onClick={clickable ? () => onRowClick!(row) : undefined}
+                  className={clsx('border-t border-line', clickable && 'cursor-pointer hover:bg-blue-pale', selected && 'bg-blue-light')}
                 >
                   {columns.map((col) => (
                     <td

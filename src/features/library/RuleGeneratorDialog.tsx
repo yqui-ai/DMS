@@ -62,8 +62,13 @@ export function RuleGeneratorDialog({ open, onClose }: { open: boolean; onClose:
         expression, version: 'v1.0.0', class: scope, origin: 'Custom',
       });
       if (error) throw error;
-      await queryClient.invalidateQueries({ queryKey: ['rules', effectiveSubprojectId] });
-      await queryClient.invalidateQueries({ queryKey: ['rules-all'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['rules', effectiveSubprojectId] }),
+        queryClient.invalidateQueries({ queryKey: ['rules-all'] }),
+        // The Library > Rule catalogue this dialog is launched from — without this the rule it just
+        // saved doesn't appear in the list behind the dialog.
+        queryClient.invalidateQueries({ queryKey: ['rules-library'] }),
+      ]);
       toast.success(`Rule ${code} saved to catalog${obj ? ` for ${obj.objectId}` : ''}.`);
       setDescription(''); setExpression(null); setObjectId('');
       onClose();

@@ -96,7 +96,7 @@ export function useLibraryFmds() {
         const row = {
           id: f.id, subprojectId: f.subproject_id ?? undefined, migrationObjectId: f.migration_object_id ?? undefined, name: f.name,
           class: f.class, type: f.type, displayId: f.display_id ?? undefined, aiGenerated: !!f.ai_generated,
-          histSourceName: f.hist_source_name ?? undefined, histPlant: f.hist_plant ?? undefined,
+          histSourceName: f.hist_source_name ?? undefined, histPlant: f.hist_plant ?? undefined, owner: f.owner ?? undefined,
           reference: formatLibraryReference(f.class, programCode, projectCode),
           latestVersion: latest?.version as string | undefined, latestVersionId: latest?.id as string | undefined,
           createdBy: first?.created_by ?? undefined, createdAt: first?.created_at ?? undefined,
@@ -466,6 +466,23 @@ export async function findHistoricalLineage(histSourceName: string, histPlant: s
     .from('fmd_versions').select('sheets').eq('fmd_id', fmd.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
   if (versionError) throw versionError;
   return { fmdId: fmd.id, rows: (versionRows?.sheets?.generatedTables as GeneratedTable[] | undefined) ?? [] };
+}
+
+/** Claims or reassigns an FMD's owner — the gate for who's allowed to post a field note
+ * (src/lib/queries/fmdFieldNotes.ts). Anyone can call this (no extra permission check beyond the
+ * usual RLS membership gate); "owner" is a workflow designation, not itself access-controlled. */
+export function useSetFmdOwner() {
+  const queryClient = useQueryClient();
+  return {
+    async setOwner(fmdId: string, owner: string | null): Promise<void> {
+      const { error } = await supabase.from('fmds').update({ owner }).eq('id', fmdId);
+      if (error) throw error;
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['fmds-library'] }),
+        queryClient.invalidateQueries({ queryKey: ['fmds-all'] }),
+      ]);
+    },
+  };
 }
 
 export function useFmdVersionMutations(fmdId: string) {

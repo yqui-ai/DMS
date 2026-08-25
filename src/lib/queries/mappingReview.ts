@@ -5,13 +5,12 @@ import { invokeAiTask } from './aiEdgeFunction';
 import { OPTIONAL_FIELDS } from '../mappingRulePolicy';
 import type { FmdVersion, GeneratedColumn, GeneratedTable, MappingReview, MappingReviewFinding } from '../../types/entities';
 
-const BATCH_SIZE = 15;
-const ROW_ID_SEP = '::';
+const BATCH_SIZE = 10;
 
 /** AI audit of a Custom FMD's generated rows against the mapping rule policy
  * (src/lib/mappingRulePolicy.ts) — completeness (every field populated except SRC/TGT_CHECK_TABLE)
  * plus the per-MAPPING_TYPE format rules (COPY needs "1:1" + table-field, DEFAULT needs a literal
- * value assignment, XREF needs the xref name in both rule fields). Runs per structure, batched 15
+ * value assignment, XREF needs the xref name in both rule fields). Runs per structure, batched 10
  * rows at a time so one large FMD can't blow past a single call's output budget — the whole
  * judgment is AI (nothing here is a deterministic shortcut), batching is purely about not repeating
  * the "one giant call" reliability problem hit earlier with historical conversion. A batch that
@@ -26,15 +25,15 @@ export function useMappingReview() {
       const findings: MappingReviewFinding[] = [];
 
       for (const table of tables) {
-        const rows = table.rows.map((row, i) => ({ id: `${table.structureId}${ROW_ID_SEP}${i}`, structureIdent: table.structureIdent, fields: row }));
+        // Just the row index — structureIdent is sent once per request now, not repeated on every
+        // row (every row in one batch is always from the same table; see aiEdgeFunction.ts).
+        const rows = table.rows.map((row, i) => ({ id: String(i), fields: row }));
         for (let start = 0; start < rows.length; start += BATCH_SIZE) {
           const batch = rows.slice(start, start + BATCH_SIZE);
           try {
-            const data = await invokeAiTask({ task: 'mapping-review', rows: batch, optionalFields: OPTIONAL_FIELDS });
+            const data = await invokeAiTask({ task: 'mapping-review', structureIdent: table.structureIdent, rows: batch, optionalFields: OPTIONAL_FIELDS });
             for (const f of (data?.findings ?? []) as { id: string; field?: string; severity: string; issue: string }[]) {
-              const sepIdx = f.id.lastIndexOf(ROW_ID_SEP);
-              if (sepIdx === -1) continue;
-              const rowIndex = Number(f.id.slice(sepIdx + ROW_ID_SEP.length));
+              const rowIndex = Number(f.id);
               const row = table.rows[rowIndex];
               if (!row) continue;
               findings.push({
