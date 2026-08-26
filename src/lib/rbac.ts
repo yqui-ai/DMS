@@ -20,5 +20,13 @@ export const canView = (role: RoleId, screen: ScreenKey) => {
 /** Screens hidden until the active subproject has scope_finalized = true */
 export const SCOPE_GATED: ScreenKey[] = ['rules', 'referenceData', 'migration', 'quality', 'cutover', 'promotions', 'jobMonitor'];
 
+/** Roles that may publish an FMD version regardless of who owns the object. Ownership says who is
+ * RESPONSIBLE for a document; these roles are accountable for the programme's governance and must
+ * not be locked out by an object nobody has been assigned yet — which was the actual effect of
+ * gating publish on ownership alone. */
+const PUBLISHER_ROLES: RoleId[] = ['program_admin', 'data_governance_lead', 'data_owner'];
+
+export const canPublish = (role: RoleId, isOwner: boolean) => isOwner || PUBLISHER_ROLES.includes(role);
+
 export const deniedMessage = (role: string, label: string) =>
   `As "${role}", this role has no access to ${label}. Restricted by the approval workflow matrix.`;

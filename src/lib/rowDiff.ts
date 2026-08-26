@@ -83,6 +83,45 @@ export function buildDiffSummary(
   return lines.join('\n');
 }
 
+/** A one-or-two-line "what moved" summary across every structure, for the automatic comparison
+ * recorded whenever a new version is created. Deliberately counts rather than lists: the full
+ * line-by-line diff already exists as the version comment and as the yellow changed-cell highlight
+ * in the viewer, so repeating it here would just be a third copy. Entirely deterministic — no AI,
+ * so it can never fail or come back empty. Returns null when there's nothing to compare against
+ * (a first version), which is different from "nothing changed". */
+export function summariseVersionChange(
+  previousTables: GeneratedTable[] | undefined, currentTables: GeneratedTable[] | undefined,
+): string | null {
+  if (!previousTables?.length || !currentTables?.length) return null;
+  let changedRows = 0; let changedCells = 0; let added = 0; let removed = 0;
+  const touched: string[] = [];
+  const newStructures: string[] = [];
+
+  for (const table of currentTables) {
+    const prev = previousTables.find((t) => t.structureId === table.structureId);
+    if (!prev) { newStructures.push(table.structureIdent); continue; }
+    const { changedByRowKey, addedRowKeys, removedRowKeys } = diffRows(prev.rows, table.rows);
+    const cells = [...changedByRowKey.values()].reduce((n, s) => n + s.size, 0);
+    if (changedByRowKey.size || addedRowKeys.size || removedRowKeys.size) touched.push(table.structureIdent);
+    changedRows += changedByRowKey.size; changedCells += cells;
+    added += addedRowKeys.size; removed += removedRowKeys.size;
+  }
+  const droppedStructures = previousTables
+    .filter((p) => !currentTables.some((c) => c.structureId === p.structureId))
+    .map((p) => p.structureIdent);
+
+  const parts: string[] = [];
+  if (changedRows > 0) parts.push(`${changedRows} field${changedRows === 1 ? '' : 's'} changed (${changedCells} value${changedCells === 1 ? '' : 's'})`);
+  if (added > 0) parts.push(`${added} added`);
+  if (removed > 0) parts.push(`${removed} removed`);
+  if (newStructures.length) parts.push(`new structure${newStructures.length === 1 ? '' : 's'}: ${newStructures.join(', ')}`);
+  if (droppedStructures.length) parts.push(`structure${droppedStructures.length === 1 ? '' : 's'} no longer present: ${droppedStructures.join(', ')}`);
+
+  if (parts.length === 0) return 'No field-level changes from the previous version.';
+  const where = touched.length ? ` Affected: ${touched.join(', ')}.` : '';
+  return `${parts.join(', ')}.${where}`;
+}
+
 /** changedByRowKey per table (keyed by structureId) between two versions' generatedTables — the
  * FMD viewer diffs the selected version against the one immediately before it and highlights every
  * changed cell. Undefined tables (a structure that didn't exist in the previous version) are simply

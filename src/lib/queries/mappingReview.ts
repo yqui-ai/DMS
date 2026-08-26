@@ -7,6 +7,15 @@ import type { FmdVersion, GeneratedColumn, GeneratedTable, MappingReview, Mappin
 
 const BATCH_SIZE = 10;
 
+/** Every review on a version, oldest first, reading the current list key and folding in a review
+ * saved under the pre-multi-review single key. Always use this instead of touching either key —
+ * it's the one place the legacy shape is understood. */
+export function readMappingReviews(sheets: FmdVersion['sheets'] | undefined): MappingReview[] {
+  if (!sheets) return [];
+  if (sheets.mappingReviews?.length) return sheets.mappingReviews;
+  return sheets.mappingReview ? [sheets.mappingReview] : [];
+}
+
 /** AI audit of a Custom FMD's generated rows against the mapping rule policy
  * (src/lib/mappingRulePolicy.ts) — completeness (every field populated except SRC/TGT_CHECK_TABLE)
  * plus the per-MAPPING_TYPE format rules (COPY needs "1:1" + table-field, DEFAULT needs a literal
@@ -56,12 +65,20 @@ export function useMappingReview() {
       return findings;
     },
 
-    /** Saves the review onto the version it was run against — an assessment of existing content,
+    /** Appends the review to the version it was run against — an assessment of existing content,
      * not new mapping content, so it's a plain update to the same version row rather than a new
-     * version bump. */
+     * version bump. Appends rather than overwrites: a version gets reviewed repeatedly (after
+     * fixes, or by a second reviewer) and comparing runs is the point of keeping them. */
     async save(versionId: string, currentSheets: FmdVersion['sheets'], findings: MappingReviewFinding[]): Promise<void> {
-      const mappingReview: MappingReview = { reviewedBy: user?.email ?? 'Unknown', reviewedAt: new Date().toISOString(), findings };
-      const { error } = await supabase.from('fmd_versions').update({ sheets: { ...currentSheets, mappingReview } }).eq('id', versionId);
+      const review: MappingReview = {
+        id: crypto.randomUUID(),
+        reviewedBy: user?.email ?? 'Unknown', reviewedAt: new Date().toISOString(), findings,
+      };
+      const sheets = { ...currentSheets, mappingReviews: [...readMappingReviews(currentSheets), review] };
+      // The legacy single-review key is folded into the list by readMappingReviews above, so drop
+      // it rather than leaving a stale duplicate of the first review behind.
+      delete (sheets as { mappingReview?: unknown }).mappingReview;
+      const { error } = await supabase.from('fmd_versions').update({ sheets }).eq('id', versionId);
       if (error) throw error;
       await queryClient.invalidateQueries({ queryKey: ['fmd-versions'] });
     },
