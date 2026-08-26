@@ -23,12 +23,12 @@ export const NAV_GROUPS: NavGroup[] = [
   ]},
   { title: 'DESIGN', items: [
     { key: 'preparation', label: 'Scope', icon: 'layers', to: 'scope' },
-    { key: 'rules', label: 'Rules & XREF', icon: 'shield-check', to: 'rules' },
+    { key: 'rules', label: 'Rules & XREF', icon: 'scale', to: 'rules' },
     { key: 'referenceData', label: 'Reference Data', icon: 'book-open', to: 'reference-data' },
   ]},
   { title: 'EXECUTION', items: [
     { key: 'migration', label: 'Data Migration', icon: 'shuffle', to: 'migration' },
-    { key: 'quality', label: 'Data Quality', icon: 'shield-check', to: 'quality' },
+    { key: 'quality', label: 'Data Quality', icon: 'badge-check', to: 'quality' },
     { key: 'cutover', label: 'Cutover', icon: 'flag', to: 'cutover' },
   ]},
   { title: 'GOVERNANCE', items: [
@@ -39,7 +39,7 @@ export const NAV_GROUPS: NavGroup[] = [
     { key: 'catalogObjects', label: 'Migration Object', icon: 'database', to: 'library/objects', standalone: () => '/library/objects' },
     { key: 'catalogFmds', label: 'Field Mapping', icon: 'files', to: 'library/fmds', standalone: () => '/library/fmds' },
     { key: 'catalogRules', label: 'Rule', icon: 'list-checks', to: 'library/rules', standalone: () => '/library/rules' },
-    { key: 'catalogXref', label: 'Cross Reference (XREF)', icon: 'shuffle', to: 'library/xref', standalone: () => '/library/xref' },
+    { key: 'catalogXref', label: 'Cross Reference (XREF)', icon: 'arrow-left-right', to: 'library/xref', standalone: () => '/library/xref' },
   ]},
   { title: 'SYSTEMS', items: [{ key: 'connections', label: 'Connections', icon: 'plug', to: '/systems/connections' }] },
 ];

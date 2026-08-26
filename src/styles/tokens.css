@@ -5,11 +5,21 @@
   --blue:#0a4f8c; --blue-deep:#003a70; --blue-mid:#3d7dbd; --blue-light:#e8f0f9; --blue-pale:#f3f7fb;
   --red:#da291c; --red-light:#fdecea;
   --text:#1d2129; --muted:#69707c; --line:#e6e9ee;
+  /* --line-strong: the visible border on form controls (inputs, selects, textareas) — deliberately
+     darker than --line, which is for dividers between areas. --surface-3: the tint behind table
+     header rows and other "chrome" strips, one step past --surface-2.
+     These two exist because they were previously hardcoded as #d6dbe2 (x42) and #eef1f5 (x31)
+     directly in components, which meant they never swapped in dark mode — table headers stayed
+     near-white on a near-black page. Never reintroduce those literals. */
+  --line-strong:#d6dbe2; --surface-3:#eef1f5;
+  /* Row rules inside a dense grid — deliberately fainter than --line, which divides areas. */
+  --line-soft:#f0f2f5;
   --r:10px;
 }
 .dark{
   --bg:#12151b; --surface:#1b1f27; --surface-2:#20242c;
   --text:#e7eaf0; --muted:#9aa3af; --line:#31363f;
+  --line-strong:#3d434e; --surface-3:#262b34; --line-soft:#252a32;
   --blue-light:#1c3350; --blue-pale:#182534;
 }
 
@@ -30,6 +40,17 @@ body{
 }
 /* monospace used for every technical identifier (table, field, job, variable, run id) */
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+/* Keyboard focus, globally. Previously only 3 of 24 shared components defined a focus style, so
+   most of the app was unusable by keyboard — including ToolbarButton, one of the most-used
+   controls. Setting it here covers every element at once (including the many raw <button>s inside
+   dialogs); components only need their own rule where this outline would clip badly.
+   :focus-visible, not :focus — mouse users never see it, keyboard users always do. */
+:focus-visible{
+  outline:2px solid var(--blue-mid);
+  outline-offset:1px;
+  border-radius:4px;
+}
 
 /* Elevation */
 .card-shadow{box-shadow:0 1px 2px rgba(22,28,40,.06),0 0 0 1px rgba(22,28,40,.04)}

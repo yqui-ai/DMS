@@ -10,8 +10,8 @@ export const dmsTheme: Config['theme'] = {
     colors: {
       ink: { DEFAULT: '#16191f', 2: '#20242c', 3: '#2a2f39' },
       bg: 'var(--bg)',
-      surface: { DEFAULT: 'var(--surface)', 2: 'var(--surface-2)' },
-      line: 'var(--line)',
+      surface: { DEFAULT: 'var(--surface)', 2: 'var(--surface-2)', 3: 'var(--surface-3)' },
+      line: { DEFAULT: 'var(--line)', strong: 'var(--line-strong)', soft: 'var(--line-soft)' },
       text: 'var(--text)',
       muted: 'var(--muted)',
       blue: { DEFAULT: '#0a4f8c', deep: '#003a70', mid: '#3d7dbd', light: '#e8f0f9', pale: '#f3f7fb' },
@@ -28,19 +28,23 @@ export const dmsTheme: Config['theme'] = {
       mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
     },
     fontSize: {
-      // the prototype uses half-pixel sizes deliberately — keep them
-      '2xs': ['10.5px', '1.35'],
-      xs2: ['11px', '1.4'],
-      xs: ['11.5px', '1.45'],
-      sm2: ['12px', '1.45'],
-      sm: ['12.5px', '1.5'],
-      base: ['13.5px', '1.5'],
-      md: ['14px', '1.5'],
-      lg: ['15px', '1.45'],
-      xl: ['16px', '1.4'],
-      '2xl': ['19px', '1.3'],
-      '3xl': ['21px', '1.25'],
-      kpi: ['22px', '1.1'],
+      // FOUR real steps — 10.5 / 12 / 14 / 16 — plus kpi for big numbers. The scale previously had
+      // twelve sizes with seven of them between 10.5px and 14px; 0.5px apart is invisible as
+      // hierarchy but very visible as misalignment, which is why the UI never looked settled.
+      '2xs': ['10.5px', '1.35'],   // micro labels, timestamps, counts
+      sm2: ['12px', '1.45'],       // body, tables, form controls — the default
+      md: ['14px', '1.45'],        // emphasis, subheads
+      xl: ['16px', '1.35'],        // page and dialog titles
+      kpi: ['22px', '1.1'],        // KPI figures only
+      // Retired names, aliased to the nearest survivor so old markup keeps rendering correctly.
+      // Don't use these in new code.
+      xs2: ['10.5px', '1.35'],
+      xs: ['10.5px', '1.35'],
+      sm: ['12px', '1.45'],
+      base: ['12px', '1.45'],
+      lg: ['14px', '1.45'],
+      '2xl': ['16px', '1.35'],
+      '3xl': ['16px', '1.35'],
     },
     borderRadius: { sm: '6px', DEFAULT: '8px', md: '9px', lg: '10px', xl: '11px', '2xl': '12px', pill: '999px' },
     boxShadow: {
@@ -73,10 +77,10 @@ export const dmsTheme: Config['theme'] = {
  *     variable     → bg-amber-bg text-amber-ink
  *
  * Card    bg-surface rounded-lg shadow-card p-4..p-5
- * Input   w-full text-base bg-surface border border-[#d6dbe2] rounded-[8px] px-[11px] py-2 min-h-[38px]
+ * Input   w-full text-base bg-surface border border-line-strong rounded-[8px] px-[11px] py-2 min-h-[38px]
  *         hover:border-[#b9c1cc] focus-visible:border-blue-mid focus-visible:ring-4 focus-visible:ring-blue-light
  * Field label: block text-sm2 font-semibold text-muted mb-[5px]
- * Table   th: 11.5px/700 uppercase tracking-[.04em] text-muted bg-[#eef1f5] px-3.5 py-2.5 sticky top-0
+ * Table   th: 11.5px/700 uppercase tracking-[.04em] text-muted bg-surface-3 px-3.5 py-2.5 sticky top-0
  *         td: px-3.5 py-2.5 border-t border-line;  .num: text-right tabular-nums
  *         row hover: bg-blue-pale;  selected row: bg-blue-light
  * KPI     number 22px/700, label 11.5px/600 uppercase tracking-[.04em] text-muted

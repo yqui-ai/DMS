@@ -14,7 +14,7 @@ export function Field({ label, htmlFor, error, hint, children }: FieldProps) {
     <div>
       <label htmlFor={htmlFor} className="block text-sm2 font-semibold text-muted mb-[5px]">{label}</label>
       {children}
-      {error ? <p className="mt-1 text-xs text-red">{error}</p> : hint ? <p className="mt-1 text-xs text-muted">{hint}</p> : null}
+      {error ? <p className="mt-1 text-2xs text-red">{error}</p> : hint ? <p className="mt-1 text-2xs text-muted">{hint}</p> : null}
     </div>
   );
 }
@@ -23,7 +23,7 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
   return (
     <input
       className={clsx(
-        'w-full text-base bg-surface border border-[#d6dbe2] rounded-[8px] px-[11px] py-2 min-h-[38px]',
+        'w-full text-sm2 bg-surface border border-line-strong rounded-[8px] px-[11px] py-2 min-h-[38px]',
         'hover:border-[#b9c1cc] focus-visible:outline-none focus-visible:border-blue-mid focus-visible:ring-4 focus-visible:ring-blue-light',
         className,
       )}

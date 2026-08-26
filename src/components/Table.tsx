@@ -67,7 +67,7 @@ export function Table<T>({ columns, rows, rowKey, onRowClick, rowClickable, sele
 
   return (
     <div className={clsx('overflow-hidden', !dense && 'rounded-lg shadow-card')}>
-      {/* text-sm2 (not text-base) here is load-bearing for consistency: this is the ONE place body
+      {/* text-sm2 (not text-sm2) here is load-bearing for consistency: this is the ONE place body
           text size was left to inherit the browser/Tailwind default instead of matching every
           hand-rolled table in the app (FMD viewers, Roles/Approvals tabs, dense mode of this same
           component) — which all already use text-sm2. Individual columns' own `sm2` overrides
@@ -84,8 +84,8 @@ export function Table<T>({ columns, rows, rowKey, onRowClick, rowClickable, sele
                     style={{ width: col.width }}
                     onClick={() => toggleSort(col)}
                     className={clsx(
-                      'font-bold uppercase tracking-[.04em] text-muted bg-[#eef1f5] sticky top-0 text-left z-[1]',
-                      dense ? 'text-2xs px-2.5 py-1.5' : 'text-xs px-3.5 py-2.5',
+                      'font-bold uppercase tracking-[.04em] text-muted bg-surface-3 sticky top-0 text-left z-[1]',
+                      dense ? 'text-2xs px-2.5 py-1.5' : 'text-2xs px-3.5 py-2.5',
                       col.numeric && 'text-right',
                       col.frozen && 'sticky right-0 shadow-frozenCol',
                       col.sortValue && 'cursor-pointer select-none hover:text-text',
@@ -108,22 +108,34 @@ export function Table<T>({ columns, rows, rowKey, onRowClick, rowClickable, sele
           </thead>
           <tbody>
             {paged.length === 0 && (
-              <tr><td colSpan={columns.length} className="px-3.5 py-8 text-center text-muted text-sm">{emptyMessage}</td></tr>
+              <tr><td colSpan={columns.length} className="px-3.5 py-8 text-center text-muted text-sm2">{emptyMessage}</td></tr>
             )}
             {paged.map((row) => {
               const key = rowKey(row);
               const selected = key === selectedKey;
               const clickable = !!onRowClick && (rowClickable?.(row) ?? true);
+              // Hover highlights the whole ROW here, not the cell. A list row is one record and you
+              // scan it left to right, so the row is the unit; per-cell highlighting belongs to the
+              // FMD grid, where a row is far wider than the screen and the question is "which cell
+              // am I on". Don't copy that treatment back into this component.
               return (
                 <tr
                   key={key}
                   onClick={clickable ? () => onRowClick!(row) : undefined}
-                  className={clsx('border-t border-line', clickable && 'cursor-pointer hover:bg-blue-pale', selected && 'bg-blue-light')}
+                  className={clsx(
+                    'border-t border-line-soft transition-colors',
+                    clickable ? 'cursor-pointer hover:bg-blue-pale' : 'hover:bg-surface-2',
+                    selected && 'bg-blue-light',
+                  )}
                 >
                   {columns.map((col) => (
                     <td
                       key={col.key}
-                      className={clsx(dense ? 'px-2.5 py-1.5 text-sm2' : 'px-3.5 py-2.5', col.numeric && 'text-right tabular-nums', col.frozen && 'sticky right-0 bg-surface shadow-frozenCol')}
+                      className={clsx(
+                        dense ? 'px-2.5 py-1.5 text-sm2' : 'px-3.5 py-2.5',
+                        col.numeric && 'text-right tabular-nums',
+                        col.frozen && 'sticky right-0 bg-surface shadow-frozenCol',
+                      )}
                     >
                       {col.render(row)}
                     </td>
@@ -135,7 +147,7 @@ export function Table<T>({ columns, rows, rowKey, onRowClick, rowClickable, sele
         </table>
       </div>
       {rows.length > pageSize && (
-        <div className="flex items-center justify-between px-3.5 py-2.5 border-t border-line text-sm text-muted">
+        <div className="flex items-center justify-between px-3.5 py-2.5 border-t border-line text-sm2 text-muted">
           <span>{page * pageSize + 1}–{Math.min(rows.length, (page + 1) * pageSize)} of {rows.length}</span>
           <div className="flex gap-1.5">
             <button disabled={page === 0} onClick={() => setPage((p) => p - 1)} className="px-2 py-1 rounded hover:bg-blue-pale disabled:opacity-40">Prev</button>

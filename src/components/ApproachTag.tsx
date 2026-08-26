@@ -40,11 +40,11 @@ export function ApproachTag({ approach, className }: { approach?: string | null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [approach]);
 
-  if (!approach) return <span className="text-sm text-muted">—</span>;
+  if (!approach) return <span className="text-sm2 text-muted">—</span>;
 
   return (
     <span ref={containerRef} className="block w-full min-w-0" title={labels.big}>
-      <span ref={measureRef} aria-hidden className="fixed -top-[999px] -left-[999px] whitespace-nowrap text-xs font-semibold pointer-events-none" />
+      <span ref={measureRef} aria-hidden className="fixed -top-[999px] -left-[999px] whitespace-nowrap text-2xs font-semibold pointer-events-none" />
       <ColorTag colorKey={approach} className={className}>{labels[size]}</ColorTag>
     </span>
   );

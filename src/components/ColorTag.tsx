@@ -7,7 +7,7 @@ import { groupColorClasses } from '../lib/tagColor';
  * glance, not signaling status. */
 export function ColorTag({ colorKey, children, className }: { colorKey: string | null | undefined; children: ReactNode; className?: string }) {
   return (
-    <span className={clsx('inline-flex items-center gap-[5px] text-xs font-semibold px-2.5 py-[3px] rounded-pill', groupColorClasses(colorKey), className)}>
+    <span className={clsx('inline-flex items-center gap-[5px] text-2xs font-semibold px-2.5 py-[3px] rounded-pill', groupColorClasses(colorKey), className)}>
       {children}
     </span>
   );

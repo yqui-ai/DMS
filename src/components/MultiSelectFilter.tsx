@@ -38,8 +38,14 @@ export function MultiSelectFilter({ label, options, selected, onChange, formatOp
       <button
         onClick={() => setOpen((o) => !o)}
         className={clsx(
-          'flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-[8px] border max-w-[220px]',
-          selected.length > 0 ? 'border-blue text-blue bg-blue-pale font-semibold' : 'border-[#d6dbe2] bg-surface text-text',
+          // Inactive filters are deliberately quiet — muted text, no border, no fill — so a toolbar
+          // row of six of them recedes behind the data instead of competing with it. An ACTIVE
+          // filter earns the border and blue fill, which makes "something is filtering this list"
+          // visible at a glance rather than something you have to read the row to discover.
+          'flex items-center gap-1.5 text-sm2 px-2.5 py-1.5 rounded-[8px] border max-w-[220px]',
+          selected.length > 0
+            ? 'border-blue text-blue bg-blue-pale font-semibold'
+            : 'border-transparent bg-transparent text-muted hover:text-text hover:bg-surface-2',
         )}
       >
         <span className="truncate">{summary}</span>
@@ -48,17 +54,17 @@ export function MultiSelectFilter({ label, options, selected, onChange, formatOp
       {open && (
         <div className="absolute left-0 mt-1 min-w-[220px] max-h-72 overflow-auto bg-surface rounded-[8px] shadow-cardHover py-1.5 z-20">
           {selected.length > 0 && (
-            <button onClick={() => onChange([])} className="w-full text-left px-3 py-1.5 text-xs font-semibold text-blue hover:bg-blue-pale">
+            <button onClick={() => onChange([])} className="w-full text-left px-3 py-1.5 text-2xs font-semibold text-blue hover:bg-blue-pale">
               Clear selection
             </button>
           )}
           {sorted.map((opt) => (
-            <label key={opt} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-blue-pale cursor-pointer">
+            <label key={opt} className="flex items-center gap-2 px-3 py-1.5 text-sm2 hover:bg-blue-pale cursor-pointer">
               <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)} className="w-3.5 h-3.5 accent-[var(--blue)] shrink-0" />
               <span className="truncate">{display(opt)}</span>
             </label>
           ))}
-          {sorted.length === 0 && <div className="px-3 py-1.5 text-sm text-muted">No options.</div>}
+          {sorted.length === 0 && <div className="px-3 py-1.5 text-sm2 text-muted">No options.</div>}
         </div>
       )}
     </div>

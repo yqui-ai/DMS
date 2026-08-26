@@ -1,6 +1,6 @@
 import { NavLink, useParams } from 'react-router-dom';
 import * as icons from 'lucide-react';
-import { ChevronsLeft, ChevronsRight } from 'lucide-react';
+const { ChevronsLeft, ChevronsRight } = icons;
 import clsx from 'clsx';
 import { NAV_GROUPS, type NavItem } from '../nav';
 import { canView, SCOPE_GATED } from '../../lib/rbac';
@@ -41,7 +41,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       )}
     >
       <div className="flex items-center h-14 px-3.5 border-b border-line shrink-0">
-        {!collapsed && <span className="font-bold text-lg text-text truncate">DMS</span>}
+        {!collapsed && <span className="font-bold text-xl text-text truncate">DMS</span>}
         <button
           onClick={onToggle}
           className={clsx('ml-auto text-muted hover:text-text p-1.5 rounded hover:bg-blue-pale', collapsed && 'mx-auto')}
@@ -80,7 +80,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                     title={collapsed ? item.label : undefined}
                     className={({ isActive }) =>
                       clsx(
-                        'flex items-center gap-2.5 mx-2 px-2 py-2 rounded-[8px] text-sm font-semibold truncate',
+                        'flex items-center gap-2.5 mx-2 px-2 py-2 rounded-[8px] text-sm2 font-semibold truncate',
                         isActive ? 'bg-blue text-white' : 'text-text hover:bg-blue-pale',
                       )
                     }

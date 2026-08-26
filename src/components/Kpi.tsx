@@ -14,7 +14,7 @@ export function Kpi({ label, value, accent = 'muted' }: KpiProps) {
   return (
     <div>
       <div className={clsx('text-kpi font-bold', ACCENT_CLASSES[accent])}>{value}</div>
-      <div className="text-sm font-semibold uppercase tracking-[.04em] text-muted mt-1">{label}</div>
+      <div className="text-sm2 font-semibold uppercase tracking-[.04em] text-muted mt-1">{label}</div>
     </div>
   );
 }
