@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
+import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
+import { SelectAllToggle } from '../../components/SelectAllToggle';
 import { Select } from '../../components/Select';
 import { useParams } from 'react-router-dom';
-import { CheckCircle2, FileSpreadsheet, RefreshCw, Sparkles } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronRight, FileSpreadsheet, RefreshCw, Sparkles } from 'lucide-react';
 import clsx from 'clsx';
 import { Dialog } from '../../components/Dialog';
 import { Button } from '../../components/Button';
@@ -106,6 +108,10 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
   const [step, setStep] = useState<Step>('upload');
   const [subprojectId, setSubprojectId] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  // A conversion in progress is unrepeatable work: the picked file lives in browser memory only, so
+  // navigating away means finding and re-uploading it. Pending updates are worse — those are
+  // reviewed changes that were never saved.
+  const conversionInFlight = () => !!file || pendingUpdates.some((u) => !u.skip);
   const [busy, setBusy] = useState(false);
 
   const [baseName, setBaseName] = useState('');
@@ -118,6 +124,9 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
   const [progress, setProgress] = useState<{ done: number; total: number; failed: string[] }>({ done: 0, total: 0, failed: [] });
   const [created, setCreated] = useState(0);
   const [pendingUpdates, setPendingUpdates] = useState<PendingUpdate[]>([]);
+  /** Which update cards are open, by plant. A single update opens on its own — collapsing the only
+   * thing on screen just hides the answer — but several stay closed so the list reads as a list. */
+  const [expandedUpdates, setExpandedUpdates] = useState<string[]>([]);
   const [savingUpdates, setSavingUpdates] = useState(false);
 
   // Per-plant "does a tracked FMD already exist for this?" — checked once, up front, when the plan
@@ -138,7 +147,7 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
     setSubprojectId(''); setFile(null); setBusy(false);
     setBaseName(''); setUploadedFileName(''); setMatchNotice(null); setHistoricalRaw(null);
     setSelectedSheets(new Set()); setPlants([]); setSelectedPlants(new Set());
-    setProgress({ done: 0, total: 0, failed: [] }); setCreated(0); setPendingUpdates([]); setSavingUpdates(false);
+    setProgress({ done: 0, total: 0, failed: [] }); setCreated(0); setPendingUpdates([]); setExpandedUpdates([]); setSavingUpdates(false);
     setPlantLineage({}); setCheckingLineage(false); setConvertCache({});
     setCompareTarget(null); setComparing(false); setCompareSummary(null);
   }, [open]);
@@ -349,6 +358,7 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
 
     setCreated(newlyCreated);
     setPendingUpdates(updates);
+    setExpandedUpdates(updates.length === 1 ? [updates[0].plant ?? ''] : []);
 
     if (updates.length > 0) {
       setStep('review');
@@ -368,6 +378,7 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
     onClose();
   };
 
+  const allUpdatesExpanded = pendingUpdates.length > 0 && pendingUpdates.every((u) => expandedUpdates.includes(u.plant ?? ''));
   const updateSummary = (plant: string | null, summary: string) => setPendingUpdates((u) => u.map((x) => (x.plant === plant ? { ...x, summary } : x)));
   const toggleSkipUpdate = (plant: string | null) => setPendingUpdates((u) => u.map((x) => (x.plant === plant ? { ...x, skip: !x.skip } : x)));
 
@@ -395,6 +406,8 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
   };
 
   return (
+    <>
+    <UnsavedChangesGuard when={open && conversionInFlight()} what="This conversion" />
     <Dialog
       open={open} onClose={onClose} title="Convert Historical FMD" size={step === 'review' ? 'win' : 'lg'} variant="ai"
       processing={busy || step === 'converting' || savingUpdates}
@@ -461,10 +474,10 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
         <div className="flex flex-col gap-3.5">
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm2 text-muted">Pick which parsed sheets actually contain field-mapping data — likely candidates are pre-checked.</p>
-            <div className="flex items-center gap-2 shrink-0">
-              <button onClick={selectAllSheets} className="text-2xs font-semibold text-blue hover:underline">Select all</button>
-              <button onClick={deselectAllSheets} className="text-2xs font-semibold text-blue hover:underline">Deselect all</button>
-            </div>
+            <SelectAllToggle
+              allSelected={!!historicalRaw.sheets.length && selectedSheets.size === historicalRaw.sheets.length}
+              onSelectAll={selectAllSheets} onDeselectAll={deselectAllSheets}
+            />
           </div>
           <SheetGroup
             title="Suggested" sheets={historicalRaw.sheets.filter((s) => SUGGESTED_SHEET_PATTERN.test(s.name))}
@@ -494,10 +507,10 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
                     : `Found ${plants.length} distinct Plant${plants.length === 1 ? '' : 's'} — pick which ones to generate an FMD for.`}
                 </p>
                 {plants.length > 0 && (
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button onClick={selectAllPlants} className="text-2xs font-semibold text-blue hover:underline">Select all</button>
-                    <button onClick={deselectAllPlants} className="text-2xs font-semibold text-blue hover:underline">Deselect all</button>
-                  </div>
+                  <SelectAllToggle
+                    allSelected={selectedPlants.size === plants.length}
+                    onSelectAll={selectAllPlants} onDeselectAll={deselectAllPlants}
+                  />
                 )}
               </div>
               <div className="rounded-lg shadow-[inset_0_0_0_1px_var(--line)] max-h-72 overflow-auto">
@@ -578,35 +591,72 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
       )}
 
       {step === 'review' && (
-        <div className="h-full flex flex-col gap-3.5">
-          <p className="text-sm2 text-text shrink-0">
-            {created > 0 && <>{created} new FMD{created === 1 ? '' : 's'} already saved. </>}
-            Review what changed for the {pendingUpdates.length} plant{pendingUpdates.length === 1 ? '' : 's'} that already had a tracked FMD before saving the update.
-          </p>
-          <div className="flex-1 min-h-0 overflow-auto flex flex-col gap-4 pr-1">
-            {pendingUpdates.map((u) => (
-              <div key={u.plant ?? 'single'} className={clsx('rounded-lg shadow-[inset_0_0_0_1px_var(--line)] overflow-hidden', u.skip && 'opacity-50')}>
-                <div className="flex items-center justify-between gap-2 px-4 py-3 bg-surface-3 border-b border-line">
-                  <span className="text-md font-mono font-bold text-text">{u.name}</span>
-                  <button onClick={() => toggleSkipUpdate(u.plant)} className="text-2xs font-semibold text-blue hover:underline shrink-0">
-                    {u.skip ? 'Include this update' : 'Skip this one'}
-                  </button>
-                </div>
-                <div className="p-4 flex flex-col gap-4">
-                  <div>
-                    <div className="text-2xs font-bold uppercase tracking-[.04em] text-muted mb-2">What changed</div>
-                    <DiffSummaryPreview summary={u.summary} />
+        <div className="h-full flex flex-col gap-3 min-h-0">
+          <div className="flex items-baseline gap-2 shrink-0 flex-wrap">
+            <p className="text-sm2 text-text">
+              {created > 0 && <>{created} new FMD{created === 1 ? '' : 's'} already saved. </>}
+              Review what changed for {pendingUpdates.length} plant{pendingUpdates.length === 1 ? '' : 's'} that already had a tracked FMD.
+            </p>
+            {pendingUpdates.length > 1 && (
+              <button
+                onClick={() => setExpandedUpdates(allUpdatesExpanded ? [] : pendingUpdates.map((u) => u.plant ?? ''))}
+                className="text-2xs font-semibold text-blue hover:underline ml-auto shrink-0"
+              >
+                {allUpdatesExpanded ? 'Collapse all' : 'Expand all'}
+              </button>
+            )}
+          </div>
+          {/* shrink-0 on each card is what makes this scroll. As flex items in a column they default
+              to shrinking, so three cards squeezed themselves into the visible height and each one
+              clipped its own body — the container never overflowed, so there was nothing to scroll
+              and no scrollbar to suggest anything was missing. */}
+          <div className="flex-1 min-h-0 overflow-auto flex flex-col gap-2.5 pr-1">
+            {pendingUpdates.map((u) => {
+              const key = u.plant ?? '';
+              const open = expandedUpdates.includes(key);
+              return (
+                <div
+                  key={key}
+                  className={clsx('shrink-0 rounded-lg shadow-[inset_0_0_0_1px_var(--line)] overflow-hidden', u.skip && 'opacity-60')}
+                >
+                  {/* The plant leads. Every name in this list shares a long prefix and differs only
+                      in its last four characters, so the FMD name alone told you nothing about which
+                      card you were reading. */}
+                  <div className="flex items-center gap-2.5 px-3.5 py-2.5 bg-surface-3">
+                    <button
+                      onClick={() => setExpandedUpdates((cur: string[]) => (open ? cur.filter((k) => k !== key) : [...cur, key]))}
+                      className="flex items-center gap-2 min-w-0 flex-1 text-left"
+                      aria-expanded={open}
+                    >
+                      {open ? <ChevronDown size={14} className="text-muted shrink-0" /> : <ChevronRight size={14} className="text-muted shrink-0" />}
+                      {u.plant && <Tag variant="table">{u.plant}</Tag>}
+                      <span className="text-sm2 text-muted truncate">{u.name}</span>
+                    </button>
+                    <DiffCounts summary={u.summary} />
+                    <button
+                      onClick={() => toggleSkipUpdate(u.plant)}
+                      className={clsx('text-2xs font-semibold hover:underline shrink-0', u.skip ? 'text-blue' : 'text-red')}
+                    >
+                      {u.skip ? 'Include' : 'Skip'}
+                    </button>
                   </div>
-                  <div>
-                    <div className="text-2xs font-bold uppercase tracking-[.04em] text-muted mb-1.5">Version comment (edit before saving)</div>
-                    <textarea
-                      value={u.summary} onChange={(e) => updateSummary(u.plant, e.target.value)} rows={4} disabled={u.skip}
-                      className="w-full text-sm2 bg-surface border border-line-strong rounded-[8px] px-[11px] py-2 resize-y disabled:opacity-60"
-                    />
-                  </div>
+                  {open && !u.skip && (
+                    <div className="px-3.5 py-3 flex flex-col gap-3 border-t border-line">
+                      <DiffSummaryPreview summary={u.summary} />
+                      <details className="group">
+                        <summary className="text-2xs font-semibold text-blue cursor-pointer hover:underline list-none [&::-webkit-details-marker]:hidden w-fit">
+                          Edit the version comment
+                        </summary>
+                        <textarea
+                          value={u.summary} onChange={(e) => updateSummary(u.plant, e.target.value)} rows={5}
+                          className="w-full mt-1.5 text-sm2 bg-surface border border-line-strong rounded-[8px] px-[11px] py-2 resize-y font-mono"
+                        />
+                      </details>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <div className="flex justify-end gap-2.5 shrink-0">
             <Button variant="secondary" onClick={onClose} disabled={savingUpdates}>Cancel remaining</Button>
@@ -617,6 +667,7 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
         </div>
       )}
     </Dialog>
+    </>
   );
 }
 
@@ -664,44 +715,68 @@ function DiffSummaryPreview({ summary }: { summary: string }) {
   if (isEmpty) return <p className="text-sm2 text-muted">No field-level changes detected.</p>;
 
   return (
-    <div className="flex flex-col gap-2.5">
+    <div className="flex flex-col">
       {standalone.map((e, i) => (
-        <p key={i} className="text-sm2 text-text">
+        <p key={i} className="text-2xs text-muted mb-2">
           {e.kind === 'rename'
-            ? <>Source file renamed from <span className="font-mono font-semibold">{e.from}</span> to <span className="font-mono font-semibold">{e.to}</span>.</>
+            ? <>Source file renamed from <span className="font-mono font-semibold text-text">{e.from}</span> to <span className="font-mono font-semibold text-text">{e.to}</span>.</>
             : e.kind === 'plain' ? e.text : null}
         </p>
       ))}
+      {/* One flat list. Each row group used to be its own bordered card inside a bordered update
+          card inside the dialog — three nested outlines around two lines of text. A tinted strip
+          separates the groups just as well and costs no nesting. */}
       {[...byLabel.entries()].map(([label, changes]) => (
-        <div key={label} className="rounded-[8px] shadow-[inset_0_0_0_1px_var(--line)] overflow-hidden">
-          <div className="flex items-center gap-2 bg-blue-pale px-3 py-1.5 border-b border-line">
-            <Tag variant="table">{label}</Tag>
-            <span className="text-2xs text-muted">{changes.length} field{changes.length === 1 ? '' : 's'} changed</span>
+        <div key={label} className="mt-2 first:mt-0">
+          <div className="flex items-center gap-2 bg-surface-2 px-2.5 py-1 rounded-[6px]">
+            <span className="text-2xs font-mono font-bold text-text">{label}</span>
+            <span className="text-2xs text-muted">{changes.length} field{changes.length === 1 ? '' : 's'}</span>
           </div>
-          <div className="flex flex-col divide-y divide-line">
-            {changes.map((c, i) => (
-              <div key={i} className="px-3 py-2.5">
-                {c.kind === 'changed' ? (
-                  <div className="flex flex-col gap-1.5">
-                    <Tag variant="column" className="w-fit">{c.field}</Tag>
-                    <div className="grid grid-cols-[36px_1fr] gap-x-2 gap-y-1 items-baseline">
-                      <span className="text-2xs font-bold text-red-ink">Was</span>
-                      <span className="text-sm2 text-red-ink line-through decoration-1">{c.was || '—'}</span>
-                      <span className="text-2xs font-bold text-green">Now</span>
-                      <span className="text-sm2 text-green font-semibold">{c.now || '—'}</span>
-                    </div>
-                  </div>
-                ) : c.kind === 'added' ? (
-                  <span className="inline-flex items-center gap-[5px] text-2xs font-semibold px-2.5 py-[3px] rounded-pill bg-green-bg text-green">+ New field mapping</span>
-                ) : (
-                  <Tag variant="danger">− Field mapping removed</Tag>
-                )}
-              </div>
-            ))}
-          </div>
+          {changes.map((c, i) => (
+            <div key={i} className="px-2.5 py-1.5 border-b border-line-soft last:border-b-0">
+              {c.kind === 'changed' ? (
+                // Label and both values on one grid, so field names line up down the column and
+                // Was/Now sit on the same left edge instead of stepping in and out per row.
+                <div className="grid grid-cols-[minmax(120px,auto)_36px_1fr] gap-x-2.5 gap-y-0.5 items-baseline">
+                  <span className="text-2xs font-mono font-bold text-teal row-span-2 truncate" title={c.field}>{c.field}</span>
+                  <span className="text-2xs font-bold text-red-ink">Was</span>
+                  <span className="text-sm2 text-red-ink line-through decoration-1 break-words">{c.was || '—'}</span>
+                  <span className="text-2xs font-bold text-green">Now</span>
+                  <span className="text-sm2 text-green font-semibold break-words">{c.now || '—'}</span>
+                </div>
+              ) : (
+                <span className={clsx('text-sm2 font-semibold', c.kind === 'added' ? 'text-green' : 'text-red')}>
+                  {c.kind === 'added' ? '+ New field mapping' : '− Field mapping removed'}
+                </span>
+              )}
+            </div>
+          ))}
         </div>
       ))}
     </div>
+  );
+}
+
+/** Added/changed/removed totals for one update, so a collapsed card still says whether it's worth
+ * opening. Counts come from the same parse the expanded view renders, never a second one. */
+function DiffCounts({ summary }: { summary: string }) {
+  const counts = useMemo(() => {
+    const entries = parseDiffSummary(summary);
+    return {
+      changed: entries.filter((e) => e.kind === 'changed').length,
+      added: entries.filter((e) => e.kind === 'added').length,
+      removed: entries.filter((e) => e.kind === 'removed').length,
+    };
+  }, [summary]);
+  const parts = [
+    counts.changed && `${counts.changed} changed`,
+    counts.added && `${counts.added} added`,
+    counts.removed && `${counts.removed} removed`,
+  ].filter(Boolean);
+  return (
+    <span className="text-2xs text-muted shrink-0 tabular-nums">
+      {parts.length ? parts.join(' · ') : 'No field changes'}
+    </span>
   );
 }
 

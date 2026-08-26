@@ -21,7 +21,7 @@ const toCycle = (c: any): Cycle => ({
   migStart: c.mig_start ?? undefined, migEnd: c.mig_end ?? undefined, dataFreeze: c.data_freeze ?? undefined,
 });
 
-/** Programmes the current user has any membership in — drives the subproject picker/switcher. */
+/** Programs the current user has any membership in — drives the subproject picker/switcher. */
 export function usePrograms() {
   const { user } = useAuth();
   return useQuery({

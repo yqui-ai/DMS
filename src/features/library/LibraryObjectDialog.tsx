@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/Button';
 import { ArrowDownToLine, ArrowUpFromLine, ChevronDown, ChevronRight, ExternalLink, Files, Key, Table2 } from 'lucide-react';
 import clsx from 'clsx';
@@ -9,9 +10,9 @@ import { EmptyState } from '../../components/EmptyState';
 import { Table, type Column } from '../../components/Table';
 import { useDmcFields, useDmcStructures } from '../../lib/queries/dmcStructures';
 import { useObjectDependencies } from '../../lib/queries/scope';
-import { useStandardFmdLinks, useLibraryFmds, type LibraryFmdRow } from '../../lib/queries/fmds';
+import { useStandardFmdLinks } from '../../lib/queries/fmds';
+import { useLibraryPath } from '../../lib/libraryNav';
 import { GenerateFmdDialog } from './GenerateFmdDialog';
-import { FmdVersionHistoryDialog } from './FmdVersionHistoryDialog';
 import { DependencyDiagram } from './DependencyDiagram';
 import type { DmcField, DmcStructure, DmcStructureSide, MigrationObject } from '../../types/entities';
 
@@ -24,11 +25,16 @@ const TABS: { key: Tab; label: string }[] = [
 export interface LibraryObjectDialogProps {
   object: MigrationObject | null;
   onClose: () => void;
-  /** Navigate the dialog to a different object (e.g. clicking a prerequisite in Dependencies). */
+  /** Navigate the dialog to a different object (e.g. clicking a prerequisite in Dependencies).
+   * Each object is its own URL, so this pushes a history entry. */
   onSelectObject: (objectId: string) => void;
+  /** Unwind one `onSelectObject` hop. Separate from `onSelectObject` because those hops are real
+   * history entries now: re-selecting the previous id would push a third entry that merely looks
+   * like going back, leaving browser Back pointing forward. */
+  onBack: () => void;
 }
 
-export function LibraryObjectDialog({ object, onClose, onSelectObject }: LibraryObjectDialogProps) {
+export function LibraryObjectDialog({ object, onClose, onSelectObject, onBack }: LibraryObjectDialogProps) {
   const [tab, setTab] = useState<Tab>('details');
   const [history, setHistory] = useState<string[]>([]);
   const [generateOpen, setGenerateOpen] = useState(false);
@@ -45,11 +51,13 @@ export function LibraryObjectDialog({ object, onClose, onSelectObject }: Library
     if (object) setHistory((h) => [...h, object.id]);
     onSelectObject(nextId);
   };
+  // The stack isn't the navigation — the URL is. It only records how many hops deep into the
+  // dependency chain you are, which is what decides whether a Back affordance belongs in the
+  // dialog header at all.
   const goBack = () => {
-    const prevId = history[history.length - 1];
-    if (!prevId) return;
+    if (history.length === 0) return;
     setHistory((h) => h.slice(0, -1));
-    onSelectObject(prevId);
+    onBack();
   };
 
   return (
@@ -88,9 +96,9 @@ export function LibraryObjectDialog({ object, onClose, onSelectObject }: Library
 function DetailsTab({ object, onSelectObject }: { object: MigrationObject; onSelectObject: (objectId: string) => void }) {
   const { data: dependencies = [], isLoading: depsLoading } = useObjectDependencies(object.id);
   const { data: standardFmdLinks = [] } = useStandardFmdLinks();
-  const { data: allFmds = [] } = useLibraryFmds();
   const fmdLink = standardFmdLinks.find((l) => l.migrationObjectId === object.id);
-  const [viewFmd, setViewFmd] = useState<LibraryFmdRow | null>(null);
+  const navigate = useNavigate();
+  const to = useLibraryPath();
 
   return (
     <div className="flex gap-5 h-full min-h-0">
@@ -112,7 +120,9 @@ function DetailsTab({ object, onSelectObject }: { object: MigrationObject; onSel
             )}
             {fmdLink && (
               <button
-                onClick={() => setViewFmd(allFmds.find((f) => f.id === fmdLink.fmdId) ?? null)}
+                // Goes to the FMD's own page rather than stacking a second viewer inside this
+                // dialog — Back comes straight back here.
+                onClick={() => navigate(to('fmds', fmdLink.fmdId))}
                 className="inline-flex items-center gap-1.5 text-sm2 font-semibold text-blue hover:underline w-fit"
               >
                 <Files size={14} /> Standard FMD: {fmdLink.displayId ?? fmdLink.name}
@@ -161,7 +171,6 @@ function DetailsTab({ object, onSelectObject }: { object: MigrationObject; onSel
           )}
         </div>
       </div>
-      <FmdVersionHistoryDialog fmd={viewFmd} onClose={() => setViewFmd(null)} />
     </div>
   );
 }

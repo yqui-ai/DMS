@@ -13,6 +13,7 @@ import { useProgram } from '../../lib/queries/programme';
 import { supabase } from '../../lib/supabase';
 import { sanitizeName } from '../../lib/sanitize';
 import { libraryPath } from '../../lib/libraryNav';
+import { SelectAllToggle } from '../../components/SelectAllToggle';
 import type { GeneratedColumn, GeneratedTable, GoldenFmdStructure, MigrationObject } from '../../types/entities';
 
 const SRC_SYSTEM_DEFAULT = 'SAP ECC';
@@ -28,7 +29,7 @@ interface ResolvedTarget {
  * the field's own description — the generated FMD's columns snapshot both, like everything else
  * about a Golden version. */
 const goldenColumns = (structure: GoldenFmdStructure): GeneratedColumn[] =>
-  structure.sections.flatMap((sec) => sec.fields.filter((f) => f.field).map((f) => ({ field: f.field, sectionName: sec.name, color: sec.color, description: f.description || undefined })));
+  structure.sections.flatMap((sec) => sec.fields.filter((f) => f.field).map((f) => ({ field: f.field, sectionName: sec.name, color: sec.color, description: f.description || undefined, critical: f.critical || undefined, kind: f.kind, options: f.options })));
 
 function buildRow(f: any, columnFields: string[], structureIdent: string, populateSource: boolean, populateTarget: boolean, applyMappingDefaults: boolean): Record<string, string> {
   const row: Record<string, string> = Object.fromEntries(columnFields.map((c) => [c, '']));
@@ -182,7 +183,7 @@ export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObje
   const { data: objectProgram } = useProgram(single?.programId);
   const generateMutation = useGenerateFmdMutation();
 
-  const [goldenVersionId, setGoldenVersionId] = useState('');
+
   const [subprojectId, setSubprojectId] = useState('');
   const [selectedStructureIds, setSelectedStructureIds] = useState<Set<string>>(new Set());
   const [structureQuery, setStructureQuery] = useState('');
@@ -199,14 +200,20 @@ export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObje
     return senderStructures.filter((s) => s.ident.toLowerCase().includes(q) || (s.description ?? '').toLowerCase().includes(q));
   }, [senderStructures, structureQuery]);
 
-  useEffect(() => { setGoldenVersionId(goldenVersions[0]?.id ?? ''); }, [goldenVersions]);
+
   useEffect(() => { setSubprojectId(scopeUsage[0]?.subprojectId ?? ''); }, [scopeUsage]);
   useEffect(() => { setSelectedStructureIds(new Set(senderStructures.map((s) => s.id))); setStructureQuery(''); }, [single?.id, senderStructures.length]);
   useEffect(() => { setResolvedTargets(null); }, [objects]);
 
   if (!objects || objects.length === 0) return null;
 
-  const goldenVersion = goldenVersions.find((v) => v.id === goldenVersionId);
+  /** Always the newest Golden version — `useFmdVersions` returns them newest first.
+   *
+   * There was a picker here. Generating from an older template produces an FMD that is born
+   * outdated: it is flagged the moment it is created, and its first job is to be synced forward to
+   * the template it should have used. Nobody wants that, so it is not offered. */
+  const goldenVersion = goldenVersions[0];
+  const goldenVersionId = goldenVersion?.id ?? '';
   const goldenStructure = goldenVersion?.sheets.goldenStructure;
   const isCustom = scopeUsage.length > 0;
   const chosenScope = scopeUsage.find((s) => s.subprojectId === subprojectId);
@@ -219,7 +226,7 @@ export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObje
   const selectAll = () => setSelectedStructureIds(new Set(filteredStructures.map((s) => s.id)));
   const deselectAll = () => setSelectedStructureIds(new Set());
 
-  const viewAction = (fmdId: string) => ({ label: 'View FMD', onClick: () => navigate(`${libraryPath('fmds', programId, routeSubprojectId)}?open=${fmdId}`) });
+  const viewAction = (fmdId: string) => ({ label: 'View FMD', onClick: () => navigate(`${libraryPath('fmds', programId, routeSubprojectId)}/${fmdId}`) });
 
   const generateSingle = async () => {
     if (!single || !goldenStructure || !goldenVersion) return;
@@ -258,7 +265,7 @@ export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObje
   /** Bulk mode never generates immediately — it resolves each object's scope + whether an FMD
    * already exists for it, so the confirmation modal can show what's about to happen. */
   const openBulkConfirm = async () => {
-    if (!goldenStructure || !goldenVersion) { toast.error('Pick a Golden FMD version first.'); return; }
+    if (!goldenStructure || !goldenVersion) { toast.error('No Golden FMD version is available to generate from.'); return; }
     setResolving(true);
     try {
       const resolved = await Promise.all(objects.map(resolveTarget));
@@ -337,15 +344,6 @@ export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObje
         <p className="text-sm2 text-muted py-8 text-center">No Golden FMD has been registered yet — nothing to generate from.</p>
       ) : (
         <div className="flex flex-col gap-4">
-          <Field label="Golden FMD version">
-            <Select
-              value={goldenVersionId} onChange={(e) => setGoldenVersionId(e.target.value)}
-              className="w-full"
-            >
-              {goldenVersions.map((v) => <option key={v.id} value={v.id}>{v.version}{v.id === goldenVersions[0]?.id ? ' (latest)' : ''}</option>)}
-            </Select>
-          </Field>
-
           {isBulk ? (
             <div className="rounded-[8px] bg-surface-2 px-3.5 py-2.5 text-sm2">
               Generating for <strong>{objects.length}</strong> selected objects — Standard or Custom is resolved per object,
@@ -379,10 +377,12 @@ export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObje
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-sm2 font-semibold text-muted">Sender structures to generate</label>
-                  <div className="flex items-center gap-2">
-                    <button onClick={selectAll} className="text-2xs font-semibold text-blue hover:underline">Select all</button>
-                    <button onClick={deselectAll} className="text-2xs font-semibold text-blue hover:underline">Deselect all</button>
-                  </div>
+                  {/* "All" here means the rows the search left visible, which is what selectAll
+                      itself operates on — a toggle that ignored the filter would be lying. */}
+                  <SelectAllToggle
+                    allSelected={!!filteredStructures.length && filteredStructures.every((s) => selectedStructureIds.has(s.id))}
+                    onSelectAll={selectAll} onDeselectAll={deselectAll}
+                  />
                 </div>
                 {senderStructures.length > 6 && (
                   <div className="relative mb-1.5">
@@ -430,7 +430,7 @@ export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObje
         </>}
       >
         <p className="text-sm2 text-muted mb-4">
-          Based on Golden FMD <span className="font-mono font-bold">{goldenVersion?.version}</span>. Objects that already have an FMD will get a new version added — the rest are created fresh at v1.0.0.
+          Based on Golden FMD <span className="font-mono font-bold">{goldenVersion?.version}</span>, always the latest. Objects that already have an FMD will get a new version added — the rest are created fresh at v1.0.0.
         </p>
         <div className="grid grid-cols-2 gap-4">
           <div>

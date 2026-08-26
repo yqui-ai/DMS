@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Button } from '../../components/Button';
-import { Wand2, X } from 'lucide-react';
+import { Wand2 } from 'lucide-react';
 import { PageHeader } from '../../components/PageHeader';
 import { ListEmptyState } from '../../components/ListEmptyState';
 import { Table, type Column } from '../../components/Table';
 import { Tag } from '../../components/Tag';
 import { MultiSelectFilter } from '../../components/MultiSelectFilter';
-import { ToolbarSearch } from '../../components/ToolbarSearch';
+import { Toolbar } from '../../components/Toolbar';
 import { useLibraryRules, type LibraryRuleRow } from '../../lib/queries/rules';
 import { RuleGeneratorDialog } from './RuleGeneratorDialog';
 
@@ -16,7 +17,10 @@ const CLASS_OPTIONS = ['Global', 'Local'];
 export function LibraryRules() {
   const { data: rules = [], isLoading } = useLibraryRules();
   const [generatorOpen, setGeneratorOpen] = useState(false);
-  const [query, setQuery] = useState('');
+  // Rule is the one Library screen with no detail view, so a search hit can't open a record —
+  // it opens the catalogue already narrowed to it instead, which `?q=` is for.
+  const [params] = useSearchParams();
+  const [query, setQuery] = useState(params.get('q') ?? '');
   const [klass, setKlass] = useState<string[]>([]);
   const [severity, setSeverity] = useState<string[]>([]);
 
@@ -51,20 +55,15 @@ export function LibraryRules() {
   return (
     <div>
       <PageHeader title="Rule" description="Rules across every subproject you have access to." />
-      <div className="flex flex-wrap items-center gap-2 mb-3">
-        <ToolbarSearch value={query} onChange={setQuery} placeholder="Search rules…" />
+      <Toolbar
+        search={{ value: query, onChange: setQuery, placeholder: 'Search rules…' }}
+        onClearFilters={hasActiveFilters ? clearFilters : undefined}
+        count={filtered.length} noun="rules"
+        actions={<Button variant="quiet" size="sm" onClick={() => setGeneratorOpen(true)}><Wand2 size={14} /> Rule Generator</Button>}
+      >
         <MultiSelectFilter label="Class" options={CLASS_OPTIONS} selected={klass} onChange={setKlass} />
         <MultiSelectFilter label="Severity" options={severities} selected={severity} onChange={setSeverity} />
-        {hasActiveFilters && (
-          <Button variant="dangerGhost" size="sm" onClick={clearFilters}>
-            <X size={13} /> Clear filters
-          </Button>
-        )}
-        <span className="text-sm2 text-muted ml-1 shrink-0">{filtered.length.toLocaleString()} rules</span>
-        <div className="ml-auto flex items-center gap-2 shrink-0">
-          <Button variant="quiet" size="sm" onClick={() => setGeneratorOpen(true)}><Wand2 size={14} /> Rule Generator</Button>
-        </div>
-      </div>
+      </Toolbar>
       {!isLoading && filtered.length === 0
         ? <ListEmptyState noun="rules" filtered={hasActiveFilters} onClearFilters={clearFilters} />
         : <Table columns={columns} rows={filtered} rowKey={(r) => r.id} pageSize={30} emptyMessage="Loading…" />}

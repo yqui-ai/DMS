@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search } from 'lucide-react';
+import { Toolbar } from '../../components/Toolbar';
 import { supabase } from '../../lib/supabase';
 import { Tag } from '../../components/Tag';
 
 interface TableDef { table: string; category: string; desc: string; fields: string }
 
 const TABLE_DEFS: TableDef[] = [
-  { table: 'programs', category: 'Program', desc: 'Programme header — code, name, description, start/end dates.', fields: 'id, code, name, description, start_date, end_date' },
+  { table: 'programs', category: 'Program', desc: 'Program header — code, name, description, start/end dates.', fields: 'id, code, name, description, start_date, end_date' },
   { table: 'projects', category: 'Program', desc: 'Projects under the programme, each holding subprojects.', fields: 'id, program_id, code, name, seq, start_date, end_date' },
   { table: 'subprojects', category: 'Program', desc: 'SubPrograms — the unit that opens the workspace; carries scope_finalized.', fields: 'id, project_id, code, name, freeze_date, scope_finalized, seq' },
   { table: 'cycles', category: 'Program', desc: 'Mock/dress-rehearsal cycles per subproject.', fields: 'id, subproject_id, name, seq, mig_start, mig_end, data_freeze' },
@@ -21,7 +21,7 @@ const TABLE_DEFS: TableDef[] = [
   { table: 'approval_matrix', category: 'Governance', desc: 'Per-area approval workflow rules.', fields: 'program_id, area, action, approval_required, approver_role_id' },
   { table: 'promotions', category: 'Governance', desc: 'Environment promotion requests.', fields: 'subproject_id, artefact_type, artefact_name, from_env, to_env, status' },
   { table: 'cutover_tasks', category: 'Governance', desc: 'Sequenced go-live checklist.', fields: 'subproject_id, seq, name, owner, status, depends_on' },
-  { table: 'app_users', category: 'Admin', desc: 'Programme members, mirrored from auth.users.', fields: 'id, name, email, status, last_login' },
+  { table: 'app_users', category: 'Admin', desc: 'Program members, mirrored from auth.users.', fields: 'id, name, email, status, last_login' },
   { table: 'roles', category: 'Admin', desc: 'Role definitions.', fields: 'id, name, description, is_standard' },
   { table: 'role_screens', category: 'Admin', desc: 'Per-role, per-screen view/edit permission matrix.', fields: 'role_id, screen_key, can_view, can_edit' },
   { table: 'ai_provider_keys', category: 'Admin', desc: 'Connected AI provider credentials for AI Usage & Billing.', fields: 'program_id, provider, label, endpoint, key_masked, budget, active' },
@@ -57,10 +57,7 @@ export function InternalDataDictionary() {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm2 text-muted">A live data dictionary of the tables backing this app — for admins and support debugging.</p>
-      <div className="relative w-72">
-        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search tables…" className="text-sm2 pl-8 pr-3 py-1.5 rounded-[8px] border border-line-strong bg-surface w-full" />
-      </div>
+      <Toolbar spacing="none" search={{ value: search, onChange: setSearch, placeholder: 'Search tables…' }} count={filtered.length} noun="tables" />
       <div className="rounded-lg shadow-card overflow-hidden">
         {Array.from(byCategory.entries()).map(([category, defs]) => (
           <div key={category}>

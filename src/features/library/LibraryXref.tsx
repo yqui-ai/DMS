@@ -1,14 +1,15 @@
 import { useMemo, useState } from 'react';
 import { Button } from '../../components/Button';
-import { Settings, X } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import { PageHeader } from '../../components/PageHeader';
 import { ListEmptyState } from '../../components/ListEmptyState';
 import { Table, type Column } from '../../components/Table';
 import { MultiSelectFilter } from '../../components/MultiSelectFilter';
-import { ToolbarSearch } from '../../components/ToolbarSearch';
+import { Toolbar } from '../../components/Toolbar';
+import { Outlet, useNavigate } from 'react-router-dom';
 import { useLibraryXrefTables, type LibraryXrefRow } from '../../lib/queries/rules';
+import { useLibraryPath } from '../../lib/libraryNav';
 import { GoldenXrefDesignerDialog } from './GoldenXrefDesignerDialog';
-import { GoldenXrefViewerDialog } from './GoldenXrefViewerDialog';
 
 const CLASS_OPTIONS = ['Global', 'Local'];
 const TYPE_OPTIONS = ['Standard', 'Golden'];
@@ -18,7 +19,8 @@ export function LibraryXref() {
   const [query, setQuery] = useState('');
   const [klass, setKlass] = useState<string[]>([]);
   const [type, setType] = useState<string[]>([]);
-  const [openGolden, setOpenGolden] = useState<LibraryXrefRow | null>(null);
+  const navigate = useNavigate();
+  const to = useLibraryPath();
   const [goldenTarget, setGoldenTarget] = useState<LibraryXrefRow | 'new' | null>(null);
 
   const filtered = useMemo(() => {
@@ -51,20 +53,15 @@ export function LibraryXref() {
   return (
     <div>
       <PageHeader title="Cross Reference (XREF)" description="Value-mapping tables across every subproject you have access to." />
-      <div className="flex flex-wrap items-center gap-2 mb-3">
-        <ToolbarSearch value={query} onChange={setQuery} placeholder="Search XREF tables…" />
+      <Toolbar
+        search={{ value: query, onChange: setQuery, placeholder: 'Search XREF tables…' }}
+        onClearFilters={hasActiveFilters ? clearFilters : undefined}
+        count={filtered.length} noun="tables"
+        actions={<Button variant="quiet" size="sm" onClick={openGoldenDesigner}><Settings size={14} /> Golden XREF</Button>}
+      >
         <MultiSelectFilter label="Class" options={CLASS_OPTIONS} selected={klass} onChange={setKlass} />
         <MultiSelectFilter label="Type" options={TYPE_OPTIONS} selected={type} onChange={setType} />
-        {hasActiveFilters && (
-          <Button variant="dangerGhost" size="sm" onClick={clearFilters}>
-            <X size={13} /> Clear filters
-          </Button>
-        )}
-        <span className="text-sm2 text-muted ml-1 shrink-0">{filtered.length.toLocaleString()} tables</span>
-        <div className="ml-auto flex items-center gap-2 shrink-0">
-          <Button variant="quiet" size="sm" onClick={openGoldenDesigner}><Settings size={14} /> Golden XREF</Button>
-        </div>
-      </div>
+      </Toolbar>
       {!isLoading && filtered.length === 0
         ? (
           <ListEmptyState
@@ -75,10 +72,10 @@ export function LibraryXref() {
         : (
           <Table
             columns={columns} rows={filtered} rowKey={(t) => t.id} pageSize={30} emptyMessage="Loading…"
-            onRowClick={setOpenGolden} rowClickable={(t) => t.type === 'Golden'}
+            onRowClick={(t) => navigate(to('xref', t.id))} rowClickable={(t) => t.type === 'Golden'}
           />
         )}
-      <GoldenXrefViewerDialog xref={openGolden} onClose={() => setOpenGolden(null)} />
+      <Outlet />
       <GoldenXrefDesignerDialog target={goldenTarget} onClose={() => setGoldenTarget(null)} />
     </div>
   );

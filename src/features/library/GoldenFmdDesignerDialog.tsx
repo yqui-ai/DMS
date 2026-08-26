@@ -1,3 +1,6 @@
+import { Select } from '../../components/Select';
+import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
+import { parseValueList } from '../../lib/mappingRulePolicy';
 import { useEffect, useState } from 'react';
 import { GripVertical, Lock, Plus, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
@@ -77,6 +80,46 @@ type Drag = { type: 'section'; id: string } | { type: 'field'; id: string } | nu
  * section's fields live in a right pane (drag to reorder, add/edit/delete). Saving opens a
  * required change-comment prompt and writes a brand-new version row, never overwriting the last
  * one, so past structures stay inspectable from the catalog's read-only viewer. */
+/** The editor each kind produces, named the way a person would describe the column rather than the
+ * way a database would. `longText` exists because a transformation rule needs a textarea and a
+ * table name does not. */
+const GOLDEN_FIELD_KINDS = [
+  { value: 'text', label: 'Text' },
+  { value: 'longText', label: 'Long text' },
+  { value: 'select', label: 'Value list' },
+  { value: 'boolean', label: 'Yes / no' },
+  { value: 'integer', label: 'Whole number' },
+  { value: 'decimal', label: 'Number' },
+] as const;
+
+/** The comma-separated value list.
+ *
+ * Holds the RAW text while you type and only parses on blur. Parsing on every keystroke made the
+ * field impossible to use: typing a comma produced a trailing empty segment, the filter dropped it,
+ * and the comma vanished from under the cursor — so a second value could never be entered. */
+function OptionsInput({ options, onChange }: { options: string[]; onChange: (next: string[]) => void }) {
+  const [text, setText] = useState(options.join(', '));
+  const [focused, setFocused] = useState(false);
+  // Follow the model while the box is idle, so an undo or a section switch is reflected; ignore it
+  // while focused, or the round-trip would fight the keyboard again.
+  useEffect(() => { if (!focused) setText(options.join(', ')); }, [options, focused]);
+
+  return (
+    <input
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        setFocused(false);
+        onChange(parseValueList(text));
+      }}
+      placeholder="CHAR, DATS, INT"
+      title="Separate values with a comma, a semicolon or a line break."
+      className="w-full bg-transparent px-2.5 py-1.5 text-sm2 font-mono focus-visible:outline-none focus-visible:bg-blue-pale placeholder:text-muted placeholder:font-sans"
+    />
+  );
+}
+
 export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFmdRow | 'new' | null; onClose: () => void }) {
   const toast = useToast();
   const isNew = target === 'new';
@@ -128,7 +171,7 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
     setStructure((s) => ({ sections: s.sections.map((sec) => (sec.id === sectionId ? { ...sec, fields: [...sec.fields, { id: newId(), field: '', description: '' }] } : sec)) }));
     setDirty(true);
   };
-  const updateField = (sectionId: string, fieldId: string, key: 'field' | 'description', value: string) => {
+  const updateField = (sectionId: string, fieldId: string, key: 'field' | 'description' | 'critical' | 'kind' | 'options', value: string | boolean | string[]) => {
     setStructure((s) => ({
       sections: s.sections.map((sec) => (sec.id !== sectionId ? sec : {
         ...sec, fields: sec.fields.map((f) => (f.id === fieldId ? { ...f, [key]: value } : f)),
@@ -207,6 +250,8 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
   };
 
   return (
+    <>
+    <UnsavedChangesGuard when={!!target && dirty} what="Your Golden FMD changes" />
     <Dialog
       open={!!target} onClose={onClose}
       unsavedWarning={dirty ? 'Your changes to the Golden FMD structure have not been saved as a version yet.' : undefined} title={GOLDEN_FMD_NAME} size="win"
@@ -289,7 +334,20 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
                       <tr>
                         <th className="w-8 bg-surface-3 px-2.5 py-2" />
                         <th className="w-[32%] text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 text-left sticky top-0">Field</th>
-                        <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 text-left sticky top-0">Description / Allowed Values</th>
+                        <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 text-left sticky top-0">Description</th>
+                        <th
+                          className="w-28 text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 text-left sticky top-0"
+                          title="What this column accepts. Every FMD generated from this template gets the matching editor, so the restriction is set once here rather than re-argued per FMD."
+                        >
+                          Type
+                        </th>
+                        <th className="w-[22%] text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 text-left sticky top-0">Allowed values</th>
+                        <th
+                          className="w-16 text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 text-center sticky top-0"
+                          title="Critical fields are what the Mapping Review checks first: a blank one is an error rather than a warning, and the AI weighs its judgement toward them."
+                        >
+                          Critical
+                        </th>
                         <th className="w-8 bg-surface-3" />
                       </tr>
                     </thead>
@@ -306,9 +364,18 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
                             </span>
                           </td>
                           <td className="p-0">
+                            {/* A baseline name is read-only, not merely rejected on save: renaming
+                                SRC_FIELD removes SRC_FIELD just as surely as deleting the row, and
+                                finding that out only when you press Save costs you the edits you
+                                made after it. Everything else about the field stays editable. */}
                             <input
                               value={field.field} onChange={(e) => updateField(activeSection.id, field.id, 'field', e.target.value)}
-                              className="w-full bg-transparent px-2.5 py-1.5 text-sm2 font-mono font-bold focus-visible:outline-none focus-visible:bg-blue-pale"
+                              readOnly={isRequiredGoldenField(field.field)}
+                              title={isRequiredGoldenField(field.field) ? 'Baseline field — its name is fixed. Type, allowed values, description and Critical are all still editable.' : undefined}
+                              className={clsx(
+                                'w-full bg-transparent px-2.5 py-1.5 text-sm2 font-mono font-bold focus-visible:outline-none',
+                                isRequiredGoldenField(field.field) ? 'cursor-default' : 'focus-visible:bg-blue-pale',
+                              )}
                             />
                           </td>
                           <td className="p-0">
@@ -316,6 +383,41 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
                               value={field.description} onChange={(e) => updateField(activeSection.id, field.id, 'description', e.target.value)}
                               placeholder="—"
                               className="w-full bg-transparent px-2.5 py-1.5 text-sm2 focus-visible:outline-none focus-visible:bg-blue-pale placeholder:text-muted"
+                            />
+                          </td>
+                          <td className="p-0">
+                            <Select
+                              size="sm" value={field.kind ?? 'text'}
+                              onChange={(e) => updateField(activeSection.id, field.id, 'kind', e.target.value)}
+                              className="w-full border-0 rounded-none bg-transparent focus-visible:bg-blue-pale"
+                            >
+                              {GOLDEN_FIELD_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+                            </Select>
+                          </td>
+                          <td className="p-0">
+                            {/* Only a value list needs values. Showing the box for every type would
+                                invite someone to fill it in where nothing reads it. */}
+                            {field.kind === 'select' ? (
+                              <OptionsInput
+                                options={field.options ?? []}
+                                onChange={(next) => updateField(activeSection.id, field.id, 'options', next)}
+                              />
+                            ) : (
+                              <span className="block px-2.5 py-1.5 text-2xs text-muted">—</span>
+                            )}
+                          </td>
+                          <td className="text-center">
+                            {/* Marking a column critical here is what focuses every Mapping Review
+                                run on it. It belongs to the TEMPLATE, not the review: which columns
+                                a program cares about is a decision about the document, and it
+                                differs between programs. */}
+                            <input
+                              type="checkbox"
+                              checked={!!field.critical}
+                              onChange={(e) => updateField(activeSection.id, field.id, 'critical', e.target.checked)}
+                              className="w-3.5 h-3.5 accent-[var(--red)]"
+                              aria-label={`Mark ${field.field || 'this field'} critical`}
+                              title="Blank in this column is reported as an error"
                             />
                           </td>
                           <td className="text-center">
@@ -328,7 +430,7 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
                         </tr>
                       ))}
                       {activeSection.fields.length === 0 && (
-                        <tr><td colSpan={4} className="px-2.5 py-6 text-center text-muted text-sm2">No fields in this section yet.</td></tr>
+                        <tr><td colSpan={7} className="px-2.5 py-6 text-center text-muted text-sm2">No fields in this section yet.</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -358,5 +460,6 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
         <p className="text-2xs text-muted mt-1.5">Saved as this version's note in Versions.</p>
       </Dialog>
     </Dialog>
+    </>
   );
 }

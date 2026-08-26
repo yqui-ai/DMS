@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-dom';
 import { AppShell } from './layout/AppShell';
 import { TabbedSection } from './layout/TabbedSection';
 import { ScreenGate } from './layout/ScreenGate';
@@ -31,7 +31,9 @@ import { LibraryObjects } from '../features/library/LibraryObjects';
 import { LibraryRules } from '../features/library/LibraryRules';
 import { LibraryFmds } from '../features/library/LibraryFmds';
 import { LibraryXref } from '../features/library/LibraryXref';
+import { FmdRoute, ObjectRoute, XrefRoute } from '../features/library/LibraryDeepViews';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
+import { SearchPage } from '../features/search/SearchPage';
 import { MyProfilePage } from '../features/profile/MyProfilePage';
 import { MyWorkPage } from '../features/mywork/MyWorkPage';
 import { QualityOverview } from '../features/quality/QualityOverview';
@@ -72,6 +74,35 @@ const QUALITY_TABS: TabStripItem[] = [
   { key: 'fallout', label: 'Fallout', icon: 'alert-triangle', to: 'fallout' },
 ];
 
+/** The Library's four screens plus their deep views, defined once and mounted twice — at
+ * `/library/*` and again under `pg/:programId/sp/:subprojectId/library/*`. Both mounts must stay
+ * identical, which is exactly what a shared array guarantees and a copy-pasted list doesn't.
+ *
+ * Each deep view is a child route rather than dialog state on the list, so it has an address:
+ * Back closes it and returns to the list, and a single FMD can be linked to. Rule has no detail
+ * view (see the `library-section-design` skill) so it has no child. */
+const LIBRARY_ROUTES: RouteObject[] = [
+  // Bare /library is a section, not a screen. Without this it matches the parent, finds no
+  // child, and renders an empty page instead of falling through to Not Found.
+  { index: true, element: <Navigate to="objects" replace /> },
+  {
+    path: 'objects',
+    element: <ScreenGate screen="catalogObjects"><LibraryObjects /></ScreenGate>,
+    children: [{ path: ':objectId', element: <ObjectRoute /> }],
+  },
+  {
+    path: 'fmds',
+    element: <ScreenGate screen="catalogFmds"><LibraryFmds /></ScreenGate>,
+    children: [{ path: ':fmdId', element: <FmdRoute /> }],
+  },
+  { path: 'rules', element: <ScreenGate screen="catalogRules"><LibraryRules /></ScreenGate> },
+  {
+    path: 'xref',
+    element: <ScreenGate screen="catalogXref"><LibraryXref /></ScreenGate>,
+    children: [{ path: ':xrefId', element: <XrefRoute /> }],
+  },
+];
+
 export const router = createBrowserRouter([
   {
     path: '/',
@@ -79,6 +110,9 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <SubprojectPicker /> },
       { path: 'me', element: <MyProfilePage /> },
+      // Program-wide like the Library routes: results span every subproject the user can reach,
+      // so the page is not nested under one.
+      { path: 'search', element: <SearchPage /> },
       {
         path: 'pg/:programId',
         children: [
@@ -153,12 +187,7 @@ export const router = createBrowserRouter([
                 // Same Library screens as the standalone /library/* routes — program-wide
                 // content (global and local alike), just reachable without leaving the
                 // current project's URL/breadcrumb/nav context.
-                children: [
-                  { path: 'objects', element: <ScreenGate screen="catalogObjects"><LibraryObjects /></ScreenGate> },
-                  { path: 'fmds', element: <ScreenGate screen="catalogFmds"><LibraryFmds /></ScreenGate> },
-                  { path: 'rules', element: <ScreenGate screen="catalogRules"><LibraryRules /></ScreenGate> },
-                  { path: 'xref', element: <ScreenGate screen="catalogXref"><LibraryXref /></ScreenGate> },
-                ],
+                children: LIBRARY_ROUTES,
               },
               // Same page as the standalone /pg/:programId/admin route — program-wide
               // administration, reachable without leaving the current project's context.
@@ -167,10 +196,7 @@ export const router = createBrowserRouter([
           },
         ],
       },
-      { path: 'library/objects', element: <ScreenGate screen="catalogObjects"><LibraryObjects /></ScreenGate> },
-      { path: 'library/fmds', element: <ScreenGate screen="catalogFmds"><LibraryFmds /></ScreenGate> },
-      { path: 'library/rules', element: <ScreenGate screen="catalogRules"><LibraryRules /></ScreenGate> },
-      { path: 'library/xref', element: <ScreenGate screen="catalogXref"><LibraryXref /></ScreenGate> },
+      { path: 'library', children: LIBRARY_ROUTES },
       { path: 'systems/connections', element: <ScreenGate screen="connections"><ConnectionsPage /></ScreenGate> },
       { path: '*', element: <Placeholder title="Page not found" description="Nothing lives at this address." /> },
     ],

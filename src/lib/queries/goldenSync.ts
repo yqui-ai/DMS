@@ -2,7 +2,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../supabase';
 import { useAuth } from '../auth';
 import { invokeAiTask } from './aiEdgeFunction';
-import type { FmdVersion, GeneratedColumn, GeneratedTable, GoldenFmdStructure } from '../../types/entities';
+import { applyPendingChanges } from './fmds';
+import type { FmdDraft, FmdVersion, GeneratedColumn, GeneratedTable, GoldenFmdStructure } from '../../types/entities';
 
 export interface GoldenSyncRename { from: string; to: string; confidence: string; why?: string }
 
@@ -28,10 +29,18 @@ export interface GoldenSyncPlan {
   summary: string;
 }
 
+/** Every property a generated column carries, not just the ones that existed when sync was
+ * written. Dropping `critical`, `kind` and `options` here meant a sync silently reset an FMD's
+ * input rules to plain text — the columns it wrote were missing the very fields that decide the
+ * editor and the validation. */
 const flatten = (structure: GoldenFmdStructure): GeneratedColumn[] =>
   structure.sections.flatMap((s) => s.fields.map((f) => ({
     field: f.field, sectionName: s.name, color: s.color, description: f.description,
+    critical: f.critical || undefined, kind: f.kind, options: f.options,
   })));
+
+const sameOptions = (a: string[] | undefined, b: string[] | undefined) =>
+  (a ?? []).join('\u0000') === (b ?? []).join('\u0000');
 
 /** Builds the sync plan: what the Golden template changed, and what that costs this FMD.
  *
@@ -66,6 +75,12 @@ export function useGoldenSyncPlan() {
         if (prev.sectionName !== next.sectionName) bits.push(`section ${prev.sectionName} → ${next.sectionName}`);
         if (prev.color !== next.color) bits.push('colour');
         if ((prev.description ?? '') !== (next.description ?? '')) bits.push('description');
+        // A type or value-list change moves no data, but it changes what the FMD will ACCEPT — so
+        // it has to count as a real difference. Without these three the plan read "already aligned"
+        // and re-typing a column in the template never reached the FMDs generated from it.
+        if ((prev.kind ?? 'text') !== (next.kind ?? 'text')) bits.push(`type ${prev.kind ?? 'text'} → ${next.kind ?? 'text'}`);
+        if (!sameOptions(prev.options, next.options)) bits.push('allowed values');
+        if (!!prev.critical !== !!next.critical) bits.push(next.critical ? 'now critical' : 'no longer critical');
         if (bits.length) metadataChanges.push({ field: next.field, what: bits.join(', ') });
       }
 
@@ -124,8 +139,37 @@ export function useApplyGoldenSync(fmdId: string) {
       ]);
     },
     async apply(current: FmdVersion, plan: GoldenSyncPlan, goldenVersionId: string, goldenVersionLabel: string): Promise<void> {
+      const invalidate = () => Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['fmd-versions', fmdId] }),
+        queryClient.invalidateQueries({ queryKey: ['fmd-version-latest', fmdId] }),
+        queryClient.invalidateQueries({ queryKey: ['fmds-library'] }),
+        queryClient.invalidateQueries({ queryKey: ['golden-where-used'] }),
+      ]);
+
+      // The Golden template moved but its columns didn't, so there is nothing to restructure — only
+      // the reference is stale. Inserting a version whose content is byte-identical to the current
+      // one would add a stray unpublished row to the history and change nothing about the document.
+      if (plan.relinkOnly) {
+        const { error: relinkError } = await supabase
+          .from('fmds').update({ based_on_golden_version_id: goldenVersionId }).eq('id', fmdId);
+        if (relinkError) throw relinkError;
+        await invalidate();
+        return;
+      }
+
+      // Read the newest version from the DATABASE rather than trusting the one the viewer had
+      // selected. Two things depend on it: syncing must not rebuild from a version someone happened
+      // to be browsing and overwrite newer content, and it must know whether an unpublished row
+      // already exists to write into.
+      const { data: newest, error: newestError } = await supabase
+        .from('fmd_versions')
+        .select('id, version, sheets, published_at')
+        .eq('fmd_id', fmdId).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (newestError) throw newestError;
+      const base = (newest?.sheets ?? current.sheets) as FmdVersion['sheets'];
+
       const renameMap = new Map(plan.renames.map((r) => [r.to, r.from]));
-      const nextTables: GeneratedTable[] = (current.sheets.generatedTables ?? []).map((t) => ({
+      const nextTables: GeneratedTable[] = (base.generatedTables ?? []).map((t) => ({
         ...t,
         rows: t.rows.map((row) => {
           const next: Record<string, string> = {};
@@ -145,28 +189,57 @@ export function useApplyGoldenSync(fmdId: string) {
         plan.dataLossFields.length ? `${plan.dataLossFields.length} removed with data` : '',
       ].filter(Boolean).join(', ');
 
-      const { mappingReview: _l, mappingReviews: _r, pendingChanges: _p, ...carried } = current.sheets;
-      const { error } = await supabase.from('fmd_versions').insert({
-        fmd_id: fmdId,
-        version: bumpPatch(current.version),
-        state: 'Draft',
-        sheets: { ...carried, generatedColumns: plan.nextColumns, generatedTables: nextTables },
-        comment: `Synced to Golden FMD ${goldenVersionLabel}${bits ? ` — ${bits}` : ''}`,
-        created_by: who, created_at: now,
-      });
-      if (error) throw error;
+      // Uncommitted cell edits live on `fmds.draft` and are shown as an overlay on the published
+      // version. A synced draft is a real version row, which takes precedence in that overlay — so
+      // without folding them in here the edits would still be stored but invisible, and publishing
+      // the synced version would silently release without them.
+      const { data: fmdRow, error: draftReadError } = await supabase
+        .from('fmds').select('draft').eq('id', fmdId).single();
+      if (draftReadError) throw draftReadError;
+      const pending = ((fmdRow?.draft as FmdDraft | null)?.pendingChanges ?? []);
+
+      const { mappingReview: _l, mappingReviews: _r, pendingChanges: _p, ...carried } = base;
+      const sheets = {
+        ...carried,
+        generatedColumns: plan.nextColumns,
+        generatedTables: pending.length ? applyPendingChanges(nextTables, pending) : nextTables,
+      };
+      const comment = `Synced to Golden FMD ${goldenVersionLabel}${bits ? ` — ${bits}` : ''}`;
+
+      // ONE unpublished version per FMD. Syncing used to insert a row every time, so two syncs
+      // without a publish in between left two unreleased versions stacked on the live one — and
+      // only the newest of them could ever be published, so the other was unreachable work.
+      // An unpublished version is a working copy: fold the sync into it, exactly as editing does.
+      if (newest && !newest.published_at) {
+        const { error } = await supabase
+          .from('fmd_versions')
+          .update({ sheets, comment, changed_by: who, changed_at: now })
+          .eq('id', newest.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('fmd_versions').insert({
+          fmd_id: fmdId,
+          version: bumpPatch(newest?.version ?? current.version),
+          state: 'Draft',
+          sheets,
+          comment,
+          created_by: who, created_at: now,
+        });
+        if (error) throw error;
+      }
 
       // Point the FMD at the Golden version it now matches, so it stops reading as outdated.
       const { error: linkError } = await supabase
         .from('fmds').update({ based_on_golden_version_id: goldenVersionId }).eq('id', fmdId);
       if (linkError) throw linkError;
 
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['fmd-versions', fmdId] }),
-        queryClient.invalidateQueries({ queryKey: ['fmd-version-latest', fmdId] }),
-        queryClient.invalidateQueries({ queryKey: ['fmds-library'] }),
-        queryClient.invalidateQueries({ queryKey: ['golden-where-used'] }),
-      ]);
+      // Folded in above, so the overlay must not replay them on top of the synced version.
+      if (pending.length) {
+        const { error: clearError } = await supabase.from('fmds').update({ draft: null }).eq('id', fmdId);
+        if (clearError) throw clearError;
+      }
+
+      await invalidate();
     },
   };
 }

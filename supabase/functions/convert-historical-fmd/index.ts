@@ -44,7 +44,7 @@ interface TechnicalRuleContext {
 
 type RequestBody =
   | { task: 'rules'; rows: RuleRequestRow[] }
-  | { task: 'mapping-review'; structureIdent: string; rows: MappingReviewRow[]; optionalFields: string[] }
+  | { task: 'mapping-review'; structureIdent: string; rows: MappingReviewRow[]; optionalFields: string[]; criticalFields?: string[] }
   | { task: 'golden-sync'; removed: GoldenSyncField[]; added: GoldenSyncField[] }
   | { task: 'technical-rule'; context: TechnicalRuleContext };
 
@@ -55,6 +55,8 @@ const MAPPING_REVIEW_POLICY = `Every field in the Source, Mapping, and Target se
 MAPPING_TYPE must be exactly one of: COPY, TRANSFORM, XREF, DEFAULT.
 
 TECHNICAL_RULE must ALWAYS be written in SQL syntax, for every mapping type without exception. Prose such as "map accordingly", "same as legacy", "1:1" or a bare restatement of the field name is never acceptable in TECHNICAL_RULE, and must be flagged. The rule must name the actual source table(s) and field(s) it reads.
+
+A rule that POINTS somewhere else instead of stating the rule — "See migration document chapter 3.2.5", "See tab \"RB Customer Rules\"", "refer to STORT", "as per the concept document", "TBD" — is treated as missing, in TRANSFORMATION_RULE and TECHNICAL_RULE alike. The FMD must carry the rule itself; an ETL developer cannot implement a reference to a document the FMD does not include.
 
 - If MAPPING_TYPE is COPY: TRANSFORMATION_RULE must be exactly "1:1", and TECHNICAL_RULE must be a plain select of the source field, e.g. SELECT <source_field> FROM <source_table>.
 - If MAPPING_TYPE is DEFAULT: TECHNICAL_RULE must set a literal value in SQL, e.g. SELECT 'X' AS <target_field> for an unconditional default, or CASE WHEN <source_field> IS NULL THEN 'X' ELSE <source_field> END when the default only applies to blanks. TRANSFORMATION_RULE must make clear which of the two it is.
@@ -135,7 +137,7 @@ or
 {"ok":false,"reason":"<one or two sentences: what specifically is unclear, and what a person would need to add to make it implementable>"}`;
 }
 
-function mappingReviewPrompt(structureIdent: string, rows: MappingReviewRow[], optionalFields: string[]): string {
+function mappingReviewPrompt(structureIdent: string, rows: MappingReviewRow[], optionalFields: string[], criticalFields: string[] = []): string {
   const rowLines = rows.map((r) => `${r.id}: ${JSON.stringify(r.fields)}`).join('\n');
   return `You are auditing rows of the "${structureIdent}" structure in a Field Mapping Document (FMD) against this policy:
 
@@ -143,10 +145,24 @@ ${MAPPING_REVIEW_POLICY}
 
 Fields allowed to be blank: ${optionalFields.join(', ') || '(none)'}.
 
+CRITICAL fields — the ones this programme's Golden template says matter most: ${criticalFields.join(', ') || '(none marked)'}. Weight your judgement toward these: a rule that is wrong or ambiguous where it touches a critical field is an "error"; the same problem on a non-critical field is a "warning". Blankness in them is already checked in code — do not report it.
+
 Rows to check, one per line as "<id>: <field JSON>":
 ${rowLines}
 
-For each row that violates the policy, report ONE finding: a short, specific description (e.g. "TECHNICAL_RULE is blank", "MAPPING_TYPE is COPY but TRANSFORMATION_RULE is \\"Concat fields\\", expected \\"1:1\\"", "MAPPING_TYPE \\"Lookup\\" is not one of COPY/TRANSFORM/XREF/DEFAULT"), AND the single field key from the row's JSON most responsible for the violation (e.g. "TECHNICAL_RULE", "MAPPING_TYPE", "SRC_FIELD_DESC" — whichever field is blank or wrong; if MAPPING_TYPE itself is invalid, use "MAPPING_TYPE"). Only include rows with an actual violation — skip rows that fully comply. Use "error" for a blank required field or an invalid MAPPING_TYPE value; use "warning" for a formatting/content mismatch against an otherwise valid MAPPING_TYPE.
+The mechanical checks have ALREADY been run in code before you see these rows, and their findings are already reported. Do not repeat them. Specifically, do NOT report: a blank field, a MAPPING_TYPE outside the four allowed values, TECHNICAL_RULE containing no SQL at all, or a rule that merely points at another document. Every row below has passed all of those.
+
+Your job is the part code cannot decide: whether the TECHNICAL_RULE actually implements the requirement stated in TRANSFORMATION_RULE beside it, for this specific source and target field. Look for:
+- TECHNICAL_RULE that is valid SQL but does something OTHER than what TRANSFORMATION_RULE describes.
+- A stated condition in TRANSFORMATION_RULE that the SQL never tests, or a branch the SQL leaves undefined.
+- TRANSFORMATION_RULE too vague to verify against ("map accordingly", "standard logic", "as required") even though it is not a pointer.
+- SQL naming a table or field that contradicts SRC_TABLE/SRC_FIELD or TGT_TABLE/TGT_FIELD on the same row.
+- An XREF row whose cross-reference table is not named in both rule fields.
+- A DEFAULT row whose SQL does not actually assign a literal, or where TRANSFORMATION_RULE leaves it unclear whether the default is unconditional or blank-only.
+
+Report EVERY distinct problem you find. A row may produce several findings — one per problem, each naming the single field key most responsible. Do not stop at the first. Skip rows that are genuinely correct; most rows should produce nothing.
+
+Use "error" when the row cannot be implemented as written. Use "warning" when it is implementable but disagrees with its stated requirement or is ambiguous.
 
 Respond with ONLY valid JSON, no markdown fences, no commentary, matching exactly:
 { "findings": [ { "id": "<id>", "field": "<field key>", "severity": "error" | "warning", "issue": "<short description>" }, ... ] }`;
@@ -231,7 +247,7 @@ Deno.serve(async (req: Request) => {
       prompt = technicalRulePrompt(body.context); maxTokens = 1200;
     } else if (body.task === 'mapping-review') {
       if (!body.rows?.length) return new Response(JSON.stringify({ findings: [] }), { headers: jsonHeaders });
-      prompt = mappingReviewPrompt(body.structureIdent ?? '(unnamed structure)', body.rows, body.optionalFields ?? []); maxTokens = 4000;
+      prompt = mappingReviewPrompt(body.structureIdent ?? '(unnamed structure)', body.rows, body.optionalFields ?? [], body.criticalFields ?? []); maxTokens = 4000;
     } else {
       return new Response(JSON.stringify({ error: 'Unknown task.' }), { status: 400, headers: jsonHeaders });
     }

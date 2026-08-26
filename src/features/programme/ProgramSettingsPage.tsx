@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import { useParams } from 'react-router-dom';
 import { Plus, Trash2, Pencil, X, Check } from 'lucide-react';
 import clsx from 'clsx';
@@ -37,7 +38,7 @@ export function ProgramSettingsPage() {
 
   return (
     <div>
-      <PageHeader title="Program Settings" description="Programme, projects, subprojects and cycles for this program." />
+      <PageHeader title="Program Settings" description="Program, projects, subprojects and cycles for this program." />
       <div className="flex items-center gap-1 border-b border-line mb-4">
         {TABS.map((t) => (
           <button
@@ -159,7 +160,7 @@ function ConfigureTab({ programId }: { programId: string }) {
         queryClient.invalidateQueries({ queryKey: ['subprojects'] }),
         queryClient.invalidateQueries({ queryKey: ['cycles-multi'] }),
       ]);
-      toast.success('Programme configuration saved.');
+      toast.success('Program configuration saved.');
       setEditing(false);
     } catch (err: any) {
       toast.error(err.message ?? 'Save failed.');
@@ -214,6 +215,9 @@ function ConfigureTab({ programId }: { programId: string }) {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Editing mode holds a whole draft of the programme tree in memory; leaving the screen
+          throws all of it away. */}
+      <UnsavedChangesGuard when={editing} what="Your program configuration changes" />
       <div className="flex justify-end gap-2">
         {editing ? (
           <>
@@ -226,7 +230,7 @@ function ConfigureTab({ programId }: { programId: string }) {
       </div>
 
       <div className="bg-surface rounded-lg shadow-card p-5">
-        <div className="text-sm2 font-bold uppercase tracking-[.05em] text-muted mb-3">Programme</div>
+        <div className="text-sm2 font-bold uppercase tracking-[.05em] text-muted mb-3">Program</div>
         {editing ? (
           <div className="grid grid-cols-2 gap-3">
             <Field label="Code"><Input value={draftProgram!.code} onChange={(e) => setDraftProgram((p) => p && { ...p, code: e.target.value })} /></Field>

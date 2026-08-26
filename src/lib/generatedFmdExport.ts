@@ -1,3 +1,4 @@
+import type { FmdHealth } from './fmdHealth';
 import { supabase } from './supabase';
 import { colorByKey } from './goldenFmdColors';
 import { sanitizeName } from './sanitize';
@@ -21,6 +22,9 @@ export interface GeneratedFmdMeta {
   /** The Custom FMD "Review Mapping" AI check's result for this version — powers the exported
    * Mapping Review sheet, right after Version History. Omitted (or no findings) skips the sheet. */
   mappingReview?: MappingReview;
+  /** `analyseFmd()`'s result — powers the Health Check sheet, right after Overview. Computed by the
+   * caller rather than here: it needs the FMD's review points, which the export never loads. */
+  health?: FmdHealth;
 }
 
 /** Groups consecutive same-section columns into merged header-band spans. */
@@ -57,6 +61,11 @@ function uniqueSheetName(base: string, used: Set<string>): string {
  * then one sheet per source structure with the same merged color-band header the on-screen view
  * and the Golden FMD export use. Split out from the download-triggering export so bulk/zip export
  * can reuse the same buffer. */
+/** Excel has no "amber", so status reads as a word as well as a fill — a printed or
+ * colour-blind-read sheet has to carry the same verdict as the screen. */
+const STATUS_FILL: Record<string, string> = { pass: 'FFDDF3E4', warn: 'FFFDF0D5', fail: 'FFFADBD8' };
+const STATUS_WORD: Record<string, string> = { pass: 'OK', warn: 'Watch', fail: 'Action needed' };
+
 export async function buildGeneratedFmdBuffer(meta: GeneratedFmdMeta, columns: GeneratedColumn[], tables: GeneratedTable[]): Promise<ArrayBuffer> {
   const { default: ExcelJS } = await import('exceljs');
   const workbook = new ExcelJS.Workbook();
@@ -94,6 +103,80 @@ export async function buildGeneratedFmdBuffer(meta: GeneratedFmdMeta, columns: G
     overview.getCell(`A${r}`).value = t.structureIdent;
     overview.getCell(`B${r}`).value = t.structureDescription ?? '—';
     r += 1;
+  }
+
+  // Right after Overview: the same summary the Health check tab shows, so an exported FMD can be
+  // assessed without opening the app.
+  if (meta.health) {
+    const h = meta.health;
+    const hc = workbook.addWorksheet('Health Check', { properties: { tabColor: { argb: 'FF1F7A4D' } } });
+    hc.getColumn(1).width = 30;
+    hc.getColumn(2).width = 16;
+    hc.getColumn(3).width = 62;
+    const hTitle = hc.getCell('A1');
+    hTitle.value = `Health Check — ${meta.versionLabel}`;
+    hTitle.font = { bold: true, size: 13 };
+
+    let hr = 3;
+    const section = (label: string) => {
+      const cell = hc.getCell(`A${hr}`);
+      cell.value = label;
+      cell.font = { bold: true, size: 11 };
+      hr += 1;
+    };
+    const stat = (label: string, value: string | number, note?: string) => {
+      hc.getCell(`A${hr}`).value = label;
+      hc.getCell(`B${hr}`).value = value;
+      if (note) hc.getCell(`C${hr}`).value = note;
+      hr += 1;
+    };
+
+    section('Size');
+    stat('Fields', h.totalRows);
+    stat('Structures', h.structures.length, h.structures.map((s) => `${s.ident} (${s.rows})`).join(', '));
+    stat('Cells filled', h.blanks.totalCells === 0 ? '0%' : `${Math.round(((h.blanks.totalCells - h.blanks.blankCells) / h.blanks.totalCells) * 100)}%`, `${h.blanks.blankCells} blank of ${h.blanks.totalCells}`);
+    hr += 1;
+
+    section('Coverage');
+    stat('In scope', h.scope.in);
+    stat('Out of scope', h.scope.out);
+    stat('Not stated', h.scope.unset, 'MIGRATION_IN_SCOPE decides this');
+    hr += 1;
+
+    section('Build effort');
+    stat('Points', h.totalEffort, 'Relative units, not hours. 1 pt = one COPY field.');
+    if (h.untyped > 0) stat('Unscored fields', h.untyped, 'No valid MAPPING_TYPE, so they add nothing to the total');
+    for (const m of h.mapping) stat(m.label, m.rows, `${m.effort} pts`);
+    hr += 1;
+
+    section('Technical rules');
+    stat('SQL', h.rules.sql);
+    stat('Prose', h.rules.prose);
+    stat('Points elsewhere', h.rules.pointer, 'References a document instead of stating the rule');
+    stat('Blank', h.rules.blank);
+    hr += 1;
+
+    section('Outstanding');
+    stat('Review findings open', h.review.outstanding, h.review.ran ? `${h.review.errors} errors · last run ${fmtDateTime(h.review.at)}` : 'Never reviewed');
+    stat('Review points open', h.points.open, h.points.byCategory.map((c) => `${c.n} ${c.label}`).join(' · ') || undefined);
+    stat('Unpublished changes', h.pendingChanges);
+    hr += 2;
+
+    section('Checks');
+    const checkHeader = hr;
+    hc.getCell(`A${checkHeader}`).value = 'Check';
+    hc.getCell(`B${checkHeader}`).value = 'Status';
+    hc.getCell(`C${checkHeader}`).value = 'Detail';
+    for (const col of ['A', 'B', 'C']) hc.getCell(`${col}${checkHeader}`).font = { bold: true };
+    hr += 1;
+    for (const c of h.checks) {
+      hc.getCell(`A${hr}`).value = c.label;
+      const statusCell = hc.getCell(`B${hr}`);
+      statusCell.value = STATUS_WORD[c.status] ?? c.status;
+      statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: STATUS_FILL[c.status] ?? 'FFFFFFFF' } };
+      hc.getCell(`C${hr}`).value = c.detail;
+      hr += 1;
+    }
   }
 
   if (meta.versions && meta.versions.length > 0) {

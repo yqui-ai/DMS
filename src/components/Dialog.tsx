@@ -110,7 +110,12 @@ export function Dialog({ open, onClose, title, subtitle, size = 'md', children, 
               <X size={18} />
             </button>
           </div>
-          <div className="px-5 py-4 overflow-auto flex-1">{children}</div>
+          {/* min-h-0 is load-bearing: a flex item defaults to min-height:auto, so without it this
+              body grows to fit its content instead of shrinking, overflow-auto never has anything
+              to scroll, and the panel's max-h-full simply clips the overflow. Tall dialogs then
+              lose their bottom with no scrollbar — which is what happened to the Historical FMD
+              comparison. */}
+          <div className="px-5 py-4 overflow-auto flex-1 min-h-0">{children}</div>
           {footer && <div className="px-5 py-3.5 border-t border-line flex items-center justify-end gap-2.5">{footer}</div>}
         </div>
       </div>

@@ -8,7 +8,7 @@ import { usePrograms, useProjects, useSubproject, useSubprojects, useProject } f
 import { Dialog } from '../../components/Dialog';
 import { Button } from '../../components/Button';
 import { Field, Input } from '../../components/Field';
-import { Breadcrumb } from './Breadcrumb';
+import { GlobalSearch } from './GlobalSearch';
 import type { Env } from '../../types/entities';
 
 const ENV_CLASSES: Record<Env, string> = {
@@ -160,20 +160,21 @@ function AvatarMenu() {
   );
 }
 
-/** Global search and a notifications bell used to live here as non-functional markup — an input
- * with no onChange and a button with no onClick. Both were removed rather than left in place:
- * a control that ignores you in the most prominent strip of the app teaches people the chrome
- * can't be trusted, which makes the working controls feel unreliable too. Reinstate them when
- * they have behaviour behind them, not before. */
+/** Search and a notifications bell once lived here as non-functional markup — an input with no
+ * onChange and a button with no onClick — and were removed rather than left in place: a control
+ * that ignores you in the most prominent strip of the app teaches people the chrome can't be
+ * trusted. Search is back because it now has behaviour behind it. The bell is still absent, and
+ * stays absent until it does too. */
 export function HeaderBar() {
   return (
     <header className="h-14 shrink-0 border-b border-line bg-surface flex items-center gap-3 px-5">
-      {/* Switcher changes context; breadcrumb reports it and walks back up. Two different jobs, so
-          they stay separate controls rather than one overloaded dropdown. */}
+      {/* The switcher CHANGES context; that's the only context job this bar has. The breadcrumb
+          reports where you are, which belongs with the thing it describes — it sits above the page
+          title now. Side by side up here the two restated the same project and subproject names, and
+          the trail had to truncate to fit beside a control that was already showing its first half. */}
       <SubprojectSwitcher />
-      <div className="h-5 w-px bg-line shrink-0" aria-hidden />
-      <Breadcrumb />
       <div className="flex-1 min-w-0" />
+      <GlobalSearch />
       <EnvPill />
       <AvatarMenu />
     </header>

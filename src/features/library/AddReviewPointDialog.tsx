@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import clsx from 'clsx';
 import { Dialog } from '../../components/Dialog';
 import { Button } from '../../components/Button';
@@ -29,6 +30,9 @@ export function AddReviewPointDialog({ target, canAdd, onSubmit, onClose }: {
   const [tag, setTag] = useState<string>('todo');
   const [body, setBody] = useState('');
   const [saving, setSaving] = useState(false);
+  // The dialog already warns on close; this covers the other half — the sidebar, the breadcrumb,
+  // Back, a reload — which is where a half-typed point actually gets lost.
+  const guard = <UnsavedChangesGuard when={!!target && !!body.trim()} what="Your review point" />;
 
   useEffect(() => { setTag('todo'); setBody(''); }, [target?.structureId, target?.rowKey, target?.field]);
 
@@ -49,6 +53,8 @@ export function AddReviewPointDialog({ target, canAdd, onSubmit, onClose }: {
   };
 
   return (
+    <>
+    {guard}
     <Dialog
       open={!!target} onClose={onClose} title="Add review point" size="md"
       unsavedWarning={body.trim() ? 'Your review point has not been added yet.' : undefined}
@@ -110,5 +116,6 @@ export function AddReviewPointDialog({ target, canAdd, onSubmit, onClose }: {
         )}
       </div>
     </Dialog>
+    </>
   );
 }

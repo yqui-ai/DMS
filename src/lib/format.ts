@@ -42,13 +42,6 @@ export const exportTimestamp = (): string => {
 /** "Created by X on Y · Changed by Z on W" for an FMD's title-bar subtitle — Changed is omitted
  * entirely when there's no second version yet (an FMD that's only ever been created hasn't been
  * "changed"), rather than repeating the creation info under a misleading label. */
-export const fmdAuditLine = (f: { createdBy?: string; createdAt?: string; changedBy?: string; changedAt?: string }): string => {
-  const parts: string[] = [];
-  if (f.createdBy) parts.push(`Created by ${f.createdBy} on ${fmtDateTime(f.createdAt)}`);
-  if (f.changedBy) parts.push(`Changed by ${f.changedBy} on ${fmtDateTime(f.changedAt)}`);
-  return parts.join(' · ');
-};
-
 export const fmtDuration = (seconds?: number | null): string => {
   if (seconds == null) return '—';
   const h = Math.floor(seconds / 3600);

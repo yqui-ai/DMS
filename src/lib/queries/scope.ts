@@ -17,9 +17,12 @@ const toSubprojectObject = (w: any): SubprojectObject => ({
 });
 
 /** The full SAP migration-object catalogue — programme-wide, readable by any authenticated member. */
-export function useMigrationObjects() {
+/** `enabled` lets a component that is mounted but showing nothing (a dialog with no record open)
+ * skip the fetch — the whole catalogue is a big read to make for a screen nobody is looking at. */
+export function useMigrationObjects(enabled = true) {
   return useQuery({
     queryKey: ['migration-objects'],
+    enabled,
     queryFn: async (): Promise<MigrationObject[]> => {
       const { data, error } = await supabase.from('migration_objects').select('*').order('object_id');
       if (error) throw error;
@@ -46,9 +49,10 @@ export function useSubprojectObjects(subprojectId?: string) {
  * migration object in the subproject the FMD belongs to, assigned during in-scope selection
  * (Scope > Criteria). Keeping one source means an FMD can't disagree with the scope register
  * about who is responsible for the object. */
-export function useScopeObjectOwners() {
+export function useScopeObjectOwners(enabled = true) {
   return useQuery({
     queryKey: ['scope-object-owners'],
+    enabled,
     queryFn: async (): Promise<Map<string, string>> => {
       const { data, error } = await supabase
         .from('subproject_objects').select('subproject_id, migration_object_id, owner').not('owner', 'is', null);

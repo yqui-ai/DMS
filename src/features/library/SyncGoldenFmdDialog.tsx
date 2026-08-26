@@ -45,7 +45,9 @@ export function SyncGoldenFmdDialog({ open, fmdId, fmdName, current, goldenStruc
     setApplying(true);
     try {
       await apply(current, plan, goldenVersionId, goldenVersionLabel ?? 'latest');
-      toast.success('Synced — the result is a new draft, so nothing is published until you say so.');
+      toast.success(plan.relinkOnly
+        ? `Reference updated to Golden ${goldenVersionLabel ?? 'latest'}.`
+        : 'Synced — the result is a new draft, so nothing is published until you say so.');
       onClose();
     } catch (err: any) {
       toast.error(err.message ?? 'Could not apply the sync.');
@@ -54,7 +56,13 @@ export function SyncGoldenFmdDialog({ open, fmdId, fmdName, current, goldenStruc
     }
   };
 
-  const nothingToDo = plan && !plan.added.length && !plan.removed.length && !plan.reordered;
+  /** The template moved but its columns are identical, so the only stale thing is the reference.
+   *
+   * This used to disable the button, which left the FMD permanently flagged Outdated with no way to
+   * clear it — and it read the plan's parts by hand, so a template whose only change was a field
+   * DESCRIPTION also counted as "nothing to do" even though there was something to sync. Read
+   * `relinkOnly`, which the analysis already works out. */
+  const relinkOnly = !!plan?.relinkOnly;
 
   return (
     <Dialog
@@ -63,8 +71,8 @@ export function SyncGoldenFmdDialog({ open, fmdId, fmdName, current, goldenStruc
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={applying}>Cancel</Button>
-          <Button variant="primary" onClick={confirm} disabled={analysing || applying || !plan || !!nothingToDo}>
-            {applying ? 'Syncing…' : 'Approve & create draft'}
+          <Button variant="primary" onClick={confirm} disabled={analysing || applying || !plan}>
+            {applying ? 'Syncing…' : relinkOnly ? 'Update reference' : 'Approve & create draft'}
           </Button>
         </>
       }
@@ -77,12 +85,39 @@ export function SyncGoldenFmdDialog({ open, fmdId, fmdName, current, goldenStruc
         </div>
       ) : !plan ? (
         <p className="text-sm2 text-muted py-8 text-center">Nothing to compare yet.</p>
-      ) : nothingToDo ? (
-        <p className="text-sm2 font-semibold text-green py-8 text-center">✓ Already aligned with the current Golden template.</p>
+      ) : relinkOnly ? (
+        <div className="py-10 text-center flex flex-col items-center gap-2">
+          <p className="text-sm2 font-semibold text-green">✓ The columns already match Golden {goldenVersionLabel}.</p>
+          <p className="text-2xs text-muted max-w-[420px]">
+            Nothing in this FMD needs restructuring — the template changed in ways that don't affect
+            its columns. Updating the reference records that it's current, and clears the Outdated
+            flag. No new version is created.
+          </p>
+        </div>
       ) : (
         <div className="flex flex-col gap-4">
           {plan.summary && (
             <div className="rounded-[8px] bg-blue-pale p-3 text-sm2 text-text">{plan.summary}</div>
+          )}
+
+          {/* Changes that move no data but change what the FMD ACCEPTS — a column's type, its value
+              list, whether it's critical. These were computed but never shown, so re-typing a column
+              in the template produced a plan that looked empty with an active Approve button. */}
+          {plan.metadataChanges.length > 0 && (
+            <div className="rounded-[8px] shadow-[inset_0_0_0_1px_var(--line)] overflow-hidden">
+              <div className="px-3 py-1.5 bg-surface-3 border-b border-line">
+                <span className="text-2xs font-bold uppercase tracking-[.04em] text-muted">Column definitions</span>
+                <span className="text-2xs text-muted ml-1.5">no data moves — this changes what the column accepts</span>
+              </div>
+              <div className="flex flex-col divide-y divide-line-soft">
+                {plan.metadataChanges.map((m) => (
+                  <div key={m.field} className="px-3 py-2 flex items-center gap-2 flex-wrap">
+                    <Tag variant="column" size="sm">{m.field}</Tag>
+                    <span className="text-sm2 text-text">{m.what}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           {plan.dataLossFields.length > 0 && (

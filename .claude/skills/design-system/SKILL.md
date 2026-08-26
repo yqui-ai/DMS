@@ -154,6 +154,126 @@ inert rows show a pointer that does nothing.
 *over* whatever the cell already has, so review highlights, changed-cell yellow and status fills all
 survive the hover and simply darken. Setting `hover:bg-*` would erase them.
 
+## Monospace is for a standalone identifier
+
+`font-mono` marks something you'd type or copy — an ID, a version, a field or table name — where it
+stands **alone**. A string that mixes an identifier with prose takes the body font for the whole
+thing.
+
+`<option>` can't set two faces, so `<Select mono>` applies the code face to every character in the
+label. "v1.0.2 · unpublished" and "S_MARA — Material master (33)" both came out entirely
+monospaced, which read as a different control from the sans-serif buttons beside them. Either keep
+the option a bare identifier and set `mono`, or let it carry prose and drop `mono` — not both.
+
+## Version labels
+
+"Latest" means newest by date. It is **not** the same as live, and using it for both labelled an
+unreleased generation as latest while an older version was the one everyone else could see. Say
+which version is `live` (newest with `published_at`), and say `unpublished` outright for one that
+has never been released. See the `library-section-design` skill for the draft model behind this.
+
+## Scrolling inside flex columns
+
+`min-h-0` on every scrolling flex child. A flex item defaults to `min-height: auto`, so it grows
+to fit its content instead of shrinking — `overflow-auto` then has nothing to scroll and an
+ancestor's `max-h` silently clips the bottom instead. The symptom is content cut off with **no
+scrollbar at all**, which reads as a rendering bug rather than a layout one.
+
+This bit `Dialog`'s body: tall dialogs (the Historical FMD comparison) lost everything below the
+fold with no way to reach it. The chain has to be unbroken — panel `max-h-full` → body
+`flex-1 min-h-0 overflow-auto` → content `h-full`.
+
+## Global search
+
+`GlobalSearch` in the header and `SearchPage` at `/search` both render `useSearchResults`
+(`src/lib/search.ts`) — one matcher, one set of records, differing only in `limit`. Never
+reimplement matching in a consumer: a hit that appears in the dropdown and not on the page (or the
+reverse) is worse than no search.
+
+- Results are grouped by record type and **capped per category**, not overall. Without a per-
+  category cap, three hundred matching FMDs bury the one subproject you were looking for.
+- The catalogue queries are gated behind first focus (`enabled`). Four heavy reads on every page,
+  to power a box most visits never touch, is a real cost.
+- Search matches over the TanStack caches the catalogues already fill, so nothing surfaces that RLS
+  wouldn't have shown on the screen it links to.
+- A record with no subproject is programme-wide: it passes a **program** filter and fails project
+  and subproject ones. The Golden FMD is genuinely in scope for the programme, but "what's in Wave
+  1A" must not return something that is in no wave.
+
+## Letter case
+
+Two registers, and they are not interchangeable:
+
+| Element | Case | Examples |
+|---|---|---|
+| Page titles (`PageHeader`) | **Title Case** | Field Mapping · Job Monitor · Program Settings |
+| Tabs — routed **and** hand-rolled | **Title Case** | Staging Area · Post-Load Checks · Health Check · Where-Used |
+| Pane and card titles | **Sentence case** | Auto review (AI) · Version details · My open items |
+| Buttons | **Sentence case** after the first word | Export to Excel · Review changes… · Save to draft |
+| Column headers | **UPPER**, via `text-2xs` + `tracking` | SRC_FIELD · MAPPING_TYPE |
+| Group labels / eyebrows | **UPPER** | SIZE · COVERAGE · OUTSTANDING |
+
+**A hyphenated tab capitalises after the hyphen** — `Post-Load Checks`, `Where-Used`. The routed tab
+strips were already consistent; the FMD viewer's hand-rolled tabs were not ("Health check",
+"Where-used"), because a tab written as inline JSX doesn't sit next to its siblings in a list where
+the mismatch is obvious. **Check hand-rolled tabs against `nav.ts`, not against each other.**
+
+Descriptions are full sentences and end in a period. Tooltips and hints are sentences too.
+
+## Guards live in their own skill
+
+Unsaved-change guards, destructive-action confirmation and input validation are cross-cutting and
+are documented in `app-guards`. Load that before adding a form, an editable surface or a delete.
+
+## Toasts
+
+`toast.success` is green and means **the thing you asked for is done**: saved, generated,
+exported, published. `toast.info` is blue and means *here is what happened instead* — where an
+edit went, why a control is waiting, what to do next. `toast.error` is failure.
+
+Reach for `info` whenever the message's job is to redirect an expectation rather than confirm one.
+Reporting "your changes are collecting in a draft" in green read as "published", which is the
+opposite of what the sentence says: the colour answered a question before the words could.
+
+## Breadcrumb and the header bar
+
+The trail sits in `AppShell`'s `<main>`, **above the page title** — not in the header bar. Beside
+the subproject switcher the two restated the same project and subproject names, and the trail had
+to truncate to fit next to a control already showing its first half.
+
+- The header bar is for controls that CHANGE something: the subproject switcher, the environment
+  pill, the account menu. Nothing that merely reports state belongs there.
+- `Breadcrumb` carries its own `mb-2`. Don't wrap it in a spacing div — it renders nothing on the
+  subproject picker, and a wrapper would leave a gap where no trail exists.
+- The last crumb is `text-text`, **not** bold. The page title directly below is the strongest thing
+  on screen and usually says the same word; bolding both made them read as competing headings.
+
+## Toolbar
+
+`<Toolbar>` is the action row between a `PageHeader` and a list. Every list screen used to
+hand-roll it, and the copies drifted: three rebuilt the search input inline (keeping a permanent
+border the shared `ToolbarSearch` had already dropped), and screens that filtered without a Clear
+filters button left no way out of an over-narrowed list.
+
+```tsx
+<Toolbar
+  search={{ value: query, onChange: setQuery, placeholder: 'Search rules…' }}
+  onClearFilters={hasActiveFilters ? clearFilters : undefined}
+  count={filtered.length} noun="rules" selectedCount={selected.size}
+  actions={<Button variant="quiet" size="sm" …/>}
+>
+  <MultiSelectFilter … />
+</Toolbar>
+```
+
+- The order is fixed by the component, not the caller: search → filters → Clear filters → count →
+  `ml-auto` actions. `search` is a config object rather than a slot precisely so nothing can go
+  before it and nobody can hand-roll the input.
+- `count`/`noun` are formatted centrally — every screen gets the same thousands separator and the
+  same ` · N selected` suffix.
+- `spacing="none"` when the parent is a flex column with its own `gap`; otherwise the toolbar
+  carries its own `mb-3`.
+
 ## Maintaining this skill
 
 Update this file in the same change whenever a shared visual decision changes — a new token, a
