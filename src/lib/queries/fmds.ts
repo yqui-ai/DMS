@@ -2,7 +2,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../supabase';
 import { formatLibraryReference } from '../libraryReference';
 import { useAuth } from '../auth';
-import type { Fmd, FmdVersion, GeneratedColumn, GeneratedTable, GoldenFmdStructure, GovState, LibraryListing } from '../../types/entities';
+import { summariseVersionChange } from '../rowDiff';
+import type { Fmd, FmdPendingChange, FmdVersion, GeneratedColumn, GeneratedTable, GoldenFmdStructure, GovState, LibraryListing } from '../../types/entities';
 
 const toFmdVersion = (v: any): FmdVersion => ({
   id: v.id, fmdId: v.fmd_id, version: v.version, state: v.state,
@@ -10,6 +11,7 @@ const toFmdVersion = (v: any): FmdVersion => ({
   createdBy: v.created_by ?? undefined, createdAt: v.created_at ?? undefined,
   approvedBy: v.approved_by ?? undefined, approvedAt: v.approved_at ?? undefined,
   changedBy: v.changed_by ?? undefined, changedAt: v.changed_at ?? undefined,
+  publishedBy: v.published_by ?? undefined, publishedAt: v.published_at ?? undefined,
 });
 
 /** Bumps the patch segment of a 'vMAJOR.MINOR.PATCH' version string; falls back to 'v1.0.1' for
@@ -36,12 +38,21 @@ export interface LibraryFmdRow extends Fmd, LibraryListing {
   createdBy?: string; createdAt?: string; changedBy?: string; changedAt?: string;
   /** Which Golden FMD version this FMD was generated against, and whether Golden has since moved
    * on — undefined for the Golden FMD itself (it doesn't reference itself) and for anything never
-   * generated from one (e.g. a raw Historical upload). */
+   * generated from one. */
   goldenVersionLabel?: string; goldenOutdated?: boolean;
   /** A Custom FMD's snapshot reference to the object's Standard FMD version — undefined for
-   * Standard/Golden/Historical, which reference something else (or nothing). Outdated when the
+   * Standard/Golden, which reference something else (or nothing). Outdated when the
    * Standard FMD has since moved to a newer version for any reason, not just a Golden change. */
   standardRefVersionLabel?: string; standardRefOutdated?: boolean;
+  /** The newest PUBLISHED version — what everyone other than the editor should consider current.
+   * Undefined while an FMD has only ever been a draft. */
+  activeVersion?: string;
+  /** When the live version was published — drives the "New Version" flag in the catalogue. */
+  activePublishedAt?: string;
+  /** True when the newest version is still an unpublished working draft, i.e. there are edits the
+   * owner hasn't released yet. Independent of activeVersion: an FMD can have both. */
+  hasDraft?: boolean;
+  latestState?: GovState;
 }
 
 /** FMDs enriched with the program/project reference (via subproject -> project -> program) and
@@ -53,7 +64,7 @@ export function useLibraryFmds() {
     queryFn: async (): Promise<LibraryFmdRow[]> => {
       const { data, error } = await supabase
         .from('fmds')
-        .select('*, subprojects(projects(code, programs(code))), fmd_versions!fmd_id(id, version, created_at, created_by, changed_at, changed_by)')
+        .select('*, subprojects(projects(code, programs(code))), fmd_versions!fmd_id(id, version, state, created_at, created_by, changed_at, changed_by, published_at)')
         .order('name');
       if (error) throw error;
       const rows = data ?? [];
@@ -96,9 +107,13 @@ export function useLibraryFmds() {
         const row = {
           id: f.id, subprojectId: f.subproject_id ?? undefined, migrationObjectId: f.migration_object_id ?? undefined, name: f.name,
           class: f.class, type: f.type, displayId: f.display_id ?? undefined, aiGenerated: !!f.ai_generated,
-          histSourceName: f.hist_source_name ?? undefined, histPlant: f.hist_plant ?? undefined, owner: f.owner ?? undefined,
+          histSourceName: f.hist_source_name ?? undefined, histPlant: f.hist_plant ?? undefined,
           reference: formatLibraryReference(f.class, programCode, projectCode),
           latestVersion: latest?.version as string | undefined, latestVersionId: latest?.id as string | undefined,
+          activeVersion: [...versions].reverse().find((v: any) => v.published_at)?.version as string | undefined,
+          activePublishedAt: [...versions].reverse().find((v: any) => v.published_at)?.published_at as string | undefined,
+          hasDraft: !!latest && !latest.published_at,
+          latestState: latest?.state as GovState | undefined,
           createdBy: first?.created_by ?? undefined, createdAt: first?.created_at ?? undefined,
           changedBy: hasChanged ? (latest?.created_by ?? undefined) : undefined,
           changedAt: hasChanged ? (latest?.created_at ?? undefined) : undefined,
@@ -194,7 +209,7 @@ export function useLatestFmdVersion(fmdId?: string) {
   });
 }
 
-/** Every version row for an fmd, newest first — used by the Golden FMD viewer's "Version Updates"
+/** Every version row for an fmd, newest first — used by the Golden FMD viewer's "Versions"
  * tab so a past structure snapshot can be inspected. */
 export function useFmdVersions(fmdId?: string) {
   return useQuery({
@@ -354,6 +369,9 @@ export function useGenerateFmdMutation() {
 
       let fmdId: string;
       let version: string;
+      /** The version this new one supersedes — captured so every version records what changed
+       * relative to it, without anyone having to remember to ask. */
+      let previousTables: GeneratedTable[] | undefined;
       if (existing) {
         fmdId = existing.id;
         const { error: updateError } = await supabase
@@ -364,9 +382,10 @@ export function useGenerateFmdMutation() {
           }).eq('id', fmdId);
         if (updateError) throw updateError;
         const { data: latest, error: latestError } = await supabase
-          .from('fmd_versions').select('version').eq('fmd_id', fmdId).order('created_at', { ascending: false }).limit(1).maybeSingle();
+          .from('fmd_versions').select('version, sheets').eq('fmd_id', fmdId).order('created_at', { ascending: false }).limit(1).maybeSingle();
         if (latestError) throw latestError;
         version = bumpVersion(latest?.version ?? 'v1.0.0');
+        previousTables = latest?.sheets?.generatedTables as GeneratedTable[] | undefined;
       } else {
         const { data: fmd, error: fmdError } = await supabase
           .from('fmds')
@@ -383,12 +402,24 @@ export function useGenerateFmdMutation() {
         version = 'v1.0.0';
       }
 
+      // Every new version is automatically compared with the one it replaces, and the result is
+      // appended to that version's COMMENT. It used to be filed as a separate entry in the review
+      // history, which made that list mostly duplicates — a change summary belongs with the version
+      // it describes, not alongside the policy findings. Deterministic, so it always exists; null
+      // only for a first version, which has nothing to compare against.
+      const changeSummary = summariseVersionChange(previousTables, params.tables);
+      const defaultComment = `Generated from Golden FMD ${params.goldenVersionLabel}`;
+      // An explicit comment (the historical wizard passes its own full diff) already says what
+      // changed — don't append a second, coarser summary on top of it.
+      const comment = params.comment
+        ?? (changeSummary ? `${defaultComment} — ${changeSummary}` : defaultComment);
+
       const { data: versionRow, error: versionError } = await supabase
         .from('fmd_versions')
         .insert({
           fmd_id: fmdId, version, state: 'Draft',
           sheets: { generatedColumns: params.columns, generatedTables: params.tables },
-          comment: params.comment ?? `Generated from Golden FMD ${params.goldenVersionLabel}`,
+          comment,
           created_by: who, created_at: now,
         })
         .select('id').single();
@@ -468,19 +499,189 @@ export async function findHistoricalLineage(histSourceName: string, histPlant: s
   return { fmdId: fmd.id, rows: (versionRows?.sheets?.generatedTables as GeneratedTable[] | undefined) ?? [] };
 }
 
-/** Claims or reassigns an FMD's owner — the gate for who's allowed to post a field note
- * (src/lib/queries/fmdFieldNotes.ts). Anyone can call this (no extra permission check beyond the
- * usual RLS membership gate); "owner" is a workflow designation, not itself access-controlled. */
-export function useSetFmdOwner() {
+/** Edits one cell of a generated FMD. This is how an FMD enters Draft state: if the latest version
+ * is already an unpublished draft the edit lands in it directly, and if the latest version is
+ * PUBLISHED (frozen — a DB trigger rejects content changes) the first edit forks a new draft from
+ * it and edits that. Callers don't have to know which case they're in.
+ *
+ * Editing is per-cell rather than per-row so two people working on different fields of the same
+ * structure don't overwrite each other's work with a stale row copy. */
+export function useEditFmdField(fmdId: string) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+
   return {
-    async setOwner(fmdId: string, owner: string | null): Promise<void> {
-      const { error } = await supabase.from('fmds').update({ owner }).eq('id', fmdId);
+    async saveField(params: {
+      structureId: string; rowIndex: number; field: string; value: string;
+    }): Promise<{ versionId: string; createdDraft: boolean; version: string }> {
+      const { structureId, rowIndex, field, value } = params;
+
+      // Read the current latest version from the DATABASE rather than trusting what the component
+      // is holding. React state lags a save by one refetch, so two quick edits would both see the
+      // published version and each fork their own draft — an editing session could end up with a
+      // version per keystroke. Re-reading here makes "one draft per editing session" hold no matter
+      // how fast edits arrive.
+      const { data: current, error: readError } = await supabase
+        .from('fmd_versions')
+        .select('id, version, sheets, published_at')
+        .eq('fmd_id', fmdId).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (readError) throw readError;
+      if (!current) throw new Error('This FMD has no version to edit yet.');
+
+      const sheets = (current.sheets ?? {}) as FmdVersion['sheets'];
+      const tables = sheets.generatedTables;
+      if (!tables?.length) throw new Error('This version has no generated mapping data to edit.');
+      const target = tables.find((t) => t.structureId === structureId);
+      if (!target?.rows[rowIndex]) throw new Error('Could not locate that field.');
+
+      const nextTables: GeneratedTable[] = tables.map((t) => (
+        t.structureId !== structureId ? t : {
+          ...t,
+          rows: t.rows.map((r, i) => (i === rowIndex ? { ...r, [field]: value } : r)),
+        }
+      ));
+
+      const who = user?.email ?? 'Unknown';
+      const now = new Date().toISOString();
+      const before = target.rows[rowIndex][field] ?? '';
+      const rowLabel = target.rows[rowIndex].SRC_FIELD || target.rows[rowIndex].TGT_FIELD || `Row ${rowIndex + 1}`;
+      const existing = sheets.pendingChanges ?? [];
+      const already = existing.find((c) => c.structureId === structureId && c.rowIndex === rowIndex && c.field === field);
+      // Re-editing the same cell updates the destination but KEEPS the original `from`, so the
+      // change always reads against what's published rather than against the last keystroke.
+      const nextChanges: FmdPendingChange[] = already
+        ? existing
+            .map((c) => (c === already ? { ...c, to: value, by: who, at: now } : c))
+            // An edit back to the published value isn't a change any more — drop it rather than
+            // asking someone to publish a no-op.
+            .filter((c) => c.from !== c.to)
+        : [...existing, {
+            id: crypto.randomUUID(), structureId, structureIdent: target.structureIdent,
+            rowIndex, rowLabel, field, from: before, to: value, by: who, at: now,
+          }].filter((c) => c.from !== c.to);
+
+      // Unpublished draft — edit in place. A draft is a scratchpad that COLLECTS changes; it stays
+      // one version however many edits it receives, and only publishing freezes it.
+      if (!current.published_at) {
+        const { error } = await supabase
+          .from('fmd_versions')
+          .update({ sheets: { ...sheets, generatedTables: nextTables, pendingChanges: nextChanges }, changed_by: who, changed_at: now })
+          .eq('id', current.id);
+        if (error) throw error;
+        await invalidateFmd(queryClient, fmdId);
+        return { versionId: current.id as string, createdDraft: false, version: current.version as string };
+      }
+
+      // Published — open ONE new draft for this editing session. Every later edit lands in it via
+      // the branch above. Reviews are not carried over: they assessed the published content, and
+      // re-attaching them to edited content would misreport what was checked.
+      const version = bumpVersion(current.version as string);
+      const { mappingReview: _legacy, mappingReviews: _reviews, ...carried } = sheets;
+      const { data, error } = await supabase
+        .from('fmd_versions')
+        .insert({
+          fmd_id: fmdId, version, state: 'Draft',
+          sheets: { ...carried, generatedTables: nextTables, pendingChanges: nextChanges },
+          comment: `Working draft from ${current.version}`,
+          created_by: who, created_at: now,
+        })
+        .select('id').single();
       if (error) throw error;
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['fmds-library'] }),
-        queryClient.invalidateQueries({ queryKey: ['fmds-all'] }),
-      ]);
+      await invalidateFmd(queryClient, fmdId);
+      return { versionId: data.id as string, createdDraft: true, version };
+    },
+  };
+}
+
+const invalidateFmd = (queryClient: ReturnType<typeof useQueryClient>, fmdId: string) => Promise.all([
+  queryClient.invalidateQueries({ queryKey: ['fmd-versions', fmdId] }),
+  queryClient.invalidateQueries({ queryKey: ['fmd-version-latest', fmdId] }),
+  queryClient.invalidateQueries({ queryKey: ['fmds-library'] }),
+]);
+
+/** Publishes SELECTED changes out of a draft. Anything left unticked stays pending in a new draft,
+ * so a long editing session can be released in slices — you don't have to publish two hundred edits
+ * because you wanted to release three.
+ *
+ * The published version is built from the last published content plus the chosen changes, NOT from
+ * the draft as it stands, which is what makes leaving changes behind actually work. Publishing
+ * freezes the result: a DB trigger rejects later content edits. */
+export function usePublishFmdVersion() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  return {
+    async publish(params: {
+      draft: FmdVersion; fmdId: string; selectedChangeIds: string[]; basePublished?: FmdVersion;
+      state?: GovState;
+    }): Promise<{ published: string; remaining: number }> {
+      const { draft, fmdId, selectedChangeIds, basePublished, state = 'Approved' } = params;
+      const who = user?.email ?? 'Unknown';
+      const now = new Date().toISOString();
+      const pending = draft.sheets.pendingChanges ?? [];
+      const selected = pending.filter((c) => selectedChangeIds.includes(c.id));
+      const remaining = pending.filter((c) => !selectedChangeIds.includes(c.id));
+
+      const applyTo = (tables: GeneratedTable[], changes: FmdPendingChange[]) =>
+        tables.map((t) => {
+          const mine = changes.filter((c) => c.structureId === t.structureId);
+          if (!mine.length) return t;
+          return {
+            ...t,
+            rows: t.rows.map((r, i) => {
+              const hits = mine.filter((c) => c.rowIndex === i);
+              return hits.length ? hits.reduce((acc, c) => ({ ...acc, [c.field]: c.to }), r) : r;
+            }),
+          };
+        });
+
+      // Nothing left behind, or nothing published before — release the draft itself.
+      const publishWholeDraft = remaining.length === 0 || !basePublished?.sheets.generatedTables?.length;
+      const publishedTables = publishWholeDraft
+        ? draft.sheets.generatedTables ?? []
+        : applyTo(basePublished!.sheets.generatedTables!, selected);
+
+      const { pendingChanges: _p, ...draftSheets } = draft.sheets;
+
+      // The version's comment becomes the change log for what was actually released. The draft's
+      // own comment ("Working draft from v1.0.0") describes how the draft started, which is useless
+      // once it's a published version in the history — what people need there is what changed.
+      // Capped, because a session can release hundreds of edits and a comment nobody can read is
+      // the same as no comment.
+      const MAX_LISTED = 20;
+      const line = (c: FmdPendingChange) =>
+        `- ${c.structureIdent ? `${c.structureIdent} · ` : ''}${c.rowLabel} · ${c.field}: "${c.from || '—'}" → "${c.to || '—'}"`;
+      const listed = selected.slice(0, MAX_LISTED).map(line);
+      if (selected.length > MAX_LISTED) listed.push(`- …and ${selected.length - MAX_LISTED} more`);
+      const heldBack = remaining.length && !publishWholeDraft
+        ? `\n\n${remaining.length} change${remaining.length === 1 ? '' : 's'} held back in a new draft.`
+        : '';
+      const comment = selected.length
+        ? `Published ${selected.length} change${selected.length === 1 ? '' : 's'}:\n${listed.join('\n')}${heldBack}`
+        : draft.comment ?? `Published ${draft.version}`;
+
+      const { error: pubError } = await supabase
+        .from('fmd_versions')
+        .update({
+          sheets: { ...draftSheets, generatedTables: publishedTables },
+          comment,
+          state, published_by: who, published_at: now,
+        })
+        .eq('id', draft.id);
+      if (pubError) throw pubError;
+
+      // Whatever wasn't released continues in a new draft on top of what was just published.
+      if (!publishWholeDraft && remaining.length > 0) {
+        const { error: draftError } = await supabase.from('fmd_versions').insert({
+          fmd_id: fmdId, version: bumpVersion(draft.version), state: 'Draft',
+          sheets: { ...draftSheets, generatedTables: applyTo(publishedTables, remaining), pendingChanges: remaining },
+          comment: `${remaining.length} change${remaining.length === 1 ? '' : 's'} not included in ${draft.version}`,
+          created_by: who, created_at: now,
+        });
+        if (draftError) throw draftError;
+      }
+
+      await invalidateFmd(queryClient, fmdId);
+      return { published: draft.version, remaining: publishWholeDraft ? 0 : remaining.length };
     },
   };
 }

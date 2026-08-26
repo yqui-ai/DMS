@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Select } from '../../components/Select';
 import { useParams } from 'react-router-dom';
 import { Plus, Trash2 } from 'lucide-react';
 import { Table, type Column } from '../../components/Table';
@@ -62,17 +63,17 @@ export function ScopeCriteria() {
         <div className="flex flex-col gap-3">
           <Field label="Table"><Input value={form.tableName} onChange={(e) => setForm((f) => ({ ...f, tableName: e.target.value }))} placeholder="e.g. MARA" /></Field>
           <Field label="Mode">
-            <select value={form.mode} onChange={(e) => setForm((f) => ({ ...f, mode: e.target.value as 'Simple' | 'Complex' }))} className="w-full text-base bg-surface border border-[#d6dbe2] rounded-[8px] px-[11px] py-2 min-h-[38px]">
+            <Select value={form.mode} onChange={(e) => setForm((f) => ({ ...f, mode: e.target.value as 'Simple' | 'Complex' }))} className="w-full">
               <option>Simple</option><option>Complex</option>
-            </select>
+            </Select>
           </Field>
           <Field label="Field"><Input value={form.field} onChange={(e) => setForm((f) => ({ ...f, field: e.target.value }))} /></Field>
           <Field label="Condition"><Input value={form.condition} onChange={(e) => setForm((f) => ({ ...f, condition: e.target.value }))} placeholder="e.g. in, equals, not null" /></Field>
           <Field label="Value"><Input value={form.value} onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))} /></Field>
           <Field label="Scope">
-            <select value={form.scope} onChange={(e) => setForm((f) => ({ ...f, scope: e.target.value as 'Table' | 'Cross-table' }))} className="w-full text-base bg-surface border border-[#d6dbe2] rounded-[8px] px-[11px] py-2 min-h-[38px]">
+            <Select value={form.scope} onChange={(e) => setForm((f) => ({ ...f, scope: e.target.value as 'Table' | 'Cross-table' }))} className="w-full">
               <option>Table</option><option>Cross-table</option>
-            </select>
+            </Select>
           </Field>
         </div>
       </Dialog>

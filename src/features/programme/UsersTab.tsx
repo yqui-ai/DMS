@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Select } from '../../components/Select';
 import { UserPlus, X } from 'lucide-react';
 import { Table, type Column } from '../../components/Table';
 import { Tag } from '../../components/Tag';
@@ -59,12 +60,12 @@ export function UsersTab({ programId }: { programId: string }) {
     {
       key: 'role', header: 'Role',
       render: (m) => (
-        <select
+        <Select
           value={m.roleId} onChange={(e) => changeRole(m, e.target.value as RoleId)}
-          className="text-sm2 px-2 py-1 rounded-[8px] border border-[#d6dbe2] bg-surface"
+          size="sm"
         >
           {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-        </select>
+        </Select>
       ),
     },
     { key: 'status', header: 'Status', render: (m) => <Tag variant={STATUS_VARIANT[m.status]}>{m.status}</Tag> },
@@ -86,12 +87,12 @@ export function UsersTab({ programId }: { programId: string }) {
         {adding ? (
           <div className="flex items-center gap-2 bg-surface rounded-lg shadow-card p-2.5">
             <Input placeholder="email@company.com" value={email} onChange={(e) => setEmail(e.target.value)} className="w-56" />
-            <select
+            <Select
               value={roleId} onChange={(e) => setRoleId(e.target.value as RoleId)}
-              className="text-sm2 px-2 py-1.5 rounded-[8px] border border-[#d6dbe2] bg-surface"
+              size="sm"
             >
               {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </select>
+            </Select>
             <Button variant="primary" onClick={addUser} disabled={busy}>{busy ? 'Adding…' : 'Add'}</Button>
             <Button variant="secondary" onClick={() => setAdding(false)}>Cancel</Button>
           </div>

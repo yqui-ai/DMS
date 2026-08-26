@@ -1,17 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Button } from '../../components/Button';
 import { ArrowDownToLine, ArrowUpFromLine, ChevronDown, ChevronRight, ExternalLink, Files, Key, Table2 } from 'lucide-react';
 import clsx from 'clsx';
 import { Dialog } from '../../components/Dialog';
 import { Tag } from '../../components/Tag';
-import { ColorTag } from '../../components/ColorTag';
 import { ApproachTag } from '../../components/ApproachTag';
 import { EmptyState } from '../../components/EmptyState';
 import { Table, type Column } from '../../components/Table';
-import { ToolbarButton } from '../../components/ToolbarButton';
 import { useDmcFields, useDmcStructures } from '../../lib/queries/dmcStructures';
 import { useObjectDependencies } from '../../lib/queries/scope';
 import { useStandardFmdLinks, useLibraryFmds, type LibraryFmdRow } from '../../lib/queries/fmds';
-import { componentMainGroup } from '../../lib/tagColor';
 import { GenerateFmdDialog } from './GenerateFmdDialog';
 import { FmdVersionHistoryDialog } from './FmdVersionHistoryDialog';
 import { DependencyDiagram } from './DependencyDiagram';
@@ -66,7 +64,7 @@ export function LibraryObjectDialog({ object, onClose, onSelectObject }: Library
                 <button
                   key={t.key} onClick={() => setTab(t.key)}
                   className={clsx(
-                    'px-3.5 py-2 text-sm font-semibold border-b-2 -mb-px',
+                    'px-3.5 py-2 text-sm2 font-semibold border-b-2 -mb-px',
                     tab === t.key ? 'border-blue text-blue' : 'border-transparent text-muted hover:text-text',
                   )}
                 >
@@ -74,7 +72,7 @@ export function LibraryObjectDialog({ object, onClose, onSelectObject }: Library
                 </button>
               ))}
             </div>
-            <ToolbarButton onClick={() => setGenerateOpen(true)} className="shrink-0 -mt-[5px]"><Files size={13} /> Generate FMD</ToolbarButton>
+            <Button variant="quiet" size="sm" onClick={() => setGenerateOpen(true)} className="shrink-0 -mt-[5px]"><Files size={13} /> Generate FMD</Button>
           </div>
           <div className="flex-1 min-h-0 overflow-auto">
             {tab === 'details' && <DetailsTab object={object} onSelectObject={navigateTo} />}
@@ -101,13 +99,13 @@ function DetailsTab({ object, onSelectObject }: { object: MigrationObject; onSel
           {object.description ? (
             <p className="text-xl font-bold text-text">{object.description}</p>
           ) : (
-            <p className="text-base italic text-muted">No description provided yet.</p>
+            <p className="text-sm2 italic text-muted">No description provided yet.</p>
           )}
           <div className="flex items-center gap-4 flex-wrap">
             {object.url && (
               <a
                 href={object.url} target="_blank" rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue hover:underline w-fit"
+                className="inline-flex items-center gap-1.5 text-sm2 font-semibold text-blue hover:underline w-fit"
               >
                 <ExternalLink size={14} /> SAP Documentation
               </a>
@@ -115,7 +113,7 @@ function DetailsTab({ object, onSelectObject }: { object: MigrationObject; onSel
             {fmdLink && (
               <button
                 onClick={() => setViewFmd(allFmds.find((f) => f.id === fmdLink.fmdId) ?? null)}
-                className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue hover:underline w-fit"
+                className="inline-flex items-center gap-1.5 text-sm2 font-semibold text-blue hover:underline w-fit"
               >
                 <Files size={14} /> Standard FMD: {fmdLink.displayId ?? fmdLink.name}
               </button>
@@ -125,10 +123,10 @@ function DetailsTab({ object, onSelectObject }: { object: MigrationObject; onSel
 
         <div className="flex gap-8 flex-wrap">
           <div className="flex-1 min-w-[220px] flex flex-col gap-3">
-            <SummaryField label="Object Type">{object.category ? <ColorTag colorKey={object.category}>{object.category}</ColorTag> : '—'}</SummaryField>
-            <SummaryField label="Class"><ColorTag colorKey={object.class}>{object.class}</ColorTag></SummaryField>
+            <SummaryField label="Object Type">{object.category ?? '—'}</SummaryField>
+            <SummaryField label="Class">{object.class}</SummaryField>
             <SummaryField label="Approach"><ApproachTag approach={object.approach} /></SummaryField>
-            <SummaryField label="Component">{object.component ? <ColorTag colorKey={componentMainGroup(object.component)}>{object.component}</ColorTag> : '—'}</SummaryField>
+            <SummaryField label="Component">{object.component ?? '—'}</SummaryField>
           </div>
           <div className="flex-1 min-w-[220px] flex flex-col gap-3">
             <SummaryField label="Technical Name">{object.technicalName ?? '—'}</SummaryField>
@@ -153,7 +151,7 @@ function DetailsTab({ object, onSelectObject }: { object: MigrationObject; onSel
         <div className="text-2xs font-semibold uppercase tracking-[.04em] text-muted mb-2 shrink-0">Dependency Diagram</div>
         <div className="flex-1 min-h-0">
           {depsLoading ? (
-            <p className="text-sm text-muted">Loading…</p>
+            <p className="text-sm2 text-muted">Loading…</p>
           ) : (
             <DependencyDiagram
               key={object.id}
@@ -172,7 +170,7 @@ function SummaryField({ label, children }: { label: string; children: React.Reac
   return (
     <div>
       <div className="text-2xs font-semibold uppercase tracking-[.04em] text-muted mb-0.5">{label}</div>
-      <div className="text-sm text-text">{children}</div>
+      <div className="text-sm2 text-text">{children}</div>
     </div>
   );
 }
@@ -317,11 +315,11 @@ function StructureTab({ object }: { object: MigrationObject }) {
     <div className="flex gap-4 h-full min-h-0">
       <div className="w-[340px] shrink-0 overflow-auto border-r border-line pr-3">
         <div className="sticky top-0 z-10 bg-surface pb-3">
-          <div className="flex rounded-[8px] border border-[#d6dbe2] overflow-hidden">
+          <div className="flex rounded-[8px] border border-line-strong overflow-hidden">
             <button
               onClick={() => setSide('sender')} disabled={sender.length === 0}
               className={clsx(
-                'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm font-semibold disabled:opacity-40',
+                'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm2 font-semibold disabled:opacity-40',
                 side === 'sender' ? 'bg-blue text-white' : 'bg-surface text-text hover:bg-blue-pale',
               )}
             >
@@ -330,7 +328,7 @@ function StructureTab({ object }: { object: MigrationObject }) {
             <button
               onClick={() => setSide('receiver')} disabled={receiver.length === 0}
               className={clsx(
-                'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm font-semibold disabled:opacity-40 border-l border-[#d6dbe2]',
+                'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm2 font-semibold disabled:opacity-40 border-l border-line-strong',
                 side === 'receiver' ? 'bg-blue text-white' : 'bg-surface text-text hover:bg-blue-pale',
               )}
             >
@@ -349,9 +347,9 @@ function StructureTab({ object }: { object: MigrationObject }) {
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
               <Tag variant={selected.side === 'sender' ? 'accent' : 'connection'}>{selected.side === 'sender' ? 'Sender' : 'Receiver'}</Tag>
-              <span className="font-mono font-bold text-sm">{selected.ident}</span>
+              <span className="font-mono font-bold text-sm2">{selected.ident}</span>
               {selected.ddicName && <span className="text-2xs text-muted font-mono">({selected.ddicName})</span>}
-              <span className="text-sm text-muted truncate">{selected.description}</span>
+              <span className="text-sm2 text-muted truncate">{selected.description}</span>
             </div>
             <Table columns={columns} rows={fields} rowKey={(f) => f.id} pageSize={50} emptyMessage={fieldsLoading ? 'Loading…' : 'No fields.'} dense />
           </div>

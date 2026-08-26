@@ -1,17 +1,14 @@
+import { ListEmptyState } from '../../components/ListEmptyState';
 import { useMemo, useState } from 'react';
-import { Boxes, Files, Network, X } from 'lucide-react';
+import { Button } from '../../components/Button';
+import { Files, X } from 'lucide-react';
 import { Table, type Column } from '../../components/Table';
-import { Tag } from '../../components/Tag';
-import { ColorTag } from '../../components/ColorTag';
-import { ApproachTag } from '../../components/ApproachTag';
 import { MultiSelectFilter } from '../../components/MultiSelectFilter';
 import { PageHeader } from '../../components/PageHeader';
-import { ToolbarButton } from '../../components/ToolbarButton';
 import { ToolbarSearch } from '../../components/ToolbarSearch';
 import { useToast } from '../../components/Toast';
 import { useMigrationObjects } from '../../lib/queries/scope';
 import { useStandardFmdLinks, useLibraryFmds, type LibraryFmdRow } from '../../lib/queries/fmds';
-import { componentMainGroup } from '../../lib/tagColor';
 import { fmtApproach } from '../../lib/format';
 import { GenerateFmdDialog } from './GenerateFmdDialog';
 import { LibraryObjectDialog } from './LibraryObjectDialog';
@@ -94,12 +91,12 @@ export function LibraryObjects() {
       header: <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll} onClick={(e) => e.stopPropagation()} className="w-3.5 h-3.5 accent-[var(--blue)]" />,
       render: (o) => <input type="checkbox" checked={selected.has(o.id)} onChange={() => toggleSelect(o.id)} onClick={(e) => e.stopPropagation()} className="w-3.5 h-3.5 accent-[var(--blue)]" />,
     },
-    { key: 'objectId', header: 'Object ID', render: (o) => <Tag variant="table">{o.objectId}</Tag>, width: 190, sortValue: (o) => o.objectId },
+    { key: 'objectId', header: 'Object ID', render: (o) => <span className="font-mono font-semibold">{o.objectId}</span>, width: 190, sortValue: (o) => o.objectId },
     { key: 'description', header: 'Description', render: (o) => o.description ?? '—', sortValue: (o) => o.description },
-    { key: 'class', header: 'Class', render: (o) => <ColorTag colorKey={o.class}>{o.class}</ColorTag>, width: 90, sortValue: (o) => o.class },
-    { key: 'category', header: 'Object Type', render: (o) => o.category ? <ColorTag colorKey={o.category}>{o.category}</ColorTag> : '—', sortValue: (o) => o.category },
-    { key: 'approach', header: 'Approach', render: (o) => <ApproachTag approach={o.approach} />, sortValue: (o) => o.approach },
-    { key: 'component', header: 'Component', render: (o) => o.component ? <ColorTag colorKey={componentMainGroup(o.component)}>{o.component}</ColorTag> : '—', sortValue: (o) => o.component },
+    { key: 'class', header: 'Class', render: (o) => o.class, width: 90, sortValue: (o) => o.class },
+    { key: 'category', header: 'Object Type', render: (o) => o.category ?? '—', sortValue: (o) => o.category },
+    { key: 'approach', header: 'Approach', render: (o) => fmtApproach(o.approach ?? '') || '—', sortValue: (o) => o.approach },
+    { key: 'component', header: 'Component', render: (o) => o.component ?? '—', sortValue: (o) => o.component },
     {
       key: 'standardFmd', header: 'Standard FMD',
       render: (o) => {
@@ -128,27 +125,32 @@ export function LibraryObjects() {
         <MultiSelectFilter label="Component" options={components} selected={component} onChange={setComponent} />
         <MultiSelectFilter label="Status" options={STATUS_OPTIONS} selected={status} onChange={setStatus} />
         {hasActiveFilters && (
-          <button onClick={clearFilters} className="flex items-center gap-1 text-sm font-semibold text-muted hover:text-red px-2 py-1.5 rounded-[8px] hover:bg-red-light shrink-0">
+          <Button variant="dangerGhost" size="sm" onClick={clearFilters}>
             <X size={13} /> Clear filters
-          </button>
+          </Button>
         )}
-        <span className="text-sm text-muted ml-1 shrink-0">{filtered.length.toLocaleString()} objects{selected.size > 0 ? ` · ${selected.size} selected` : ''}</span>
+        <span className="text-sm2 text-muted ml-1 shrink-0">{filtered.length.toLocaleString()} objects{selected.size > 0 ? ` · ${selected.size} selected` : ''}</span>
         <div className="ml-auto flex items-center gap-2 shrink-0">
-          <ToolbarButton onClick={() => toast.info('Dependency / ERD diagram generator — coming soon.')}>
-            <Network size={14} /> ERD Generator
-          </ToolbarButton>
-          <ToolbarButton onClick={openGenerate} disabled={selected.size === 0}>
+          <Button variant="quiet" size="sm" onClick={openGenerate} disabled={selected.size === 0}>
             <Files size={14} /> Generate FMD{selected.size > 0 ? ` (${selected.size})` : ''}
-          </ToolbarButton>
-          <ToolbarButton onClick={() => toast.info('Migration object designer — coming soon.')}>
-            <Boxes size={14} /> Object Designer
-          </ToolbarButton>
+          </Button>
         </div>
       </div>
-      <Table
-        columns={columns} rows={filtered} rowKey={(o) => o.id} pageSize={30}
-        onRowClick={setDetailObject} emptyMessage={isLoading ? 'Loading…' : 'No objects.'}
-      />
+      {/* This screen used to pass a bare "No objects." string to the table instead of rendering an
+          empty state — a sentence inside the grid, with no guidance and a different look from the
+          other three catalogues. It matters most here: six filters plus search means filtering to
+          nothing is routine, not exceptional. */}
+      {!isLoading && filtered.length === 0 ? (
+        <ListEmptyState
+          noun="objects" filtered={hasActiveFilters} onClearFilters={clearFilters}
+          description="The programme-wide SAP migration-object catalogue is loaded from DMC. Nothing has been imported yet."
+        />
+      ) : (
+        <Table
+          columns={columns} rows={filtered} rowKey={(o) => o.id} pageSize={30}
+          onRowClick={setDetailObject} emptyMessage="Loading…"
+        />
+      )}
       <LibraryObjectDialog
         object={detailObject} onClose={() => setDetailObject(null)}
         onSelectObject={(id) => { const next = allObjects.find((o) => o.id === id); if (next) setDetailObject(next); }}

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Select } from '../../components/Select';
 import { useParams } from 'react-router-dom';
 import { Search, ShieldAlert, LockOpen, FileUp, ListPlus } from 'lucide-react';
 import { Table, type Column } from '../../components/Table';
@@ -161,13 +162,13 @@ export function MigrationObjectCatalogue() {
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
           <input
             value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search object id, name, description…"
-            className="text-sm pl-8 pr-3 py-1.5 rounded-[8px] border border-[#d6dbe2] bg-surface min-w-[260px]"
+            className="text-sm2 pl-8 pr-3 py-1.5 rounded-[8px] border border-line-strong bg-surface min-w-[260px]"
           />
         </div>
         <FilterSelect label="Category" value={category} options={categories} onChange={setCategory} />
         <FilterSelect label="Approach" value={approach} options={approaches} onChange={setApproach} />
         <FilterSelect label="Component" value={component} options={components} onChange={setComponent} />
-        <span className="text-sm text-muted ml-1">{filtered.length.toLocaleString()} objects</span>
+        <span className="text-sm2 text-muted ml-1">{filtered.length.toLocaleString()} objects</span>
       </div>
 
       <Table
@@ -192,24 +193,24 @@ export function MigrationObjectCatalogue() {
         }
       >
         {scopeFinalized ? (
-          <p className="text-sm text-text">
+          <p className="text-sm2 text-text">
             Reopening lets the scope be edited again, but hides Data Migration, Data Quality, Cutover and Governance
             navigation until it's finalized again.
           </p>
         ) : (
           <div className="flex flex-col gap-3">
-            <p className="text-sm text-text">
+            <p className="text-sm2 text-text">
               Finalizing locks the {inScopeCount}-object scope and unlocks Data Migration, Data Quality, Cutover and
               Governance navigation for this subproject.
             </p>
             {missingPrereqs.length > 0 && (
-              <div className="flex gap-2 bg-amber-bg text-amber-ink rounded-[8px] p-3 text-sm">
+              <div className="flex gap-2 bg-amber-bg text-amber-ink rounded-[8px] p-3 text-sm2">
                 <ShieldAlert size={16} className="shrink-0 mt-0.5" />
                 <div>
                   <div className="font-semibold mb-1">{missingPrereqs.length} unresolved prerequisite{missingPrereqs.length === 1 ? '' : 's'}</div>
                   <ul className="space-y-0.5 max-h-32 overflow-auto">
                     {missingPrereqs.slice(0, 20).map((m, i) => (
-                      <li key={i} className="font-mono text-xs">{m.object} requires {m.requires}</li>
+                      <li key={i} className="font-mono text-2xs">{m.object} requires {m.requires}</li>
                     ))}
                   </ul>
                 </div>
@@ -228,11 +229,11 @@ export function MigrationObjectCatalogue() {
 
 function FilterSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (v: string) => void }) {
   return (
-    <select
+    <Select
       aria-label={label} value={value} onChange={(e) => onChange(e.target.value)}
-      className="text-sm px-2.5 py-1.5 rounded-[8px] border border-[#d6dbe2] bg-surface"
+      size="sm"
     >
       {options.map((o) => <option key={o} value={o}>{o === 'All' ? `${label}: All` : o}</option>)}
-    </select>
+    </Select>
   );
 }

@@ -156,8 +156,10 @@ export function GoldenXrefDesignerDialog({ target, onClose }: { target: LibraryX
       if (isNew) {
         await mutations.create(GOLDEN_XREF_NAME, structure, comment.trim());
         toast.success('Golden XREF registered.');
-      } else if (target !== 'new') {
-        await mutations.saveNewVersion(target.id, version?.version ?? target.version ?? 'v1.0.0', structure, comment.trim());
+      } else {
+        // target is narrowed to LibraryXrefRow here (null returned early, 'new' handled above).
+        // latestVersion is derived from xref_versions — the old xref_tables.version column was dead.
+        await mutations.saveNewVersion(target.id, version?.version ?? target.latestVersion ?? 'v1.0.0', structure, comment.trim());
         toast.success('New version saved.');
       }
       setDirty(false);
@@ -172,7 +174,8 @@ export function GoldenXrefDesignerDialog({ target, onClose }: { target: LibraryX
 
   return (
     <Dialog
-      open={!!target} onClose={onClose} title={GOLDEN_XREF_NAME} size="win"
+      open={!!target} onClose={onClose}
+      unsavedWarning={dirty ? 'Your changes to the Golden XREF structure have not been saved as a version yet.' : undefined} title={GOLDEN_XREF_NAME} size="win"
       footer={<>
         <Button variant="secondary" onClick={onClose}>Close</Button>
         <Button variant="primary" onClick={openSaveComment} disabled={saving || (!isNew && !dirty)}>
@@ -181,11 +184,11 @@ export function GoldenXrefDesignerDialog({ target, onClose }: { target: LibraryX
       </>}
     >
       {!isNew && isLoading ? (
-        <p className="text-sm text-muted">Loading…</p>
+        <p className="text-sm2 text-muted">Loading…</p>
       ) : (
         <div className="h-full flex gap-4">
           <div className="w-[260px] shrink-0 flex flex-col rounded-lg shadow-[inset_0_0_0_1px_var(--line)] overflow-hidden">
-            <div className="px-3 py-2 text-2xs font-bold uppercase tracking-[.04em] text-muted bg-[#eef1f5]">Sections</div>
+            <div className="px-3 py-2 text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3">Sections</div>
             <div className="flex-1 overflow-auto">
               {structure.sections.map((section) => {
                 const color = colorByKey(section.color);
@@ -208,22 +211,22 @@ export function GoldenXrefDesignerDialog({ target, onClose }: { target: LibraryX
                   </div>
                 );
               })}
-              {structure.sections.length === 0 && <p className="text-sm text-muted px-3 py-4">No sections yet.</p>}
+              {structure.sections.length === 0 && <p className="text-sm2 text-muted px-3 py-4">No sections yet.</p>}
             </div>
-            <button onClick={addSection} className="text-blue text-sm font-semibold px-3 py-2.5 hover:bg-blue-pale w-full text-left border-t border-line">
+            <button onClick={addSection} className="text-blue text-sm2 font-semibold px-3 py-2.5 hover:bg-blue-pale w-full text-left border-t border-line">
               <Plus size={13} className="inline -mt-0.5" /> Add Section
             </button>
           </div>
 
           <div className="flex-1 min-w-0 flex flex-col rounded-lg shadow-[inset_0_0_0_1px_var(--line)] overflow-hidden">
             {!activeSection ? (
-              <p className="text-sm text-muted p-6 text-center">Add a section to start defining fields.</p>
+              <p className="text-sm2 text-muted p-6 text-center">Add a section to start defining fields.</p>
             ) : (
               <>
                 <div className="px-3.5 py-2.5 border-b border-line flex items-center gap-3" style={{ backgroundColor: colorByKey(activeSection.color).bg }}>
                   <input
                     value={activeSection.name} onChange={(e) => updateSection(activeSection.id, { name: e.target.value })}
-                    className="bg-transparent text-sm font-bold min-w-0 flex-1 focus-visible:outline-none"
+                    className="bg-transparent text-sm2 font-bold min-w-0 flex-1 focus-visible:outline-none"
                     style={{ color: colorByKey(activeSection.color).text }}
                   />
                   <div className="flex items-center gap-1.5 shrink-0">
@@ -250,10 +253,10 @@ export function GoldenXrefDesignerDialog({ target, onClose }: { target: LibraryX
                   <table className="w-full border-collapse text-sm2 table-fixed">
                     <thead>
                       <tr>
-                        <th className="w-8 bg-[#eef1f5] px-2.5 py-2" />
-                        <th className="w-[32%] text-2xs font-bold uppercase tracking-[.04em] text-muted bg-[#eef1f5] px-2.5 py-2 text-left sticky top-0">Field</th>
-                        <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-[#eef1f5] px-2.5 py-2 text-left sticky top-0">Description / Allowed Values</th>
-                        <th className="w-8 bg-[#eef1f5]" />
+                        <th className="w-8 bg-surface-3 px-2.5 py-2" />
+                        <th className="w-[32%] text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 text-left sticky top-0">Field</th>
+                        <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 text-left sticky top-0">Description / Allowed Values</th>
+                        <th className="w-8 bg-surface-3" />
                       </tr>
                     </thead>
                     <tbody>
@@ -287,11 +290,11 @@ export function GoldenXrefDesignerDialog({ target, onClose }: { target: LibraryX
                         </tr>
                       ))}
                       {activeSection.fields.length === 0 && (
-                        <tr><td colSpan={4} className="px-2.5 py-6 text-center text-muted text-sm">No fields in this section yet.</td></tr>
+                        <tr><td colSpan={4} className="px-2.5 py-6 text-center text-muted text-sm2">No fields in this section yet.</td></tr>
                       )}
                     </tbody>
                   </table>
-                  <button onClick={() => addField(activeSection.id)} className="text-blue text-sm font-semibold px-2.5 py-2 hover:bg-blue-pale w-full text-left">
+                  <button onClick={() => addField(activeSection.id)} className="text-blue text-sm2 font-semibold px-2.5 py-2 hover:bg-blue-pale w-full text-left">
                     <Plus size={13} className="inline -mt-0.5" /> Add field
                   </button>
                 </div>
@@ -312,9 +315,9 @@ export function GoldenXrefDesignerDialog({ target, onClose }: { target: LibraryX
         <textarea
           value={comment} onChange={(e) => setComment(e.target.value)} rows={3} autoFocus
           placeholder="e.g. Added Field 4 Section, reordered General fields"
-          className="w-full text-base bg-surface border border-[#d6dbe2] rounded-[8px] px-[11px] py-2 resize-y"
+          className="w-full text-sm2 bg-surface border border-line-strong rounded-[8px] px-[11px] py-2 resize-y"
         />
-        <p className="text-2xs text-muted mt-1.5">Saved as this version's note in Version Updates.</p>
+        <p className="text-2xs text-muted mt-1.5">Saved as this version's note in Versions.</p>
       </Dialog>
     </Dialog>
   );

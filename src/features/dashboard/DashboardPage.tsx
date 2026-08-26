@@ -45,8 +45,8 @@ export function DashboardPage() {
             <span className="absolute text-xl font-bold">{healthScore}</span>
           </div>
           <div>
-            <div className="text-lg font-bold text-text">Program health: {healthScore >= 70 ? 'On Track' : healthScore >= 40 ? 'At Risk' : 'Critical'}</div>
-            <div className="text-sm text-muted mt-1">{openBlockers} open blocker{openBlockers === 1 ? '' : 's'}</div>
+            <div className="text-md font-bold text-text">Program health: {healthScore >= 70 ? 'On Track' : healthScore >= 40 ? 'At Risk' : 'Critical'}</div>
+            <div className="text-sm2 text-muted mt-1">{openBlockers} open blocker{openBlockers === 1 ? '' : 's'}</div>
             <div className="mt-3">
               <StatStrip
                 items={[
@@ -74,17 +74,17 @@ export function DashboardPage() {
       <TimelineGantt />
 
       {env === 'DEV' && (
-        <p className="text-sm text-muted bg-blue-pale rounded-[8px] px-3.5 py-2.5">
+        <p className="text-sm2 text-muted bg-blue-pale rounded-[8px] px-3.5 py-2.5">
           Execution summary appears once this SubProgram is running in QSA or Prod — DEV is design-only.
         </p>
       )}
 
       {failedRuns > 0 ? (
         <div>
-          <h3 className="text-lg font-bold mb-2">Blockers</h3>
+          <h3 className="text-md font-bold mb-2">Blockers</h3>
           <div className="rounded-lg shadow-card bg-surface divide-y divide-line">
             {runs.filter((r) => r.status === 'Failed').map((r) => (
-              <div key={r.id} className="px-4 py-2.5 text-sm flex items-center justify-between">
+              <div key={r.id} className="px-4 py-2.5 text-sm2 flex items-center justify-between">
                 <span className="font-mono font-bold">{r.code}</span>
                 <span className="text-red">Failed</span>
               </div>

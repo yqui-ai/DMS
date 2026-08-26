@@ -29,17 +29,21 @@ program) and render the exact same component — see `src/app/router.tsx`.
    - optional grouping `<select>` (only Field Mapping has one today)
    - a "Clear filters" button, rendered **only when `hasActiveFilters`**
    - a muted count: `{n.toLocaleString()} <noun>` + ` · N selected` when the screen has selection
-   - `ml-auto` action group: `<ToolbarButton>`s, then `<GoldenToggle>`, then `<AiButton>` last
-3. `<EmptyState>` when `!isLoading && filtered.length === 0`, else `<Table>`.
+   - `ml-auto` action group: `Button variant="quiet"` actions, then `variant="ai"` last
+3. `<ListEmptyState>` when `!isLoading && filtered.length === 0`, else `<Table>`.
+   **Never `EmptyState` directly on a filtered list** — it can't tell "nothing exists" from "your
+   filters excluded everything", and shows a create-prompt to someone who just typed a search term.
+   `ListEmptyState` takes `filtered={hasActiveFilters}` (which every screen already computes for its
+   Clear filters button) and swaps the message and the action.
 4. All dialogs rendered unconditionally at the bottom, controlled by a `null`-able state prop.
 
 ### Shared components (never hand-roll these)
-`Table`, `Tag`, `ColorTag`, `MultiSelectFilter`, `ToolbarSearch`, `ToolbarButton`, `AiButton`,
-`GoldenToggle`, `PageHeader`, `EmptyState`, `Dialog`.
+`Table`, `Tag`, `Button`, `Select`, `Segmented`, `Pane`, `MultiSelectFilter`, `ToolbarSearch`,
+`PageHeader`, `EmptyState`, `Dialog`, `ConfirmDialog`.
 
 **Typography is fixed:** every list body cell is `text-sm2`, set once on `Table`'s `<table>`. Do
 not add per-column size overrides — lists must look identical whether or not they contain tags.
-Column headers are `text-xs` (`text-2xs` in `dense`). Technical identifiers are always
+Column headers are `text-2xs`. Technical identifiers are always
 `font-mono`; IDs/versions/references specifically.
 
 **Row clicks:** pass `onRowClick`. If only *some* rows open something, you must also pass
@@ -48,7 +52,7 @@ show a pointer but do nothing (this was a real bug in Library > XREF).
 
 ## Field Mapping — the deepest screen
 
-`fmds` rows are one of four `type`s, and type drives almost everything:
+`fmds` rows are one of three `type`s, and type drives almost everything:
 
 - **Golden** — singleton (DB trigger `fmd_display_id()` raises on a second one), program-wide
   (`subproject_id is null`), class Global. Holds a `goldenStructure` (sections → fields), edited
@@ -56,11 +60,15 @@ show a pointer but do nothing (this was a real bug in Library > XREF).
 - **Standard** — one per migration object, program-wide, generated from Golden. **Never deletable.**
 - **Custom** — one per (object, subproject), generated from Golden and aligned to the object's
   Standard FMD version. The only type with Mapping Review and field notes.
-- **Historical** — a raw uploaded legacy file (`sheets.historicalRaw`), the input to the AI
-  converter, which produces Custom FMDs.
+**There is no 'Historical' type.** It was retired in migration 0031: the converter parses an
+uploaded workbook in the browser and writes Custom FMDs directly, so the intermediate record was
+never persisted and the type had no way to exist. Lineage back to the source file lives on the
+Custom FMD as `hist_source_name` / `hist_plant` — that's what re-upload matching and the
+sibling-plants view key on, and it stays.
 
-`FMD_TYPE_STYLE` in `LibraryFmds.tsx` is a **deliberately fixed** colour map (Golden=amber,
-Standard=blue, Custom=violet, Historical=grey) — do not replace it with hash-derived `ColorTag`.
+Type renders as **plain text**, not a coloured tag. Colour is reserved for state that needs
+attention (see the `design-system` skill) — a categorical attribute on every row spends the colour
+budget without saying anything.
 
 ### `FmdVersionHistoryDialog` layout (as of 2026-08-20)
 
@@ -70,10 +78,17 @@ header drives every tab** — there is one answer to "which version am I looking
 - **Field Mapping tab** — the selected version's data at *full dialog width*. Nothing else lives
   here. Renders one of: Golden structure view, the generated grid, the field-level detail view, or
   raw source/target/mapping sheets.
-- **Versions tab** (labelled "Versions & Review" for Custom) — version list + `VersionDetailsPane`
-  (who/when/state/comment/structures/based-on-Golden), plus Mapping Review findings for Custom.
+- **Versions tab** (labelled "Versions & Review" for Custom) — three panes side by side:
+  `VersionDetailsPane` (left — who/when/state/comment/structures/based-on-Golden/owner),
+  **Auto review (AI)**, and **Review points**. All three use the shared `Pane`, which is what keeps
+  their headers on one baseline. The two review panes are separate, not a toggle —
+  they're read together. There is deliberately **no version list here**: the header dropdown is the
+  single version selector, and a second one was redundant.
+- **Draft tab** — present only while an unpublished draft exists: the pending changes with
+  checkboxes, and the only place Publish lives.
 - **Where-used tab** — for Golden: which FMDs reference it and whether they're outdated. For
-  everything else: sibling plants from the same AI-converted source file.
+  everything else: sibling plants from the same AI-converted source file. (Two different
+  relationships under one tab name — flagged in the Library review as worth renaming.)
 
 Do **not** put the version list or comment back beside the mapping data — it was moved out
 deliberately because the grid is wide and an object can have several structures.
@@ -104,8 +119,9 @@ take priority over the yellow changed-cell highlight (`#fef9c3`).
 
 - **Reference is derived, never stored.** `formatLibraryReference(class, programCode, projectCode)`
   from the `subprojects → projects → programs` join. Global ⇒ "Program-wide", Local ⇒ `PRG-PRJ`.
-- **Display IDs come from DB triggers**, never the client: `FMDGLD-/FMDSTD-/FMDHST-/FMDCST-`,
-  `RULESTD-/RULECST-`, `XREFGLD-/XREFGBL-/XREFLCL-`. Each has its own sequence.
+- **Display IDs come from DB triggers**, never the client: `FMDGLD-/FMDSTD-/FMDCST-`,
+  `RULESTD-/RULECST-`, `XREFGLD-/XREFGBL-/XREFLCL-`. Each has its own sequence. (`FMDHST-` was
+  dropped with the Historical type in 0031.)
 - **RLS** on every Library table follows one shape: visible if the row's subproject is in
   `current_wave_ids()` **or** `subproject_id is null` and the user has any membership. Program-wide
   (Golden) rows only work because of that second clause — copy it exactly for new tables.
@@ -127,26 +143,90 @@ Don't "fix" these silently; they're recorded so the next change is an informed o
 
 - **Only Field Mapping has grouping, multi-select and bulk export.** Rule/XREF/Object have no
   grouping; Object has selection (for Generate FMD) but no export.
+- **Rule and XREF are placeholder screens.** Read-only lists pending a real build-out — don't treat
+  their thinness as an oversight to fix piecemeal.
 - **Rule has no detail view at all** — no `onRowClick`, so a rule row is a dead end.
 - **Rule's "Version" column is a frozen literal.** `rules.version` is written once as `v1.0.0` at
   insert and never bumped; there is no `rule_versions` table. Building real Rule versioning was
   explicitly deferred by the user ("Rules later") — do not start it unprompted.
-- **`GoldenToggle` means two different things.** On Field Mapping/XREF it *opens the Golden
-  designer* (no `active` prop). On Rule it's a *filter toggle* for `class === 'Global'` — which is
-  not the same concept as `type === 'Golden'` (Rules have no Golden type), so the label "Golden
-  Rule" is misleading.
 - **XREF has a designer + viewer for Golden only.** Standard XREF rows have no viewer; they're
   inert rows (correctly styled as such via `rowClickable`).
 - **`useAllFmds` maps a narrow column subset** (no `owner`/`aiGenerated`/`hist*`). Fine for its
   Scope consumers; use `useLibraryFmds` if you need the enriched row.
 
-## Field notes & ownership (Custom FMDs)
+## Review points & ownership (Custom FMDs)
 
-- `fmds.owner` is a **plain email string**, same convention as `created_by`/`approved_by` — not an
-  FK, not an RLS boundary. It only gates whether the field-level note composer is enabled.
+"Review points" are the in-app equivalent of the comments column in an Excel FMD.
+
+- **An FMD has no owner column.** `fmds.owner` was dropped in 0030; ownership is
+  `subproject_objects.owner`, read via `useScopeObjectOwners()`. Publishing is gated by
+  `canPublish(role, isOwner)` — the owner **or** a governance role, because gating on ownership
+  alone made an unowned object unpublishable by anyone.
 - `fmd_field_notes` attaches to `(fmd_id, structure_id, row_key)` and **not** to a version, so a
-  note survives regeneration. `row_key` is the content-based identity from `src/lib/rowDiff.ts`
-  (SRC/TGT field combo), never a row index.
+  point survives regeneration. `row_key` is the content-based identity from `src/lib/rowDiff.ts`
+  (SRC/TGT field combo), never a row index. Optional `field` pins a point to one **cell**; null
+  means it's about the whole row.
+- **Categories live in `src/lib/reviewPointCategories.ts`** — `todo`, `issue`, `question` are
+  *actionable* (they count toward the "open" badge); `remark`, `decision` are informational (can be
+  archived, never counted as outstanding). That list must stay in sync with the CHECK constraint in
+  migration `0028`; adding a value in TS alone makes every insert of it fail at the database.
+- The category helpers fall back to `remark` for an unrecognised value rather than throwing, so a
+  row written by a newer app version still renders. `FmdFieldNote.tag` is therefore typed `string`,
+  not a union.
+
+### Who can do what
+
+| Action | Who |
+|---|---|
+| Raise a review point, reply to one, resolve one | **Anyone** with access to the FMD |
+| Publish a version (and, later, edit the mapping) | **The object's owner** only |
+
+**An FMD has no owner field of its own.** Ownership is `subproject_objects.owner` — whoever owns
+that migration object in that subproject, assigned during in-scope selection (Scope > Criteria).
+Read it via `useScopeObjectOwners()` + `scopeOwnerKey(subprojectId, migrationObjectId)`.
+`fmds.owner` existed briefly and was dropped in migration 0030: two owner fields is the same
+two-sources-of-truth trap as the dead `xref_tables.version` column.
+
+Review is collaborative — RLS already limits who reaches the FMD at all, so gating comments on
+ownership only suppressed the reviews you want. Ownership gates *changing the document*.
+
+### Draft vs published versions
+
+`fmd_versions.published_at` — **not `state`** — is what determines editability:
+
+- `published_at is null` → an editable working draft. Edits mutate it in place.
+- `published_at` set → frozen. A **DB trigger** (`fmd_versions_block_published_edit`, migrations
+  0029/0030) rejects changes to the mapping content, so this holds even if UI code forgets.
+  The trigger compares `sheets` **with the review keys stripped** — a Mapping Review can still be
+  saved against a published version, because a review assesses content rather than changing it.
+  Anything else you add under `sheets` that isn't mapping content must be stripped there too.
+- The next edit after publishing starts a fresh draft. Publishing is a one-way door.
+
+There is deliberately **no separate drafts table** — a draft is just the newest unpublished
+version row, so there's no parallel copy to keep in sync and no merge step.
+
+The FMD list shows this as two derived fields: `activeVersion` (newest published — what everyone
+else should treat as current) and `hasDraft` (newest version is unpublished). Both can be true at
+once; don't collapse them into one "version" column.
+
+### Locked Golden fields
+
+`src/lib/goldenFmdRequiredFields.ts` lists the fields the designer refuses to remove **or rename
+away** (checked both on delete and on save, since a rename is the same loss). `SRC_FIELD` and
+`TGT_FIELD` matter most: they are the content-based row identity (`rowKey`), so dropping one
+permanently detaches every existing review point, diff and finding from its row.
+
+### Where review points appear
+
+| Surface | Behaviour |
+|---|---|
+| Versions & Review tab | Its own pane beside Auto review, with a per-category open/closed insight strip; each point folds to its header (closed ones start folded) |
+| Field-level view | Right panel, combined with that row's AI findings; composer at the bottom |
+| Generated table | Right-click any cell → Add review point; cells with points get a corner marker |
+
+The Manual list is deliberately **not** filtered by selected version — points belong to the FMD.
+A point whose row is absent from the version on screen still shows, tagged "not in this version",
+because "the row this was written about is gone" is itself worth seeing.
 
 ## Maintaining this skill
 

@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react';
-import { X } from 'lucide-react';
+import { Button } from '../../components/Button';
+import { Settings, X } from 'lucide-react';
 import { PageHeader } from '../../components/PageHeader';
-import { EmptyState } from '../../components/EmptyState';
+import { ListEmptyState } from '../../components/ListEmptyState';
 import { Table, type Column } from '../../components/Table';
-import { ColorTag } from '../../components/ColorTag';
-import { GoldenToggle } from '../../components/GoldenToggle';
 import { MultiSelectFilter } from '../../components/MultiSelectFilter';
 import { ToolbarSearch } from '../../components/ToolbarSearch';
 import { useLibraryXrefTables, type LibraryXrefRow } from '../../lib/queries/rules';
@@ -42,8 +41,8 @@ export function LibraryXref() {
   const columns: Column<LibraryXrefRow>[] = [
     { key: 'displayId', header: 'ID', width: 110, render: (t) => <span className="font-mono text-sm2">{t.displayId ?? '—'}</span>, sortValue: (t) => t.displayId },
     { key: 'name', header: 'Name', render: (t) => <span className="font-mono font-bold text-sm2">{t.name}</span>, sortValue: (t) => t.name },
-    { key: 'class', header: 'Class', width: 90, render: (t) => <ColorTag colorKey={t.class}>{t.class}</ColorTag>, sortValue: (t) => t.class },
-    { key: 'type', header: 'Type', width: 90, render: (t) => <ColorTag colorKey={t.type}>{t.type}</ColorTag>, sortValue: (t) => t.type },
+    { key: 'class', header: 'Class', width: 90, render: (t) => t.class, sortValue: (t) => t.class },
+    { key: 'type', header: 'Type', width: 90, render: (t) => t.type, sortValue: (t) => t.type },
     { key: 'reference', header: 'Reference', render: (t) => <span className="font-mono text-sm2">{t.reference}</span>, sortValue: (t) => t.reference },
     { key: 'latestVersion', header: 'Version', render: (t) => t.latestVersion ?? '—', sortValue: (t) => t.latestVersion },
     { key: 'purpose', header: 'Purpose', render: (t) => t.purpose ?? '—', sortValue: (t) => t.purpose },
@@ -57,17 +56,22 @@ export function LibraryXref() {
         <MultiSelectFilter label="Class" options={CLASS_OPTIONS} selected={klass} onChange={setKlass} />
         <MultiSelectFilter label="Type" options={TYPE_OPTIONS} selected={type} onChange={setType} />
         {hasActiveFilters && (
-          <button onClick={clearFilters} className="flex items-center gap-1 text-sm font-semibold text-muted hover:text-red px-2 py-1.5 rounded-[8px] hover:bg-red-light shrink-0">
+          <Button variant="dangerGhost" size="sm" onClick={clearFilters}>
             <X size={13} /> Clear filters
-          </button>
+          </Button>
         )}
-        <span className="text-sm text-muted ml-1 shrink-0">{filtered.length.toLocaleString()} tables</span>
+        <span className="text-sm2 text-muted ml-1 shrink-0">{filtered.length.toLocaleString()} tables</span>
         <div className="ml-auto flex items-center gap-2 shrink-0">
-          <GoldenToggle onClick={openGoldenDesigner} label="Golden XREF" />
+          <Button variant="quiet" size="sm" onClick={openGoldenDesigner}><Settings size={14} /> Golden XREF</Button>
         </div>
       </div>
       {!isLoading && filtered.length === 0
-        ? <EmptyState title="No XREF tables yet" description="Value-mapping tables created for any subproject, or a Golden XREF built via the designer, will list here." />
+        ? (
+          <ListEmptyState
+            noun="XREF tables" filtered={hasActiveFilters} onClearFilters={clearFilters}
+            description="Value-mapping tables created for any subproject, or a Golden XREF built via the designer, will list here."
+          />
+        )
         : (
           <Table
             columns={columns} rows={filtered} rowKey={(t) => t.id} pageSize={30} emptyMessage="Loading…"

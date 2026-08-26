@@ -35,7 +35,7 @@ export function CheckTablesPage() {
         ))}
       </div>
       <div className="flex-1 min-w-0">
-        {selected ? <CheckTableViewer table={selected} /> : <p className="text-sm text-muted">Select a table.</p>}
+        {selected ? <CheckTableViewer table={selected} /> : <p className="text-sm2 text-muted">Select a table.</p>}
       </div>
     </div>
   );

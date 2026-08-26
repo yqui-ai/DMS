@@ -10,7 +10,7 @@ type SortDir = 'newest' | 'oldest';
 
 /** Read-only view of the (singleton) Golden XREF opened from the catalog row — editing only ever
  * happens through the "Golden XREF" toolbar button / GoldenXrefDesignerDialog. Same version-list +
- * details pane as the Golden FMD viewer's Version Updates tab, minus Where-used (nothing else
+ * details pane as the Golden FMD viewer's Versions tab, minus Where-used (nothing else
  * references a Golden XREF template yet). */
 export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow | null; onClose: () => void }) {
   const { data: versions = [], isLoading } = useXrefVersions(xref?.id);
@@ -34,7 +34,7 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
   return (
     <Dialog open={!!xref} onClose={onClose} title={xref.name} size="win">
       {isLoading ? (
-        <p className="text-sm text-muted">Loading…</p>
+        <p className="text-sm2 text-muted">Loading…</p>
       ) : (
         <div className="h-full flex gap-4 min-h-0">
           <div className="w-[300px] shrink-0 flex flex-col gap-3 min-h-0">
@@ -47,7 +47,7 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
                 {sortDir === 'newest' ? 'Newest first' : 'Oldest first'}
               </button>
               <div className="flex-1 min-h-0 overflow-auto">
-                {sortedVersions.length === 0 && <p className="text-sm text-muted p-3">No versions yet.</p>}
+                {sortedVersions.length === 0 && <p className="text-sm2 text-muted p-3">No versions yet.</p>}
                 {sortedVersions.map((v) => (
                   <button
                     key={v.id} onClick={() => setSelectedId(v.id)}
@@ -74,7 +74,7 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-muted">Select a version to see its details.</p>
+                <p className="text-sm2 text-muted">Select a version to see its details.</p>
               )}
             </div>
           </div>
@@ -82,7 +82,7 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
             {selected?.structure?.sections?.length ? (
               <GoldenFmdStructureView structure={selected.structure} />
             ) : (
-              <p className="text-sm text-muted py-8 text-center">No structure recorded for this version.</p>
+              <p className="text-sm2 text-muted py-8 text-center">No structure recorded for this version.</p>
             )}
           </div>
         </div>

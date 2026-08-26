@@ -36,7 +36,7 @@ export function ScopeSequence() {
         <div key={w.migrationObjectId} className="flex items-center gap-3 px-3.5 py-2.5">
           <span className="text-sm2 font-bold text-muted w-6">{i + 1}</span>
           <Tag variant="table">{byId.get(w.migrationObjectId)?.objectId ?? w.migrationObjectId}</Tag>
-          <span className="text-sm text-text truncate flex-1">{byId.get(w.migrationObjectId)?.description ?? '—'}</span>
+          <span className="text-sm2 text-text truncate flex-1">{byId.get(w.migrationObjectId)?.description ?? '—'}</span>
           <button disabled={i === 0} onClick={() => move(i, -1)} className="p-1 rounded hover:bg-blue-pale disabled:opacity-30"><ChevronUp size={14} /></button>
           <button disabled={i === ordered.length - 1} onClick={() => move(i, 1)} className="p-1 rounded hover:bg-blue-pale disabled:opacity-30"><ChevronDown size={14} /></button>
         </div>

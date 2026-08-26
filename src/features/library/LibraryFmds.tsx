@@ -1,16 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Select } from '../../components/Select';
+import { Button } from '../../components/Button';
 import { useSearchParams } from 'react-router-dom';
-import clsx from 'clsx';
-import { ChevronDown, ChevronRight, Download, Sparkles, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, Settings, Sparkles, X } from 'lucide-react';
 import { PageHeader } from '../../components/PageHeader';
-import { EmptyState } from '../../components/EmptyState';
+import { ListEmptyState } from '../../components/ListEmptyState';
 import { Table, type Column } from '../../components/Table';
-import { ColorTag } from '../../components/ColorTag';
 import { Tag } from '../../components/Tag';
-import { GoldenToggle } from '../../components/GoldenToggle';
 import { MultiSelectFilter } from '../../components/MultiSelectFilter';
-import { ToolbarButton } from '../../components/ToolbarButton';
-import { AiButton } from '../../components/AiButton';
 import { ToolbarSearch } from '../../components/ToolbarSearch';
 import { fmtDateTime } from '../../lib/format';
 import { exportFmdsAsExcel } from '../../lib/fmdZipExport';
@@ -22,7 +19,7 @@ import { FmdVersionHistoryDialog } from './FmdVersionHistoryDialog';
 import { ConvertHistoricalFmdWizard } from './ConvertHistoricalFmdWizard';
 
 const CLASS_OPTIONS = ['Global', 'Local'];
-const TYPE_OPTIONS = ['Standard', 'Golden', 'Historical', 'Custom'];
+const TYPE_OPTIONS = ['Standard', 'Golden', 'Custom'];
 const NEW_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 type GroupBy = 'none' | 'type' | 'reference';
@@ -32,25 +29,23 @@ const GROUP_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: 'reference', label: 'Group by Program/Project/Subproject' },
 ];
 
-/** Deliberately fixed, not hash-derived like ColorTag — so Type stays visually distinct and
- * semantically consistent (Golden=amber, Standard=blue, Custom=violet, Historical=archival grey)
- * instead of whatever a hash happens to land on. */
-const FMD_TYPE_STYLE: Record<string, string> = {
-  Golden: 'bg-amber-bg text-amber-ink',
-  Standard: 'bg-blue-light text-blue-deep',
-  Custom: 'bg-violet-bg text-violet-deep',
-  Historical: 'bg-neutralTag-bg text-neutralTag-ink',
-};
+/** Two recency flags, and a row shows at most one of them: "New" for an FMD that has only ever had
+ * its first version, "New Version" once a later version goes live. They're deliberately exclusive —
+ * an FMD can't simultaneously be new and have a newer version than the one it was created with.
+ * "New" also clears as soon as the row is opened, rather than sitting until the window expires. */
+const isRecent = (at?: string) => !!at && Date.now() - new Date(at).getTime() < NEW_WINDOW_MS;
 
-/** "New" tracks the most recent activity (a fresh version counts, not just the FMD's original
- * creation date) so re-generating an existing Standard/Custom FMD surfaces it again too — and
- * clears as soon as that version's actually been opened, rather than sitting until the window
- * expires on its own. */
-const isNew = (f: LibraryFmdRow) => {
-  const at = f.changedAt ?? f.createdAt;
-  if (!at || Date.now() - new Date(at).getTime() >= NEW_WINDOW_MS) return false;
-  return !isFmdSeen(f.id, f.latestVersionId);
-};
+/** The FMD itself is new — it has never had a second version, so there is nothing to call a "new
+ * version" of. `changedAt` is only populated once a second version exists, which is exactly the
+ * test for "this is still the original". */
+const isNewFmd = (f: LibraryFmdRow) =>
+  !f.changedAt && isRecent(f.createdAt) && !isFmdSeen(f.id, f.latestVersionId);
+
+/** A later version of an existing FMD went live recently. Mutually exclusive with isNewFmd by
+ * construction — an FMD that has never changed can't have published a *new* version — so a row
+ * never carries both flags. */
+const isNewVersion = (f: LibraryFmdRow) =>
+  !!f.changedAt && isRecent(f.activePublishedAt);
 export function LibraryFmds() {
   const { data: fmds = [], isLoading } = useLibraryFmds();
   const toast = useToast();
@@ -96,8 +91,8 @@ export function LibraryFmds() {
   const openGoldenDesigner = () => setGoldenTarget(existingGolden ?? 'new');
 
   /** Opening a row is what dismisses its "New" badge, not just viewing the list. Every FMD type
-   * uses the same full version-history viewer now — Version Updates and Where-used apply equally
-   * to Golden, Standard, Custom, and Historical, not just the AI-converted ones. */
+   * uses the same full version-history viewer now — Versions and Where-used apply equally
+   * to Golden, Standard and Custom alike, not just the AI-converted ones. */
   const openRow = (f: LibraryFmdRow) => {
     markFmdSeen(f.id, f.latestVersionId);
     setOpenHistory(f);
@@ -169,24 +164,47 @@ export function LibraryFmds() {
               <Sparkles size={10} />
             </span>
           )}
-          {isNew(f) && <span className="inline-flex items-center text-2xs px-1.5 py-[1px] rounded-pill bg-amber-bg text-amber-ink shrink-0">New</span>}
+          {/* One or the other, never both — see isNewFmd / isNewVersion. Same treatment because
+              they mean the same kind of thing (something arrived recently); the label carries the
+              distinction, so a second colour would only imply a difference in severity. */}
+          {isNewFmd(f) && <Tag variant="success" size="sm" className="shrink-0">New</Tag>}
+          {isNewVersion(f) && <Tag variant="success" size="sm" className="shrink-0">New Version</Tag>}
         </span>
       ),
       sortValue: (f) => f.name,
     },
-    { key: 'class', header: 'Class', width: 90, render: (f) => <ColorTag colorKey={f.class}>{f.class}</ColorTag>, sortValue: (f) => f.class },
+    { key: 'class', header: 'Class', width: 90, render: (f) => f.class, sortValue: (f) => f.class },
     {
       key: 'type', header: 'Type', width: 90,
-      render: (f) => <span className={clsx('inline-flex items-center text-xs font-semibold px-2.5 py-[3px] rounded-pill', FMD_TYPE_STYLE[f.type] ?? 'bg-neutralTag-bg text-neutralTag-ink')}>{f.type}</span>,
+      render: (f) => f.type,
       sortValue: (f) => f.type,
     },
     { key: 'reference', header: 'Reference', width: 150, render: (f) => <span className="font-mono text-sm2">{f.reference}</span>, sortValue: (f) => f.reference },
-    { key: 'latestVersion', header: 'Version', width: 90, render: (f) => f.latestVersion ?? '—', sortValue: (f) => f.latestVersion },
+    {
+      // Just the number here — the Draft/Active badge lives in Status and repeating it made the two
+      // columns say the same thing twice. Shows the live (published) version when there is one,
+      // falling back to the latest draft for an FMD that has never been published.
+      key: 'latestVersion', header: 'Version', width: 90,
+      render: (f) => <span className="font-mono">{f.activeVersion ?? f.latestVersion ?? '—'}</span>,
+      sortValue: (f) => f.activeVersion ?? f.latestVersion,
+    },
+    {
+      // Active = a published version exists. Draft = everything so far is unreleased. When both are
+      // true (published, with newer edits pending) the draft is what needs attention, so it wins.
+      key: 'status', header: 'Status', width: 100,
+      // Active is the resting state, so it carries no colour — a badge on every row is just noise.
+      // Draft is the exception that needs picking out of a long list (unreleased work), so it keeps
+      // a quiet red at the small size.
+      render: (f) => f.hasDraft || !f.activeVersion
+        ? <Tag variant="danger" size="sm">{f.hasDraft ? 'Draft' : (f.latestState ?? 'Draft')}</Tag>
+        : <span className="text-muted">Active</span>,
+      sortValue: (f) => (f.hasDraft ? 'Draft' : f.activeVersion ? 'Active' : f.latestState),
+    },
     {
       key: 'goldenVersionLabel', header: 'Golden FMD Version', width: 150,
       render: (f) => f.goldenVersionLabel ? (
         <span className="inline-flex items-center gap-1.5 font-mono text-sm2">
-          {f.goldenVersionLabel}{f.goldenOutdated && <Tag variant="warn">Outdated</Tag>}
+          {f.goldenVersionLabel}{f.goldenOutdated && <Tag variant="warn" size="sm">Outdated</Tag>}
         </span>
       ) : '—',
       sortValue: (f) => f.goldenVersionLabel,
@@ -195,7 +213,7 @@ export function LibraryFmds() {
       key: 'standardRefVersionLabel', header: 'Reference FMD Version', width: 160,
       render: (f) => f.standardRefVersionLabel ? (
         <span className="inline-flex items-center gap-1.5 font-mono text-sm2">
-          {f.standardRefVersionLabel}{f.standardRefOutdated && <Tag variant="warn">Outdated</Tag>}
+          {f.standardRefVersionLabel}{f.standardRefOutdated && <Tag variant="warn" size="sm">Outdated</Tag>}
         </span>
       ) : '—',
       sortValue: (f) => f.standardRefVersionLabel,
@@ -225,28 +243,31 @@ export function LibraryFmds() {
         <ToolbarSearch value={query} onChange={setQuery} placeholder="Search field mappings…" />
         <MultiSelectFilter label="Class" options={CLASS_OPTIONS} selected={klass} onChange={setKlass} />
         <MultiSelectFilter label="Type" options={TYPE_OPTIONS} selected={type} onChange={setType} />
-        <select
+        <Select
           value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)}
-          className="text-sm px-2.5 py-1.5 rounded-[8px] border border-[#d6dbe2] bg-surface shrink-0"
+          size="sm"
         >
           {GROUP_OPTIONS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
-        </select>
+        </Select>
         {hasActiveFilters && (
-          <button onClick={clearFilters} className="flex items-center gap-1 text-sm font-semibold text-muted hover:text-red px-2 py-1.5 rounded-[8px] hover:bg-red-light shrink-0">
+          <Button variant="dangerGhost" size="sm" onClick={clearFilters}>
             <X size={13} /> Clear filters
-          </button>
+          </Button>
         )}
-        <span className="text-sm text-muted ml-1 shrink-0">{filtered.length.toLocaleString()} FMDs{selected.size > 0 ? ` · ${selected.size} selected` : ''}</span>
+        <span className="text-sm2 text-muted ml-1 shrink-0">{filtered.length.toLocaleString()} FMDs{selected.size > 0 ? ` · ${selected.size} selected` : ''}</span>
         <div className="ml-auto flex items-center gap-2 shrink-0">
-          <ToolbarButton onClick={exportSelected} disabled={selected.size === 0 || exporting}>
+          <Button variant="quiet" size="sm" onClick={exportSelected} disabled={selected.size === 0 || exporting}>
             <Download size={14} /> {exporting ? 'Exporting…' : `Export to Excel${selected.size > 0 ? ` (${selected.size})` : ''}`}
-          </ToolbarButton>
-          <GoldenToggle onClick={openGoldenDesigner} label="Golden FMD" />
-          <AiButton onClick={() => setWizardOpen(true)}><Sparkles size={14} /> Convert Historical FMD</AiButton>
+          </Button>
+          <Button variant="quiet" size="sm" onClick={openGoldenDesigner}><Settings size={14} /> Golden FMD</Button>
+          <Button variant="ai" size="sm" onClick={() => setWizardOpen(true)}><Sparkles size={14} /> Convert Historical FMD</Button>
         </div>
       </div>
       {!isLoading && filtered.length === 0 ? (
-        <EmptyState title="No FMDs yet" description="Field mapping documents created for any subproject, or a Golden FMD built via the designer, will list here." />
+        <ListEmptyState
+          noun="FMDs" filtered={hasActiveFilters} onClearFilters={clearFilters}
+          description="Field mapping documents created for any subproject, or a Golden FMD built via the designer, will list here."
+        />
       ) : (
         <div className="flex flex-col gap-5">
           {groups.map((g, i) => {
@@ -256,7 +277,7 @@ export function LibraryFmds() {
               <div key={g.label ?? i}>
                 {g.label !== null && (
                   <div className="flex items-center gap-2 mb-1.5 px-1">
-                    <button onClick={() => toggleGroupCollapsed(g.label!)} className="flex items-center gap-1.5 text-sm font-bold text-text">
+                    <button onClick={() => toggleGroupCollapsed(g.label!)} className="flex items-center gap-1.5 text-sm2 font-bold text-text">
                       {collapsed ? <ChevronRight size={14} className="text-muted" /> : <ChevronDown size={14} className="text-muted" />}
                       {g.label}
                     </button>

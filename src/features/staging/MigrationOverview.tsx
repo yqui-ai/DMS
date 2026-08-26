@@ -28,7 +28,7 @@ export function MigrationOverview() {
           ]}
         />
       </Card>
-      <p className="text-sm text-muted">
+      <p className="text-sm2 text-muted">
         See <strong>Staging Area</strong> for per-connection extraction detail, <strong>Pipelines</strong> for the ETL
         designer, and <strong>Runs</strong> for execution history.
       </p>

@@ -80,3 +80,39 @@ whole operation: `aiHistoricalConvert.ts` falls back to `"Copy 1:1"` for that ba
 `mappingReview.ts` pushes a synthetic "this batch's review failed, re-run to retry" finding instead
 of losing the rest of the review. Keep this shape for any new batched task — one bad batch should
 never take down the ones before or after it in the same run.
+
+## Verifying an Edge Function before deploying
+
+`npm run build` compiles **only `src/`**. `supabase/functions/` is Deno code with `https://` imports
+and sits outside the app's tsconfig, so a syntax error there passes every local check and surfaces
+only as a `400 Failed to bundle the function` from `supabase functions deploy` — minutes later, with
+a far worse error message.
+
+That happened once: a string literal broken across two lines shipped through a completely clean
+build. Run **`npm run typecheck`** (which now includes `scripts/check-edge-functions.mjs`) or
+`npm run check:functions` before any deploy. It parse-checks every function; it deliberately doesn't
+type-check, since Deno's URL imports can't be resolved locally.
+
+**Never write Edge Function code via a shell heredoc that contains escape sequences.** The broken
+literal above came from `\n` inside a heredoc'd Node script becoming a real newline. Use the Edit
+tool for these files.
+
+## The `technical-rule` task — refusal is the feature
+
+`useGenerateTechnicalRule()` drafts a row's SQL TECHNICAL_RULE from its plain-language
+TRANSFORMATION_RULE, **or refuses**. Refusing is the point, not a failure mode: a vague requirement
+should go back to a person rather than quietly become confident-looking SQL that a developer
+implements and nobody questions.
+
+Three guardrails, all deliberate:
+
+1. **The prompt forbids inventing anything.** Only the table/field names sent in the context may be
+   used. A rule naming a table that doesn't exist is worse than no rule, because it looks
+   implementable. Needing a value, threshold, code list or table that wasn't supplied is an explicit
+   reason to refuse.
+2. **The response is validated before being offered.** A "success" whose SQL doesn't pass
+   `looksLikeSql()` is converted into a refusal — the one thing this feature must never do is put
+   plausible prose into a field that is supposed to hold a statement.
+3. **The draft is proposed, never written.** It renders above the fields with Use this / Discard.
+   A generated rule that is subtly wrong is far harder to catch once it looks like something a
+   person typed.

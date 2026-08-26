@@ -61,7 +61,7 @@ export function StagingArea() {
       {stagingDb && (
         <Card>
           <div className="text-sm2 font-bold uppercase tracking-[.05em] text-muted mb-2">Staging Database</div>
-          <div className="grid grid-cols-5 gap-3 text-sm">
+          <div className="grid grid-cols-5 gap-3 text-sm2">
             <Field label="Engine">{stagingDb.engine ?? '—'}</Field>
             <Field label="Host"><span className="font-mono">{stagingDb.host ?? '—'}</span></Field>
             <Field label="Schema"><span className="font-mono">{stagingDb.schemaName ?? '—'}</span></Field>
@@ -76,7 +76,7 @@ export function StagingArea() {
       ) : (
         Array.from(grouped.entries()).map(([connId, rows]) => (
           <div key={connId}>
-            <h3 className="text-lg font-bold mb-2">{connName(connId)}</h3>
+            <h3 className="text-md font-bold mb-2">{connName(connId)}</h3>
             <Table columns={columns} rows={rows} rowKey={(t) => t.id} />
           </div>
         ))

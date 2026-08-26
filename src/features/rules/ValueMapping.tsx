@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Select } from '../../components/Select';
 import { useParams } from 'react-router-dom';
 import { Plus, Filter, Maximize2 } from 'lucide-react';
 import clsx from 'clsx';
@@ -37,12 +38,14 @@ export function ValueMapping() {
           >
             <div className="font-mono font-bold text-sm2">{t.name}</div>
             <div className="text-2xs text-muted">{t.purpose ?? '—'}</div>
-            {t.version && <div className="text-2xs text-muted mt-0.5">v{t.version}</div>}
+            {/* No version shown: the old xref_tables.version column was dead (never written after
+                xref_versions was introduced), so this badge never rendered. Deriving the real
+                latest version here needs useXrefTables to join xref_versions — see LibraryXref. */}
           </button>
         ))}
       </div>
       <div className="flex-1 min-w-0">
-        {selected && selectedTable ? <XrefRowsGrid xrefTableId={selected} title={selectedTable.name} /> : <p className="text-sm text-muted">Select a table.</p>}
+        {selected && selectedTable ? <XrefRowsGrid xrefTableId={selected} title={selectedTable.name} /> : <p className="text-sm2 text-muted">Select a table.</p>}
       </div>
     </div>
   );
@@ -110,7 +113,7 @@ function XrefRowsGrid({ xrefTableId, title }: { xrefTableId: string; title: stri
         <Button variant="secondary" onClick={() => setFiltersOpen(true)}>
           <Filter size={13} /> Filters {activeFilterCount > 0 && <Tag variant="accent">{activeFilterCount}</Tag>}
         </Button>
-        <span className="text-sm text-muted">{filtered.length} of {rows.length} rows</span>
+        <span className="text-sm2 text-muted">{filtered.length} of {rows.length} rows</span>
       </div>
       <div className="flex items-center gap-2">
         {adding ? (
@@ -152,12 +155,12 @@ function XrefRowsGrid({ xrefTableId, title }: { xrefTableId: string; title: stri
             <Input value={filters.query} onChange={(e) => setFilters((f) => ({ ...f, query: e.target.value }))} placeholder="e.g. FIN or FERT" />
           </Field>
           <Field label="Status">
-            <select
+            <Select
               value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value as XrefFilters['status'] }))}
-              className="w-full text-base bg-surface border border-[#d6dbe2] rounded-[8px] px-[11px] py-2 min-h-[38px]"
+              className="w-full"
             >
               <option>All</option><option>Active</option><option>Retired</option>
-            </select>
+            </Select>
           </Field>
         </div>
       </Dialog>

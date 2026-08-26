@@ -26,8 +26,8 @@ export function LoginPage() {
   return (
     <div className="min-h-screen w-screen grid place-items-center bg-bg">
       <Card className="w-[380px]">
-        <h1 className="text-2xl font-bold text-text mb-1">Data Migration Solution</h1>
-        <p className="text-sm text-muted mb-5">{mode === 'sign-in' ? 'Sign in to continue.' : 'Create an account.'}</p>
+        <h1 className="text-xl font-bold text-text mb-1">Data Migration Solution</h1>
+        <p className="text-sm2 text-muted mb-5">{mode === 'sign-in' ? 'Sign in to continue.' : 'Create an account.'}</p>
         <form onSubmit={submit} className="flex flex-col gap-3.5">
           <Field label="Email" htmlFor="login-email">
             <Input id="login-email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -39,14 +39,14 @@ export function LoginPage() {
               value={password} onChange={(e) => setPassword(e.target.value)}
             />
           </Field>
-          {error && <p className="text-xs text-red">{error}</p>}
+          {error && <p className="text-2xs text-red">{error}</p>}
           <Button type="submit" variant="primary" disabled={busy} className="justify-center mt-1">
             {busy ? 'Please wait…' : mode === 'sign-in' ? 'Sign in' : 'Create account'}
           </Button>
         </form>
         <button
           onClick={() => setMode((m) => (m === 'sign-in' ? 'sign-up' : 'sign-in'))}
-          className="text-sm text-blue font-semibold mt-4 hover:underline"
+          className="text-sm2 text-blue font-semibold mt-4 hover:underline"
         >
           {mode === 'sign-in' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
         </button>

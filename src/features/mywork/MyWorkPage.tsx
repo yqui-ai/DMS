@@ -13,7 +13,7 @@ function WorkCard({ title, items }: { title: string; items: WorkItem[] }) {
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
-        <h3 className="text-lg font-bold">{title}</h3>
+        <h3 className="text-md font-bold">{title}</h3>
         <Tag variant="neutral">{items.length}</Tag>
       </div>
       {items.length === 0 ? (
@@ -27,7 +27,7 @@ function WorkCard({ title, items }: { title: string; items: WorkItem[] }) {
               disabled={!item.onClick}
             >
               <div className="min-w-0 flex-1">
-                <div className="font-semibold text-sm text-text truncate">{item.label}</div>
+                <div className="font-semibold text-sm2 text-text truncate">{item.label}</div>
                 <div className="text-2xs text-muted truncate">{item.context}</div>
               </div>
               <Tag variant={item.variant}>{item.state}</Tag>

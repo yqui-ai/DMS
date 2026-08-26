@@ -51,7 +51,7 @@ export function SelectStandardDialog({
         </Button>
       </>}
     >
-      <p className="text-sm text-muted mb-3">The standard Master Data starter set — check the objects to add to this subproject's scope.</p>
+      <p className="text-sm2 text-muted mb-3">The standard Master Data starter set — check the objects to add to this subproject's scope.</p>
       <div className="rounded-lg shadow-[inset_0_0_0_1px_var(--line)] max-h-[420px] overflow-auto">
         {standardObjects.map((o) => {
           const already = inScopeIds.has(o.id);
@@ -62,7 +62,7 @@ export function SelectStandardDialog({
                 onChange={() => toggle(o.id)} className="w-4 h-4 accent-[var(--blue)]"
               />
               <Tag variant="table">{o.objectId}</Tag>
-              <span className="text-sm text-text truncate flex-1">{o.description ?? '—'}</span>
+              <span className="text-sm2 text-text truncate flex-1">{o.description ?? '—'}</span>
               {already && <span className="text-2xs text-muted shrink-0">Already in scope</span>}
             </label>
           );

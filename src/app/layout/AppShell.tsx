@@ -10,7 +10,7 @@ export function AppShell() {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <div className="min-h-screen w-screen grid place-items-center bg-bg text-muted text-sm">Loading…</div>;
+    return <div className="min-h-screen w-screen grid place-items-center bg-bg text-muted text-sm2">Loading…</div>;
   }
   if (!user) {
     return <LoginPage />;

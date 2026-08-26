@@ -53,7 +53,7 @@ export function MyProfilePage() {
         <div className="flex items-center justify-between">
           <div>
             <div className="font-semibold text-text">Appearance</div>
-            <div className="text-sm text-muted">Switch between light and dark theme.</div>
+            <div className="text-sm2 text-muted">Switch between light and dark theme.</div>
           </div>
           <Button variant="secondary" onClick={toggle}>
             {dark ? <><Sun size={14} /> Light mode</> : <><Moon size={14} /> Dark mode</>}

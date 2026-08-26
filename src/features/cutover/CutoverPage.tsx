@@ -47,7 +47,7 @@ export function CutoverPage() {
                 {STATUS_ICON[task.status]}
               </button>
               <div className="min-w-0 flex-1">
-                <div className={clsx('font-semibold text-sm', task.status === 'Done' && 'line-through text-muted')}>{task.name}</div>
+                <div className={clsx('font-semibold text-sm2', task.status === 'Done' && 'line-through text-muted')}>{task.name}</div>
                 <div className="text-2xs text-muted">
                   {task.owner ?? 'Unassigned'}
                   {task.dependsOn && byId.get(task.dependsOn) && <> · depends on {byId.get(task.dependsOn)!.name}</>}

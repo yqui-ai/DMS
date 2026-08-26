@@ -25,7 +25,7 @@ export function TabStrip({ items, basePath }: { items: TabStripItem[]; basePath:
             end={item.to === ''}
             className={({ isActive }) =>
               clsx(
-                'flex items-center gap-1.5 px-3.5 py-2.5 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap',
+                'flex items-center gap-1.5 px-3.5 py-2.5 text-sm2 font-semibold border-b-2 -mb-px whitespace-nowrap',
                 isActive ? 'border-blue text-blue' : 'border-transparent text-muted hover:text-text',
               )
             }

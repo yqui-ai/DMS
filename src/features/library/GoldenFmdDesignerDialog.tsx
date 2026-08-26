@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { GripVertical, Plus, Trash2 } from 'lucide-react';
+import { GripVertical, Lock, Plus, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import { Dialog } from '../../components/Dialog';
 import { Button } from '../../components/Button';
 import { useToast } from '../../components/Toast';
 import { useLatestFmdVersion, useGoldenFmdMutations, type LibraryFmdRow } from '../../lib/queries/fmds';
 import { SECTION_COLORS, colorByKey, nextColor } from '../../lib/goldenFmdColors';
+import { isRequiredGoldenField, missingRequiredGoldenFields } from '../../lib/goldenFmdRequiredFields';
 import type { GoldenFmdStructure } from '../../types/entities';
 
 export const GOLDEN_FMD_NAME = 'Golden_Field_Mapping_Document_Template';
@@ -136,6 +137,11 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
     setDirty(true);
   };
   const removeField = (sectionId: string, fieldId: string) => {
+    const target = structure.sections.find((s) => s.id === sectionId)?.fields.find((f) => f.id === fieldId);
+    if (target && isRequiredGoldenField(target.field)) {
+      toast.error(`${target.field} is a required field — row identity, generation and the mapping review all depend on it.`);
+      return;
+    }
     setStructure((s) => ({
       sections: s.sections.map((sec) => (sec.id !== sectionId ? sec : { ...sec, fields: sec.fields.filter((f) => f.id !== fieldId) })),
     }));
@@ -167,6 +173,13 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
 
   const openSaveComment = () => {
     if (structure.sections.length === 0) { toast.error('Add at least one section first.'); return; }
+    // Checked at save as well as at delete: renaming a required field away is the same loss as
+    // deleting it, and only a whole-structure check catches that.
+    const missing = missingRequiredGoldenFields(structure.sections.flatMap((s) => s.fields.map((f) => f.field)));
+    if (missing.length > 0) {
+      toast.error(`Required field${missing.length === 1 ? '' : 's'} missing: ${missing.join(', ')}. Restore ${missing.length === 1 ? 'it' : 'them'} before saving.`);
+      return;
+    }
     setComment('');
     setCommentOpen(true);
   };
@@ -178,7 +191,8 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
       if (isNew) {
         await mutations.create(GOLDEN_FMD_NAME, structure, comment.trim());
         toast.success('Golden FMD registered.');
-      } else if (target !== 'new') {
+      } else {
+        // target is narrowed to LibraryFmdRow here (null returned early, 'new' handled above).
         await mutations.saveNewVersion(target.id, version?.version ?? target.latestVersion ?? 'v1.0.0', structure, comment.trim());
         toast.success('New version saved.');
       }
@@ -194,7 +208,8 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
 
   return (
     <Dialog
-      open={!!target} onClose={onClose} title={GOLDEN_FMD_NAME} size="win"
+      open={!!target} onClose={onClose}
+      unsavedWarning={dirty ? 'Your changes to the Golden FMD structure have not been saved as a version yet.' : undefined} title={GOLDEN_FMD_NAME} size="win"
       footer={<>
         <Button variant="secondary" onClick={onClose}>Close</Button>
         <Button variant="primary" onClick={openSaveComment} disabled={saving || (!isNew && !dirty)}>
@@ -203,11 +218,11 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
       </>}
     >
       {!isNew && isLoading ? (
-        <p className="text-sm text-muted">Loading…</p>
+        <p className="text-sm2 text-muted">Loading…</p>
       ) : (
         <div className="h-full flex gap-4">
           <div className="w-[260px] shrink-0 flex flex-col rounded-lg shadow-[inset_0_0_0_1px_var(--line)] overflow-hidden">
-            <div className="px-3 py-2 text-2xs font-bold uppercase tracking-[.04em] text-muted bg-[#eef1f5]">Sections</div>
+            <div className="px-3 py-2 text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3">Sections</div>
             <div className="flex-1 overflow-auto">
               {structure.sections.map((section) => {
                 const color = colorByKey(section.color);
@@ -230,22 +245,22 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
                   </div>
                 );
               })}
-              {structure.sections.length === 0 && <p className="text-sm text-muted px-3 py-4">No sections yet.</p>}
+              {structure.sections.length === 0 && <p className="text-sm2 text-muted px-3 py-4">No sections yet.</p>}
             </div>
-            <button onClick={addSection} className="text-blue text-sm font-semibold px-3 py-2.5 hover:bg-blue-pale w-full text-left border-t border-line">
+            <button onClick={addSection} className="text-blue text-sm2 font-semibold px-3 py-2.5 hover:bg-blue-pale w-full text-left border-t border-line">
               <Plus size={13} className="inline -mt-0.5" /> Add Section
             </button>
           </div>
 
           <div className="flex-1 min-w-0 flex flex-col rounded-lg shadow-[inset_0_0_0_1px_var(--line)] overflow-hidden">
             {!activeSection ? (
-              <p className="text-sm text-muted p-6 text-center">Add a section to start defining fields.</p>
+              <p className="text-sm2 text-muted p-6 text-center">Add a section to start defining fields.</p>
             ) : (
               <>
                 <div className="px-3.5 py-2.5 border-b border-line flex items-center gap-3" style={{ backgroundColor: colorByKey(activeSection.color).bg }}>
                   <input
                     value={activeSection.name} onChange={(e) => updateSection(activeSection.id, { name: e.target.value })}
-                    className="bg-transparent text-sm font-bold min-w-0 flex-1 focus-visible:outline-none"
+                    className="bg-transparent text-sm2 font-bold min-w-0 flex-1 focus-visible:outline-none"
                     style={{ color: colorByKey(activeSection.color).text }}
                   />
                   <div className="flex items-center gap-1.5 shrink-0">
@@ -272,10 +287,10 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
                   <table className="w-full border-collapse text-sm2 table-fixed">
                     <thead>
                       <tr>
-                        <th className="w-8 bg-[#eef1f5] px-2.5 py-2" />
-                        <th className="w-[32%] text-2xs font-bold uppercase tracking-[.04em] text-muted bg-[#eef1f5] px-2.5 py-2 text-left sticky top-0">Field</th>
-                        <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-[#eef1f5] px-2.5 py-2 text-left sticky top-0">Description / Allowed Values</th>
-                        <th className="w-8 bg-[#eef1f5]" />
+                        <th className="w-8 bg-surface-3 px-2.5 py-2" />
+                        <th className="w-[32%] text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 text-left sticky top-0">Field</th>
+                        <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 text-left sticky top-0">Description / Allowed Values</th>
+                        <th className="w-8 bg-surface-3" />
                       </tr>
                     </thead>
                     <tbody>
@@ -304,16 +319,20 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
                             />
                           </td>
                           <td className="text-center">
-                            <button onClick={() => removeField(activeSection.id, field.id)} className="text-red hover:bg-red-light p-1 rounded"><Trash2 size={12} /></button>
+                            {isRequiredGoldenField(field.field) ? (
+                              <span title="Required field — cannot be removed" className="inline-flex text-muted p-1"><Lock size={12} /></span>
+                            ) : (
+                              <button onClick={() => removeField(activeSection.id, field.id)} className="text-red hover:bg-red-light p-1 rounded"><Trash2 size={12} /></button>
+                            )}
                           </td>
                         </tr>
                       ))}
                       {activeSection.fields.length === 0 && (
-                        <tr><td colSpan={4} className="px-2.5 py-6 text-center text-muted text-sm">No fields in this section yet.</td></tr>
+                        <tr><td colSpan={4} className="px-2.5 py-6 text-center text-muted text-sm2">No fields in this section yet.</td></tr>
                       )}
                     </tbody>
                   </table>
-                  <button onClick={() => addField(activeSection.id)} className="text-blue text-sm font-semibold px-2.5 py-2 hover:bg-blue-pale w-full text-left">
+                  <button onClick={() => addField(activeSection.id)} className="text-blue text-sm2 font-semibold px-2.5 py-2 hover:bg-blue-pale w-full text-left">
                     <Plus size={13} className="inline -mt-0.5" /> Add field
                   </button>
                 </div>
@@ -334,9 +353,9 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
         <textarea
           value={comment} onChange={(e) => setComment(e.target.value)} rows={3} autoFocus
           placeholder="e.g. Added SRC_CHECK_TABLE and reordered Load Section"
-          className="w-full text-base bg-surface border border-[#d6dbe2] rounded-[8px] px-[11px] py-2 resize-y"
+          className="w-full text-sm2 bg-surface border border-line-strong rounded-[8px] px-[11px] py-2 resize-y"
         />
-        <p className="text-2xs text-muted mt-1.5">Saved as this version's note in Version Updates.</p>
+        <p className="text-2xs text-muted mt-1.5">Saved as this version's note in Versions.</p>
       </Dialog>
     </Dialog>
   );

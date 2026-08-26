@@ -43,7 +43,7 @@ export function ScopeOverview() {
       </Card>
 
       <div>
-        <h3 className="text-lg font-bold mb-3">In-scope objects</h3>
+        <h3 className="text-md font-bold mb-3">In-scope objects</h3>
         <Table columns={columns} rows={rows} rowKey={(o) => o.id} emptyMessage="No objects in scope yet — add some in the Migration Object tab." />
       </div>
     </div>

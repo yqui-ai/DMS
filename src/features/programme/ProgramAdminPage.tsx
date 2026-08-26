@@ -32,7 +32,7 @@ export function ProgramAdminPage() {
             key={t.key}
             onClick={() => setTab(t.key)}
             className={clsx(
-              'px-3.5 py-2.5 text-sm font-semibold border-b-2 -mb-px',
+              'px-3.5 py-2.5 text-sm2 font-semibold border-b-2 -mb-px',
               tab === t.key ? 'border-blue text-blue' : 'border-transparent text-muted hover:text-text',
             )}
           >

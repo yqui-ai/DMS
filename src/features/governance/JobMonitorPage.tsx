@@ -37,14 +37,14 @@ export function JobMonitorPage() {
       <PageHeader title="Job Monitor" description="Live, queued and failed jobs across runs and extractions." />
 
       <div>
-        <h3 className="text-lg font-bold mb-2">Runs</h3>
+        <h3 className="text-md font-bold mb-2">Runs</h3>
         {!loadingRuns && runs.length === 0
           ? <EmptyState title="No runs yet" />
           : <Table columns={runColumns} rows={runs} rowKey={(r) => r.id} />}
       </div>
 
       <div>
-        <h3 className="text-lg font-bold mb-2">Extraction jobs</h3>
+        <h3 className="text-md font-bold mb-2">Extraction jobs</h3>
         {!loadingJobs && jobs.length === 0
           ? <EmptyState title="No extraction jobs yet" />
           : <Table columns={jobColumns} rows={jobs} rowKey={(j) => j.id} />}

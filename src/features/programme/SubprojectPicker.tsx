@@ -21,7 +21,7 @@ export function SubprojectPicker() {
   }, [cycles]);
 
   if (loadingPrograms) {
-    return <div className="max-w-[760px] mx-auto py-16 text-center text-muted text-sm">Loading…</div>;
+    return <div className="max-w-[760px] mx-auto py-16 text-center text-muted text-sm2">Loading…</div>;
   }
 
   if (programs.length === 0) {
@@ -38,8 +38,8 @@ export function SubprojectPicker() {
 
   return (
     <div className="max-w-[760px] mx-auto">
-      <h1 className="text-3xl font-bold text-text mb-1.5">Select a subproject to open</h1>
-      <p className="text-sm text-muted mb-8">Pick a subproject to work in — this sets the programme, project and subproject context for everything else.</p>
+      <h1 className="text-xl font-bold text-text mb-1.5">Select a subproject to open</h1>
+      <p className="text-sm2 text-muted mb-8">Pick a subproject to work in — this sets the programme, project and subproject context for everything else.</p>
 
       {programs.map((program) => {
         const programProjects = projects.filter((r) => r.programId === program.id);
@@ -48,7 +48,7 @@ export function SubprojectPicker() {
             <div className="text-sm2 font-bold uppercase tracking-[.05em] text-muted mb-4">{program.name}</div>
 
             {programProjects.length === 0 && (
-              <p className="text-sm text-muted">No projects yet — add one in program configuration.</p>
+              <p className="text-sm2 text-muted">No projects yet — add one in program configuration.</p>
             )}
 
             {programProjects.map((project) => {
@@ -57,17 +57,17 @@ export function SubprojectPicker() {
                 <div key={project.id} className="mb-7">
                   <div className="flex items-center gap-2 mb-3">
                     <Package size={15} className="text-muted" />
-                    <span className="text-lg font-bold text-text">{project.name}</span>
+                    <span className="text-md font-bold text-text">{project.name}</span>
                     <Link
                       to={`/pg/${program.id}/settings`}
-                      className="ml-auto text-blue text-sm font-semibold px-2 py-1 rounded hover:bg-blue-light"
+                      className="ml-auto text-blue text-sm2 font-semibold px-2 py-1 rounded hover:bg-blue-light"
                     >
                       Configure programme
                     </Link>
                   </div>
 
                   {projectSubprojects.length === 0 ? (
-                    <p className="text-sm text-muted">No subprojects yet — add one in program configuration.</p>
+                    <p className="text-sm2 text-muted">No subprojects yet — add one in program configuration.</p>
                   ) : (
                     <div className="grid grid-cols-2 gap-3">
                       {projectSubprojects.map((subproject) => {

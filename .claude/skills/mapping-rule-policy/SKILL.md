@@ -33,12 +33,47 @@ populated, **except** `SRC_CHECK_TABLE` and `TGT_CHECK_TABLE`, which are allowed
 
 **Per-type format**:
 
-| MAPPING_TYPE | TRANSFORMATION_RULE | TECHNICAL_RULE |
+| MAPPING_TYPE | TRANSFORMATION_RULE | TECHNICAL_RULE (always SQL) |
 |---|---|---|
-| `COPY` | exactly `"1:1"` | `"<table>-<field>"` (target table/field, hyphen-separated) |
-| `DEFAULT` | — | a literal value assignment: `"<table>-<field> = <value>"`, value quoted text (`"TEST"`) or a bare number (`123`) |
-| `XREF` | must name the XREF table/object | must also name the same XREF table/object |
-| `TRANSFORM` | real, non-generic transformation logic | real, non-generic transformation logic |
+| `COPY` | exactly `"1:1"` | `SELECT <source_field> FROM <source_table>` |
+| `DEFAULT` | states whether the default is unconditional or null-only | `SELECT 'X' AS <target_field>`, or `CASE WHEN <src> IS NULL THEN 'X' ELSE <src> END` |
+| `TRANSFORM` | real transformation logic | CASE or equivalent, covering every condition **including ELSE** |
+| `XREF` | must name the XREF table/object | SQL lookup **plus** the no-match branch (LEFT JOIN + COALESCE, or explicit default) |
+
+### TECHNICAL_RULE is SQL for every type — no exceptions
+
+An earlier revision made this type-dependent (notation for COPY/DEFAULT, SQL only where the logic
+lives). **That was overruled, and the simpler rule is better:** one column, one language. A developer
+reading the FMD never has to work out which dialect a row is written in, and anything that parses
+SQL — effort scoring, validation, the rule generator — treats the whole column uniformly instead of
+special-casing two types.
+
+`requiresSql()` therefore returns true unconditionally. It's kept as a function rather than deleted
+because call sites read better asking the policy than asserting it, and because it's the one place
+to change if that ever becomes conditional again.
+
+**Consequence to expect:** FMDs generated before this change carry `<structure>-<field>` notation in
+COPY rows and will be flagged by the next Mapping Review. That's correct — they no longer meet the
+policy. Generation now emits `SELECT <field> FROM <structure>` so new FMDs start compliant.
+
+### Transform Simple vs Complex is DERIVED, never stored
+
+`classifyTransform(technicalRule)` computes it:
+
+- **Simple** — one source table, no join, at most one condition.
+- **Complex** — anything else. Ambiguity resolves to Complex, because under-estimating a transform
+  is the expensive direction.
+
+It is deliberately *not* a column. A hand-typed flag beside the SQL it describes is a second source
+of truth for the same fact — the same shape of bug as the dead `xref_tables.version` column — and
+it would go stale the moment a rule is refined. Deriving it means the flag can never disagree with
+the rule, and item 64 of the review checklist ("re-run the estimate when the FMD changes") is
+satisfied for free.
+
+`effortWeight(mappingType, technicalRule)` returns the per-row build weight
+(`MAPPING_EFFORT_WEIGHTS`: COPY 1, DEFAULT 1, TRANSFORM-Simple 2, TRANSFORM-Complex 5, XREF 3).
+Those are the checklist's starting numbers and are meant to be recalibrated against a project's
+actuals, which is why they sit in one exported map rather than inside the estimator.
 
 ## Where this is applied
 

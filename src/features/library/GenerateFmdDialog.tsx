@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Select } from '../../components/Select';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { Dialog } from '../../components/Dialog';
@@ -61,7 +62,10 @@ function buildRow(f: any, columnFields: string[], structureIdent: string, popula
   if (applyMappingDefaults) {
     if ('MAPPING_TYPE' in row) row.MAPPING_TYPE = 'COPY';
     if ('TRANSFORMATION_RULE' in row) row.TRANSFORMATION_RULE = '1:1';
-    if ('TECHNICAL_RULE' in row) row.TECHNICAL_RULE = `${structureIdent}-${f.field_name ?? ''}`;
+    // SQL, not the old "<structure>-<field>" notation: TECHNICAL_RULE is SQL for every mapping
+    // type now, so generating notation here would make every generated FMD start out failing its
+    // own review.
+    if ('TECHNICAL_RULE' in row) row.TECHNICAL_RULE = `SELECT ${f.field_name ?? ''} FROM ${structureIdent}`;
   }
   return row;
 }
@@ -330,16 +334,16 @@ export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObje
       </>}
     >
       {!golden ? (
-        <p className="text-sm text-muted py-8 text-center">No Golden FMD has been registered yet — nothing to generate from.</p>
+        <p className="text-sm2 text-muted py-8 text-center">No Golden FMD has been registered yet — nothing to generate from.</p>
       ) : (
         <div className="flex flex-col gap-4">
           <Field label="Golden FMD version">
-            <select
+            <Select
               value={goldenVersionId} onChange={(e) => setGoldenVersionId(e.target.value)}
-              className="w-full text-base bg-surface border border-[#d6dbe2] rounded-[8px] px-[11px] py-2 min-h-[38px]"
+              className="w-full"
             >
               {goldenVersions.map((v) => <option key={v.id} value={v.id}>{v.version}{v.id === goldenVersions[0]?.id ? ' (latest)' : ''}</option>)}
-            </select>
+            </Select>
           </Field>
 
           {isBulk ? (
@@ -359,16 +363,16 @@ export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObje
 
               {isCustom && scopeUsage.length > 1 && (
                 <Field label="Which project is this FMD for?">
-                  <select
+                  <Select
                     value={subprojectId} onChange={(e) => setSubprojectId(e.target.value)}
-                    className="w-full text-base bg-surface border border-[#d6dbe2] rounded-[8px] px-[11px] py-2 min-h-[38px]"
+                    className="w-full"
                   >
                     {scopeUsage.map((s) => (
                       <option key={s.subprojectId} value={s.subprojectId}>
                         {s.programCode ?? '—'}-{s.projectCode ?? '—'} · {s.subprojectName}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </Field>
               )}
 
@@ -385,12 +389,12 @@ export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObje
                     <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
                     <input
                       value={structureQuery} onChange={(e) => setStructureQuery(e.target.value)} placeholder="Search structures…"
-                      className="w-full text-sm2 pl-7 pr-3 py-1.5 rounded-[8px] border border-[#d6dbe2] bg-surface"
+                      className="w-full text-sm2 pl-7 pr-3 py-1.5 rounded-[8px] border border-line-strong bg-surface"
                     />
                   </div>
                 )}
                 <div className="rounded-lg shadow-[inset_0_0_0_1px_var(--line)] max-h-48 overflow-auto">
-                  {filteredStructures.length === 0 && <p className="text-sm text-muted p-3">No sender structures {structureQuery ? 'match your search' : 'found for this object'}.</p>}
+                  {filteredStructures.length === 0 && <p className="text-sm2 text-muted p-3">No sender structures {structureQuery ? 'match your search' : 'found for this object'}.</p>}
                   {filteredStructures.map((s) => (
                     <label key={s.id} className="flex items-center gap-2 px-3 py-1.5 border-b border-line last:border-b-0 hover:bg-blue-pale cursor-pointer">
                       <input type="checkbox" checked={selectedStructureIds.has(s.id)} onChange={() => toggleStructure(s.id)} className="w-3.5 h-3.5 accent-[var(--blue)]" />
@@ -425,14 +429,14 @@ export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObje
           </Button>
         </>}
       >
-        <p className="text-sm text-muted mb-4">
+        <p className="text-sm2 text-muted mb-4">
           Based on Golden FMD <span className="font-mono font-bold">{goldenVersion?.version}</span>. Objects that already have an FMD will get a new version added — the rest are created fresh at v1.0.0.
         </p>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <div className="text-2xs font-bold uppercase tracking-[.04em] text-amber-ink mb-1.5">New version added ({withExisting.length})</div>
             <div className="rounded-lg shadow-[inset_0_0_0_1px_var(--line)] max-h-64 overflow-auto">
-              {withExisting.length === 0 && <p className="text-sm text-muted p-3">None.</p>}
+              {withExisting.length === 0 && <p className="text-sm2 text-muted p-3">None.</p>}
               {withExisting.map((r) => (
                 <div key={r.object.id} className="px-3 py-2 border-b border-line last:border-b-0">
                   <div className="font-mono font-bold text-sm2">{r.object.objectId}</div>
@@ -444,7 +448,7 @@ export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObje
           <div>
             <div className="text-2xs font-bold uppercase tracking-[.04em] text-green mb-1.5">Created new ({withoutExisting.length})</div>
             <div className="rounded-lg shadow-[inset_0_0_0_1px_var(--line)] max-h-64 overflow-auto">
-              {withoutExisting.length === 0 && <p className="text-sm text-muted p-3">None.</p>}
+              {withoutExisting.length === 0 && <p className="text-sm2 text-muted p-3">None.</p>}
               {withoutExisting.map((r) => (
                 <div key={r.object.id} className="px-3 py-2 border-b border-line last:border-b-0">
                   <div className="font-mono font-bold text-sm2">{r.object.objectId}</div>

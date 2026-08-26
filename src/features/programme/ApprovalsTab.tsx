@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Select } from '../../components/Select';
 import { useApprovalMatrix, useApprovalMutations } from '../../lib/queries/governance';
 import { useRolesFull } from '../../lib/queries/roles';
 import { useToast } from '../../components/Toast';
@@ -25,8 +26,8 @@ export function ApprovalsTab({ programId }: { programId: string }) {
     catch (err: any) { toast.error(err.message ?? 'Could not update.'); }
   };
 
-  if (isLoading) return <p className="text-sm text-muted py-8 text-center">Loading…</p>;
-  if (entries.length === 0) return <p className="text-sm text-muted py-8 text-center">No approval rules configured for this programme.</p>;
+  if (isLoading) return <p className="text-sm2 text-muted py-8 text-center">Loading…</p>;
+  if (entries.length === 0) return <p className="text-sm2 text-muted py-8 text-center">No approval rules configured for this programme.</p>;
 
   return (
     <div className="flex flex-col gap-5">
@@ -35,7 +36,7 @@ export function ApprovalsTab({ programId }: { programId: string }) {
           <div className="font-bold text-text mb-3">{area}</div>
           <table className="w-full text-sm2 border-collapse">
             <thead>
-              <tr className="text-xs font-bold uppercase tracking-[.04em] text-muted">
+              <tr className="text-2xs font-bold uppercase tracking-[.04em] text-muted">
                 <td className="py-1.5 pr-3">Action</td>
                 <td className="py-1.5 pr-3">Approval required</td>
                 <td className="py-1.5">Approver role</td>
@@ -53,14 +54,14 @@ export function ApprovalsTab({ programId }: { programId: string }) {
                     />
                   </td>
                   <td className="py-2">
-                    <select
+                    <Select
                       value={e.approverRoleId ?? ''} disabled={!e.approvalRequired}
                       onChange={(ev) => changeApprover(e.id, ev.target.value as RoleId)}
-                      className="text-sm2 px-2 py-1 rounded-[8px] border border-[#d6dbe2] bg-surface disabled:opacity-50"
+                      className="text-sm2 px-2 py-1 rounded-[8px] border border-line-strong bg-surface disabled:opacity-50"
                     >
                       <option value="">—</option>
                       {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-                    </select>
+                    </Select>
                   </td>
                 </tr>
               ))}

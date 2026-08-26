@@ -46,7 +46,7 @@ export function TimelineGantt() {
             const rows = Array.from(new Set(catEntries.map((e) => e.rowLabel)));
             return (
               <div key={cat.id} className="mb-3">
-                <div className="text-xs font-bold text-muted mb-1">{cat.name}</div>
+                <div className="text-2xs font-bold text-muted mb-1">{cat.name}</div>
                 {rows.map((row) => (
                   <div key={row} className="flex items-center h-7 relative">
                     <span className="w-40 shrink-0 text-sm2 truncate pr-2">{row}</span>

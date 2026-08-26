@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Select } from '../../components/Select';
 import { Outlet, useNavigate, useParams } from 'react-router-dom';
 import { Table, type Column } from '../../components/Table';
 import { Tag } from '../../components/Tag';
@@ -47,7 +48,7 @@ export function RunsRegister() {
       <div className="flex items-center gap-2 mb-3">
         <FilterSelect label="Object" value={objectFilter} options={objectOptions} onChange={setObjectFilter} />
         <FilterSelect label="Status" value={statusFilter} options={statusOptions} onChange={setStatusFilter} />
-        <span className="text-sm text-muted ml-1">{filtered.length} runs</span>
+        <span className="text-sm2 text-muted ml-1">{filtered.length} runs</span>
       </div>
 
       {!isLoading && runs.length === 0 ? (
@@ -63,8 +64,8 @@ export function RunsRegister() {
 
 function FilterSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (v: string) => void }) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className="text-sm px-2.5 py-1.5 rounded-[8px] border border-[#d6dbe2] bg-surface">
+    <Select value={value} onChange={(e) => onChange(e.target.value)} size="sm">
       {options.map((o) => <option key={o} value={o}>{o === 'All' ? `${label}: All` : o}</option>)}
-    </select>
+    </Select>
   );
 }

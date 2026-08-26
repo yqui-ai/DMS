@@ -44,7 +44,7 @@ export function ProgramSettingsPage() {
             key={t.key}
             onClick={() => setTab(t.key)}
             className={clsx(
-              'px-3.5 py-2.5 text-sm font-semibold border-b-2 -mb-px',
+              'px-3.5 py-2.5 text-sm2 font-semibold border-b-2 -mb-px',
               tab === t.key ? 'border-blue text-blue' : 'border-transparent text-muted hover:text-text',
             )}
           >
@@ -205,7 +205,7 @@ function ConfigureTab({ programId }: { programId: string }) {
     if (!isNew(cycleId)) setDeleted((d) => ({ ...d, cycles: new Set(d.cycles).add(cycleId) }));
   };
 
-  if (!program) return <p className="text-sm text-muted py-8 text-center">Loading…</p>;
+  if (!program) return <p className="text-sm2 text-muted py-8 text-center">Loading…</p>;
 
   const displayProgram = editing ? draftProgram! : program;
   const displayProjects: (Project & { subprojects: (Subproject & { cycles: Cycle[] })[] })[] = editing
@@ -240,8 +240,8 @@ function ConfigureTab({ programId }: { programId: string }) {
           </div>
         ) : (
           <div>
-            <div className="text-lg font-bold text-text">{displayProgram.name} <span className="text-muted font-mono text-sm2">{displayProgram.code}</span></div>
-            {displayProgram.description && <p className="text-sm text-muted mt-1">{displayProgram.description}</p>}
+            <div className="text-md font-bold text-text">{displayProgram.name} <span className="text-muted font-mono text-sm2">{displayProgram.code}</span></div>
+            {displayProgram.description && <p className="text-sm2 text-muted mt-1">{displayProgram.description}</p>}
           </div>
         )}
       </div>
@@ -251,7 +251,7 @@ function ConfigureTab({ programId }: { programId: string }) {
         {editing && <Button variant="ghost" onClick={addProject}><Plus size={14} /> Add project</Button>}
       </div>
 
-      {displayProjects.length === 0 && <p className="text-sm text-muted">No projects yet.</p>}
+      {displayProjects.length === 0 && <p className="text-sm2 text-muted">No projects yet.</p>}
 
       {displayProjects.map((project: any) => (
         <div key={project.id} className="bg-surface rounded-lg shadow-card p-4">
@@ -289,7 +289,7 @@ function ConfigureTab({ programId }: { programId: string }) {
                     </div>
                   ) : (
                     <div className="flex-1 flex items-center gap-2">
-                      <span className="font-semibold text-text text-sm">{subproject.name}</span>
+                      <span className="font-semibold text-text text-sm2">{subproject.name}</span>
                       <span className="font-mono text-2xs text-muted">{subproject.code}</span>
                       {subproject.scopeFinalized && <span className="text-2xs font-bold text-blue">FINALIZED</span>}
                     </div>
@@ -319,7 +319,7 @@ function ConfigureTab({ programId }: { programId: string }) {
                     </div>
                   ))}
                   {editing && (
-                    <button onClick={() => addCycle(project.id, subproject.id)} className="text-blue text-xs font-semibold self-start hover:bg-blue-pale rounded px-1.5 py-1">
+                    <button onClick={() => addCycle(project.id, subproject.id)} className="text-blue text-2xs font-semibold self-start hover:bg-blue-pale rounded px-1.5 py-1">
                       <Plus size={11} className="inline -mt-0.5" /> Add cycle
                     </button>
                   )}
@@ -328,11 +328,11 @@ function ConfigureTab({ programId }: { programId: string }) {
               </div>
             ))}
             {editing && (
-              <button onClick={() => addSubproject(project.id)} className="text-blue text-sm font-semibold self-start hover:bg-blue-pale rounded px-2 py-1">
+              <button onClick={() => addSubproject(project.id)} className="text-blue text-sm2 font-semibold self-start hover:bg-blue-pale rounded px-2 py-1">
                 <Plus size={13} className="inline -mt-0.5" /> Add subproject
               </button>
             )}
-            {!editing && project.subprojects.length === 0 && <span className="text-sm text-muted">No subprojects.</span>}
+            {!editing && project.subprojects.length === 0 && <span className="text-sm2 text-muted">No subprojects.</span>}
           </div>
         </div>
       ))}

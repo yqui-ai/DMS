@@ -53,7 +53,7 @@ export function ObjectDetailDialog({ object, onClose }: { object: MigrationObjec
               {TABS.map((t) => (
                 <button
                   key={t.key} onClick={() => setTab(t.key)}
-                  className={clsx('px-3.5 py-2 text-sm font-semibold border-b-2 -mb-px', tab === t.key ? 'border-blue text-blue' : 'border-transparent text-muted hover:text-text')}
+                  className={clsx('px-3.5 py-2 text-sm2 font-semibold border-b-2 -mb-px', tab === t.key ? 'border-blue text-blue' : 'border-transparent text-muted hover:text-text')}
                 >
                   {t.label}
                 </button>
@@ -86,20 +86,20 @@ export function ObjectDetailDialog({ object, onClose }: { object: MigrationObjec
               <div className="flex flex-col items-start gap-3">
                 {fmd ? (
                   <>
-                    <p className="text-sm text-muted">This object's field mapping document.</p>
+                    <p className="text-sm2 text-muted">This object's field mapping document.</p>
                     <Button variant="primary" onClick={() => setOpenFmd(fmd)}>Open {fmd.name}</Button>
                   </>
                 ) : (
-                  <p className="text-sm text-muted">No FMD created yet for this object — create one from Scope → FMD Mapping.</p>
+                  <p className="text-sm2 text-muted">No FMD created yet for this object — create one from Scope → FMD Mapping.</p>
                 )}
               </div>
             )}
 
             {tab === 'rules' && (
               <div className="flex flex-col gap-1.5">
-                {objRules.length === 0 && <p className="text-sm text-muted">No rules target this object.</p>}
+                {objRules.length === 0 && <p className="text-sm2 text-muted">No rules target this object.</p>}
                 {objRules.map((r) => (
-                  <div key={r.id} className="flex items-center gap-2 px-3 py-2 rounded-[8px] bg-surface-2 text-sm">
+                  <div key={r.id} className="flex items-center gap-2 px-3 py-2 rounded-[8px] bg-surface-2 text-sm2">
                     <span className="font-mono font-bold">{r.code}</span>
                     <span className="flex-1">{r.name}</span>
                     <Tag variant={r.status === 'Approved' ? 'accent' : 'neutral'}>{r.status}</Tag>
@@ -111,11 +111,11 @@ export function ObjectDetailDialog({ object, onClose }: { object: MigrationObjec
             {tab === 'env' && (
               <div className="flex flex-col gap-1.5">
                 {(['Scope', 'Field Mapping', 'Rules', 'Value Mapping'] as const).map((artifact) => (
-                  <div key={artifact} className="flex items-center gap-3 px-3 py-2 rounded-[8px] bg-surface-2 text-sm">
+                  <div key={artifact} className="flex items-center gap-3 px-3 py-2 rounded-[8px] bg-surface-2 text-sm2">
                     <span className="flex-1 font-semibold">{artifact}</span>
-                    <span className="text-muted text-xs2 w-16">DEV</span>
-                    <span className="text-muted text-xs2 w-16">QSA</span>
-                    <span className="text-muted text-xs2 w-16">PRD</span>
+                    <span className="text-muted text-2xs w-16">DEV</span>
+                    <span className="text-muted text-2xs w-16">QSA</span>
+                    <span className="text-muted text-2xs w-16">PRD</span>
                     <Button variant="ghost"><ArrowUpRight size={12} /> Promote</Button>
                   </div>
                 ))}
@@ -134,7 +134,7 @@ function SummaryField({ label, children }: { label: string; children: React.Reac
   return (
     <div>
       <div className="text-2xs font-semibold uppercase tracking-[.04em] text-muted mb-0.5">{label}</div>
-      <div className="text-sm text-text">{children}</div>
+      <div className="text-sm2 text-text">{children}</div>
     </div>
   );
 }
@@ -145,7 +145,7 @@ function LineageStep({ icon, label, value, detail, last }: { icon: React.ReactNo
       <div className="w-8 h-8 rounded-[9px] bg-blue-light text-blue grid place-items-center shrink-0">{icon}</div>
       <div className="flex-1 min-w-0">
         <div className="text-2xs font-semibold uppercase tracking-[.04em] text-muted">{label}</div>
-        <div className="text-sm font-semibold text-text truncate">{value}</div>
+        <div className="text-sm2 font-semibold text-text truncate">{value}</div>
         <div className="text-2xs text-muted truncate">{detail}</div>
       </div>
       {!last && <div className="w-px h-6 bg-line shrink-0" />}

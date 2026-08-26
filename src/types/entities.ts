@@ -88,16 +88,16 @@ export interface SelectionCriterion {
 }
 
 /* mapping & rules */
-export type FmdType = 'Standard' | 'Golden' | 'Historical' | 'Custom';
+/** No 'Historical': an uploaded legacy file is converted straight into Custom FMDs and the
+ * intermediate record is never persisted, so the type had no way to exist. Lineage back to the
+ * source file lives on the Custom FMD itself (histSourceName / histPlant). */
+export type FmdType = 'Standard' | 'Golden' | 'Custom';
 export interface Fmd {
   id: UUID; subprojectId?: UUID; migrationObjectId?: UUID; name: string; class: ObjectClass; type: FmdType; displayId?: string;
   aiGenerated?: boolean;
   /** Which source file + plant an AI-converted FMD came from — the identity re-upload matching
    * keys on, independent of the (editable) display name. */
   histSourceName?: string; histPlant?: string;
-  /** Plain email, same convention as createdBy/approvedBy — not a foreign key. Gates who can post
-   * a field note (src/lib/queries/fmdFieldNotes.ts); a workflow/UI gate, not an RLS boundary. */
-  owner?: string;
 }
 export interface FmdVersion {
   id: UUID; fmdId: UUID; version: string; state: GovState;
@@ -110,17 +110,23 @@ export interface FmdVersion {
      * selected sender structure, shown as tabs — a plain excel-style grid, not the old
      * source/target/mapping sheet split. */
     generatedColumns?: GeneratedColumn[]; generatedTables?: GeneratedTable[];
-    /** Raw parsed content of an uploaded legacy file (Historical Upload) — headers + rows per
-     * sheet, before any AI conversion into the Golden FMD's structure. */
-    historicalRaw?: HistoricalRaw; sourceFileName?: string;
-    /** Result of the Custom FMD "Review Mapping" AI check (src/lib/queries/mappingReview.ts) —
-     * saved onto this version so past reviews stay visible without re-running the check. */
+    /** Legacy single-review key — read for versions reviewed before multi-review support, never
+     * written now. Use readMappingReviews() rather than either key directly. */
     mappingReview?: MappingReview;
+    /** Every Mapping Review run against this version, oldest first — a version can be reviewed
+     * repeatedly (after fixes, or by a different reviewer) and each run is kept. */
+    mappingReviews?: MappingReview[];
+    /** Uncommitted edits in this draft — see FmdPendingChange. Absent on published versions. */
+    pendingChanges?: FmdPendingChange[];
   };
   /** What changed to produce this version — Golden FMDs create a new version row per save
    * instead of overwriting the latest one, so this is a real per-version note, not a running log. */
   comment?: string;
   createdBy?: string; createdAt?: string; approvedBy?: string; approvedAt?: string; changedBy?: string; changedAt?: string;
+  /** Unset while the version is an editable working draft; set once published, after which its
+   * content is frozen (DB trigger, migration 0029). This — not `state` — is what determines
+   * editability. */
+  publishedBy?: string; publishedAt?: string;
 }
 
 export interface GeneratedColumn { field: string; sectionName: string; color: string; description?: string }
@@ -133,13 +139,39 @@ export interface MappingReviewFinding {
   field?: string;
   srcField?: string; tgtField?: string; severity: 'error' | 'warning'; issue: string;
 }
-export interface MappingReview { reviewedBy: string; reviewedAt: string; findings: MappingReviewFinding[] }
+/** One uncommitted cell edit sitting in a draft. Edits COLLECT here rather than each producing a
+ * version, and the owner chooses which to release when publishing — so a session of hundreds of
+ * changes stays one draft and can be published in whatever slices make sense. */
+export interface FmdPendingChange {
+  id: UUID; structureId: string; structureIdent?: string;
+  rowIndex: number; rowLabel: string; field: string;
+  /** Value in the last PUBLISHED version — preserved across repeated edits to the same cell, so
+   * the change always reads as "what everyone else currently sees" → "what it will become". */
+  from: string; to: string;
+  by: string; at: string;
+}
+
+export interface MappingReview {
+  /** Present from the multi-review change onward; absent on reviews saved before it, which are
+   * read through the legacy single-object `mappingReview` key. */
+  id?: string;
+  reviewedBy: string; reviewedAt: string; findings: MappingReviewFinding[];
+}
 
 /** A note/comment on one specific field mapping (structure + row identity, not a version — see
  * fmd_field_notes migration for why) — the field-level detail view's Review points panel. */
 export interface FmdFieldNote {
   id: UUID; fmdId: UUID; structureId: string; rowKey: string;
-  tag: 'note' | 'todo'; body: string; resolved: boolean;
+  /** One of REVIEW_POINT_CATEGORIES (src/lib/reviewPointCategories.ts) — typed as string rather
+   * than the union so a row written by a newer app version still deserialises instead of throwing;
+   * the category helpers fall back to 'remark' for anything unrecognised. */
+  tag: string;
+  /** Which column of the row this is about — undefined means the point is about the whole row. */
+  field?: string;
+  /** Set on a reply; undefined on a top-level review point. A thread shares the parent's category
+   * and resolution, so a reply's own `tag`/`resolved` are written but never read. */
+  parentId?: UUID;
+  body: string; resolved: boolean;
   createdBy: string; createdAt: string;
 }
 

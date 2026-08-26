@@ -65,7 +65,7 @@ export function PipelineStages() {
     <div className="flex flex-col gap-3">
       <div className="relative w-72">
         <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search objects…" className="text-sm pl-8 pr-3 py-1.5 rounded-[8px] border border-[#d6dbe2] bg-surface w-full" />
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search objects…" className="text-sm2 pl-8 pr-3 py-1.5 rounded-[8px] border border-line-strong bg-surface w-full" />
       </div>
 
       <div className="flex flex-col gap-2.5">
@@ -78,7 +78,7 @@ export function PipelineStages() {
             >
               <div className="flex items-center gap-2 mb-3">
                 <Tag variant="table">{obj.objectId}</Tag>
-                <span className="text-sm text-text truncate flex-1">{obj.description ?? '—'}</span>
+                <span className="text-sm2 text-text truncate flex-1">{obj.description ?? '—'}</span>
                 <Tag variant={ps.variant}>{ps.statusLabel}</Tag>
               </div>
               <div className="flex items-center">

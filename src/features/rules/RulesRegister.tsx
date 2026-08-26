@@ -41,7 +41,7 @@ export function RulesRegister() {
       <Dialog open={!!selected} onClose={() => setSelected(null)} title={selected?.name ?? ''} size="md">
         {selected && (
           <div className="flex flex-col gap-3.5">
-            <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="grid grid-cols-2 gap-3 text-sm2">
               <Field label="Rule ID"><span className="font-mono font-bold">{selected.code}</span></Field>
               <Field label="Object"><span className="font-mono">{objectLabel(selected.migrationObjectId)}</span></Field>
               <Field label="Type">{selected.type}</Field>

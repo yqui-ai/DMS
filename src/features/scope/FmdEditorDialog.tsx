@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Select } from '../../components/Select';
 import { Plus, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import { Dialog } from '../../components/Dialog';
@@ -108,22 +109,22 @@ export function FmdEditorDialog({ fmd, onClose }: { fmd: Fmd | null; onClose: ()
     >
       <div className="h-full flex flex-col">
         {isLoading ? (
-          <p className="text-sm text-muted">Loading…</p>
+          <p className="text-sm2 text-muted">Loading…</p>
         ) : !version ? (
           <div className="flex flex-col items-center justify-center gap-3 py-16">
-            <p className="text-sm text-muted">This FMD has no working version yet.</p>
+            <p className="text-sm2 text-muted">This FMD has no working version yet.</p>
             <Button variant="primary" onClick={createVersion}>Create working version</Button>
           </div>
         ) : (
           <>
             <div className="flex items-center gap-3 mb-3">
               <Tag variant="table">{version.version}</Tag>
-              <select
+              <Select
                 value={version.state} onChange={(e) => changeState(e.target.value as GovState)}
-                className="text-sm2 px-2 py-1 rounded-[8px] border border-[#d6dbe2] bg-surface"
+                size="sm"
               >
                 <option>Draft</option><option>In Review</option><option>Approved</option><option>Rejected</option>
-              </select>
+              </Select>
               <Tag variant={STATE_VARIANT[version.state]}>{version.state}</Tag>
               {version.approvedBy && <span className="text-2xs text-muted">Approved by {version.approvedBy} · {fmtDateTime(version.approvedAt)}</span>}
               {golden?.latestVersionId && (
@@ -152,7 +153,7 @@ export function FmdEditorDialog({ fmd, onClose }: { fmd: Fmd | null; onClose: ()
               {(Object.keys(SHEET_COLUMNS) as SheetKey[]).map((key) => (
                 <button
                   key={key} onClick={() => setTab(key)}
-                  className={clsx('px-3.5 py-2 text-sm font-semibold border-b-2 -mb-px', tab === key ? 'border-blue text-blue' : 'border-transparent text-muted hover:text-text')}
+                  className={clsx('px-3.5 py-2 text-sm2 font-semibold border-b-2 -mb-px', tab === key ? 'border-blue text-blue' : 'border-transparent text-muted hover:text-text')}
                 >
                   {SHEET_LABEL[key]} <span className="text-2xs text-muted">({(sheets[key] ?? []).length})</span>
                 </button>
@@ -164,9 +165,9 @@ export function FmdEditorDialog({ fmd, onClose }: { fmd: Fmd | null; onClose: ()
                 <thead>
                   <tr>
                     {columns.map((c) => (
-                      <th key={c} className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-[#eef1f5] px-2.5 py-2 sticky top-0 text-left">{c}</th>
+                      <th key={c} className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 sticky top-0 text-left">{c}</th>
                     ))}
-                    <th className="bg-[#eef1f5] sticky top-0 w-8" />
+                    <th className="bg-surface-3 sticky top-0 w-8" />
                   </tr>
                 </thead>
                 <tbody>
@@ -187,7 +188,7 @@ export function FmdEditorDialog({ fmd, onClose }: { fmd: Fmd | null; onClose: ()
                   ))}
                 </tbody>
               </table>
-              <button onClick={addRow} className="text-blue text-sm font-semibold px-2.5 py-2 hover:bg-blue-pale w-full text-left">
+              <button onClick={addRow} className="text-blue text-sm2 font-semibold px-2.5 py-2 hover:bg-blue-pale w-full text-left">
                 <Plus size={13} className="inline -mt-0.5" /> Add row
               </button>
             </div>

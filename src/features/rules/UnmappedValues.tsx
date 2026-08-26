@@ -1,3 +1,4 @@
+import { Segmented } from '../../components/Segmented';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Table, type Column } from '../../components/Table';
@@ -37,16 +38,11 @@ export function UnmappedValues() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        {(['All', 'Open', 'Proposed', 'Resolved'] as const).map((s) => (
-          <button
-            key={s} onClick={() => setStatusFilter(s)}
-            className={`text-sm font-semibold px-2.5 py-1 rounded-pill ${statusFilter === s ? 'bg-blue text-white' : 'text-muted hover:bg-blue-pale'}`}
-          >
-            {s}
-          </button>
-        ))}
-      </div>
+      <Segmented
+        options={(['All', 'Open', 'Proposed', 'Resolved'] as const).map((s) => ({ value: s, label: s }))}
+        value={statusFilter}
+        onChange={setStatusFilter}
+      />
       {!isLoading && filtered.length === 0 ? (
         <EmptyState title="Nothing here" description="Legacy values without an XREF mapping will list here." />
       ) : (

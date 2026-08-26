@@ -98,8 +98,8 @@ export function ImportObjectsDialog({
     <Dialog open={open} onClose={onClose} title="Import object list" size="sm" footer={<Button variant="secondary" onClick={onClose}>Close</Button>}>
       <div className="flex flex-col gap-4">
         <div>
-          <p className="text-sm text-text mb-2">
-            Download the current scope as a CSV, edit the <code className="font-mono text-xs2 bg-surface-2 px-1 py-0.5 rounded">in_scope</code> / <code className="font-mono text-xs2 bg-surface-2 px-1 py-0.5 rounded">owner</code> columns, then upload it back.
+          <p className="text-sm2 text-text mb-2">
+            Download the current scope as a CSV, edit the <code className="font-mono text-2xs bg-surface-2 px-1 py-0.5 rounded">in_scope</code> / <code className="font-mono text-2xs bg-surface-2 px-1 py-0.5 rounded">owner</code> columns, then upload it back.
           </p>
           <Button variant="secondary" onClick={downloadTemplate}><Download size={13} /> Download template ({objects.length} objects)</Button>
         </div>
@@ -110,7 +110,7 @@ export function ImportObjectsDialog({
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
         </div>
         {summary && (
-          <p className="text-sm text-muted">
+          <p className="text-sm2 text-muted">
             Applied to {summary.applied} object{summary.applied === 1 ? '' : 's'}.
             {summary.skipped > 0 && ` ${summary.skipped} row${summary.skipped === 1 ? '' : 's'} didn't match a catalogue object_id and were skipped.`}
           </p>

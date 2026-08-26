@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Select } from '../../components/Select';
 import { Sparkles, Plus, Trash2 } from 'lucide-react';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
@@ -36,12 +37,12 @@ export function AiSettingsTab({ programId }: { programId: string }) {
             <span className="font-bold text-text">Usage this month</span>
           </div>
         </div>
-        <p className="text-sm text-muted">No usage recorded yet — connect a provider below to start tracking spend.</p>
+        <p className="text-sm2 text-muted">No usage recorded yet — connect a provider below to start tracking spend.</p>
       </Card>
 
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-lg font-bold">Connected providers</h3>
+          <h3 className="text-md font-bold">Connected providers</h3>
           <Button variant="secondary" onClick={() => setSetupOpen((o) => !o)}><Plus size={14} /> Connect provider</Button>
         </div>
 
@@ -49,9 +50,9 @@ export function AiSettingsTab({ programId }: { programId: string }) {
           <Card className="mb-3">
             <div className="grid grid-cols-2 gap-3">
               <Field label="Provider">
-                <select value={form.provider} onChange={(e) => setForm((f) => ({ ...f, provider: e.target.value }))} className="w-full text-base bg-surface border border-[#d6dbe2] rounded-[8px] px-[11px] py-2 min-h-[38px]">
+                <Select value={form.provider} onChange={(e) => setForm((f) => ({ ...f, provider: e.target.value }))} className="w-full">
                   {PROVIDERS.map((p) => <option key={p}>{p}</option>)}
-                </select>
+                </Select>
               </Field>
               <Field label="Label"><Input value={form.label} onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))} placeholder="e.g. Production key" /></Field>
               <Field label="Endpoint"><Input value={form.endpoint} onChange={(e) => setForm((f) => ({ ...f, endpoint: e.target.value }))} placeholder="Optional — for custom/self-hosted" /></Field>
@@ -70,17 +71,17 @@ export function AiSettingsTab({ programId }: { programId: string }) {
         )}
 
         {keys.length === 0 ? (
-          <p className="text-sm text-muted">No providers connected yet.</p>
+          <p className="text-sm2 text-muted">No providers connected yet.</p>
         ) : (
           <div className="flex flex-col gap-2">
             {keys.map((k) => (
               <div key={k.id} className="flex items-center gap-3 bg-surface rounded-lg shadow-card p-3.5">
                 <div className="flex-1">
-                  <div className="font-semibold text-sm text-text">{k.label || k.provider}</div>
+                  <div className="font-semibold text-sm2 text-text">{k.label || k.provider}</div>
                   <div className="text-2xs text-muted">{k.provider} {k.keyMasked ? `· ${k.keyMasked}` : ''} {k.budget ? `· $${k.budget}/mo` : ''}</div>
                 </div>
                 <Tag variant={k.active ? 'accent' : 'neutral'}>{k.active ? 'Active' : 'Disabled'}</Tag>
-                <button onClick={() => mutations.toggleActive(k.id, !k.active)} className="text-sm text-blue font-semibold hover:underline">
+                <button onClick={() => mutations.toggleActive(k.id, !k.active)} className="text-sm2 text-blue font-semibold hover:underline">
                   {k.active ? 'Disable' : 'Enable'}
                 </button>
                 <button onClick={() => mutations.remove(k.id)} className="text-red hover:bg-red-light p-1.5 rounded"><Trash2 size={14} /></button>

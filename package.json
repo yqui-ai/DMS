@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "typecheck": "tsc -b && node scripts/check-edge-functions.mjs",
+    "check:functions": "node scripts/check-edge-functions.mjs",
     "lint": "oxlint",
     "preview": "vite preview",
     "seed:build": "node scripts/build-seed.mjs",

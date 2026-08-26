@@ -27,9 +27,26 @@ interface RuleRequestRow { id: string; srcField?: string; srcFieldDesc?: string;
 // so repeating a full structure identifier on every row was pure waste in both the request and,
 // worse, the response (the model has to echo the row id back for every finding).
 interface MappingReviewRow { id: string; fields: Record<string, string> }
+interface GoldenSyncField { field: string; description?: string }
+
+/** Everything the model may use when drafting a technical rule. Deliberately explicit: the prompt
+ * forbids inventing any table or field name not present here, because a plausible-looking rule
+ * naming a table that doesn't exist is worse than no rule at all — it looks implementable. */
+interface TechnicalRuleContext {
+  mappingType: string;
+  transformationRule: string;
+  srcTable?: string; srcField?: string; srcDataType?: string; srcLength?: string;
+  tgtTable?: string; tgtField?: string; tgtDataType?: string; tgtLength?: string;
+  /** Other fields on the same row, so a rule can reference a sibling column when the requirement
+   * says "when the country is X". */
+  siblingFields?: string[];
+}
+
 type RequestBody =
   | { task: 'rules'; rows: RuleRequestRow[] }
-  | { task: 'mapping-review'; structureIdent: string; rows: MappingReviewRow[]; optionalFields: string[] };
+  | { task: 'mapping-review'; structureIdent: string; rows: MappingReviewRow[]; optionalFields: string[] }
+  | { task: 'golden-sync'; removed: GoldenSyncField[]; added: GoldenSyncField[] }
+  | { task: 'technical-rule'; context: TechnicalRuleContext };
 
 // Mirrors src/lib/mappingRulePolicy.ts's MAPPING_RULE_POLICY_TEXT — Deno can't import from src/,
 // so this is a deliberate duplicate. Update both together.
@@ -37,10 +54,12 @@ const MAPPING_REVIEW_POLICY = `Every field in the Source, Mapping, and Target se
 
 MAPPING_TYPE must be exactly one of: COPY, TRANSFORM, XREF, DEFAULT.
 
-- If MAPPING_TYPE is COPY: TRANSFORMATION_RULE must be exactly "1:1", and TECHNICAL_RULE must be in the form "<table>-<field>" (the target table and field, hyphen-separated).
-- If MAPPING_TYPE is DEFAULT: TECHNICAL_RULE must express a literal default-value assignment in the form "<table>-<field> = <value>" (value may be quoted text like "TEST" or a bare number like 123).
-- If MAPPING_TYPE is XREF: the cross-reference (XREF) table/object name must be explicitly mentioned in BOTH TRANSFORMATION_RULE and TECHNICAL_RULE.
-- If MAPPING_TYPE is TRANSFORM: TRANSFORMATION_RULE and TECHNICAL_RULE must both be populated with real, non-generic transformation logic (not just restating the field name).`;
+TECHNICAL_RULE must ALWAYS be written in SQL syntax, for every mapping type without exception. Prose such as "map accordingly", "same as legacy", "1:1" or a bare restatement of the field name is never acceptable in TECHNICAL_RULE, and must be flagged. The rule must name the actual source table(s) and field(s) it reads.
+
+- If MAPPING_TYPE is COPY: TRANSFORMATION_RULE must be exactly "1:1", and TECHNICAL_RULE must be a plain select of the source field, e.g. SELECT <source_field> FROM <source_table>.
+- If MAPPING_TYPE is DEFAULT: TECHNICAL_RULE must set a literal value in SQL, e.g. SELECT 'X' AS <target_field> for an unconditional default, or CASE WHEN <source_field> IS NULL THEN 'X' ELSE <source_field> END when the default only applies to blanks. TRANSFORMATION_RULE must make clear which of the two it is.
+- If MAPPING_TYPE is TRANSFORM: TECHNICAL_RULE must be a CASE expression or equivalent statement covering every stated condition INCLUDING the ELSE/otherwise case.
+- If MAPPING_TYPE is XREF: the cross-reference (XREF) table/object name must be explicitly mentioned in BOTH TRANSFORMATION_RULE and TECHNICAL_RULE, and TECHNICAL_RULE must show the lookup in SQL. It must also show the no-match behaviour (for example a LEFT JOIN with COALESCE, or an explicit default) — a rule that only covers the matching case is incomplete.`;
 
 function rulesPrompt(rows: RuleRequestRow[]): string {
   const lines = rows.map((r) =>
@@ -54,6 +73,66 @@ For each id, write a concise transformation rule (one short sentence, e.g. "Dire
 Respond with ONLY valid JSON, no markdown fences, no commentary, matching exactly:
 { "rules": [ { "id": "<id>", "transformationRule": "<rule text>" }, ... ] }
 One entry per id given above, in any order.`;
+}
+
+/** Which removed Golden field became which added one. The added/removed lists themselves are
+ * computed deterministically client-side — the ONLY judgement call here is whether a disappeared
+ * field and a new one are the same concept renamed, which is exactly the kind of thing a name-and-
+ * description comparison is good at and a string match is not (SRC_FIELD_DESC -> SRC_DESCRIPTION).
+ * Getting this right is what stops a rename from silently discarding a column of real data. */
+function goldenSyncPrompt(removed: GoldenSyncField[], added: GoldenSyncField[]): string {
+  const fmt = (f: GoldenSyncField[]) =>
+    f.map((x) => `- ${x.field}${x.description ? `: ${x.description}` : ''}`).join('\n') || '- (none)';
+  return `A Field Mapping Document template (the "Golden FMD") has changed. These columns were REMOVED:
+${fmt(removed)}
+
+These columns were ADDED:
+${fmt(added)}
+
+Decide which removed column, if any, is the same concept as an added column under a new name — i.e. a rename rather than a genuine deletion plus a genuine addition. Only pair them when the meaning clearly matches; leave a column unpaired if you are not confident, because a wrong pairing moves data into the wrong column.
+
+Reply with ONLY this JSON, no commentary:
+{"renames":[{"from":"<removed column>","to":"<added column>","confidence":"high|medium","why":"<short reason>"}],"summary":"<two sentences, plain language, on what this change means for existing mapping data>"}`;
+}
+
+/** Drafts the SQL TECHNICAL_RULE from the plain-language TRANSFORMATION_RULE — or refuses.
+ *
+ * Refusing is a first-class outcome, not a failure mode. The whole value of this feature is that a
+ * vague requirement gets sent back to a human instead of quietly becoming confident-looking SQL that
+ * a developer will implement and nobody will question. So the prompt is explicit that inventing a
+ * table name, guessing a code value, or filling a gap with something reasonable all count as
+ * reasons to refuse rather than things to do. */
+function technicalRulePrompt(c: TechnicalRuleContext): string {
+  const known = [
+    c.srcTable && `source table: ${c.srcTable}`,
+    c.srcField && `source field: ${c.srcField}${c.srcDataType ? ` (${c.srcDataType}${c.srcLength ? `, length ${c.srcLength}` : ''})` : ''}`,
+    c.tgtTable && `target table: ${c.tgtTable}`,
+    c.tgtField && `target field: ${c.tgtField}${c.tgtDataType ? ` (${c.tgtDataType}${c.tgtLength ? `, length ${c.tgtLength}` : ''})` : ''}`,
+    c.siblingFields?.length && `other columns available on the same source row: ${c.siblingFields.join(', ')}`,
+  ].filter(Boolean).join('\n');
+
+  return `You are writing the SQL TECHNICAL_RULE for one row of an SAP data-migration Field Mapping Document.
+
+MAPPING_TYPE: ${c.mappingType || '(not set)'}
+Plain-language requirement (TRANSFORMATION_RULE):
+"""
+${c.transformationRule || '(empty)'}
+"""
+
+Known facts you may use:
+${known || '(none supplied)'}
+
+Rules:
+- Use ONLY the table and field names listed above. Never invent a table, field, code value, or cross-reference table name that is not given. If the requirement depends on something not listed, that is a reason to refuse.
+- For MAPPING_TYPE XREF the rule must show the lookup AND the no-match behaviour (e.g. LEFT JOIN with COALESCE, or an explicit default).
+- For MAPPING_TYPE TRANSFORM write a CASE expression or equivalent statement covering every stated condition, including the ELSE / otherwise case.
+- Refuse if the requirement is vague, ambiguous, incomplete, or would require you to guess a value, a threshold, a code list, or a table. Examples of requirements you must refuse: "map accordingly", "same as legacy", "apply business logic", "convert as needed", "standard mapping".
+- Do not invent an ELSE branch value if the requirement never says what happens otherwise — refuse and say so.
+
+Reply with ONLY this JSON, no commentary:
+{"ok":true,"sql":"<the SQL statement, single line or with \\n for newlines>","notes":"<optional one-sentence caveat, or empty>"}
+or
+{"ok":false,"reason":"<one or two sentences: what specifically is unclear, and what a person would need to add to make it implementable>"}`;
 }
 
 function mappingReviewPrompt(structureIdent: string, rows: MappingReviewRow[], optionalFields: string[]): string {
@@ -145,6 +224,11 @@ Deno.serve(async (req: Request) => {
     if (body.task === 'rules') {
       if (!body.rows?.length) return new Response(JSON.stringify({ error: 'No rows were provided.' }), { status: 400, headers: jsonHeaders });
       prompt = rulesPrompt(body.rows); maxTokens = 2000;
+    } else if (body.task === 'golden-sync') {
+      prompt = goldenSyncPrompt(body.removed ?? [], body.added ?? []); maxTokens = 1500;
+    } else if (body.task === 'technical-rule') {
+      if (!body.context) return new Response(JSON.stringify({ error: 'No row context supplied.' }), { status: 400, headers: jsonHeaders });
+      prompt = technicalRulePrompt(body.context); maxTokens = 1200;
     } else if (body.task === 'mapping-review') {
       if (!body.rows?.length) return new Response(JSON.stringify({ findings: [] }), { headers: jsonHeaders });
       prompt = mappingReviewPrompt(body.structureIdent ?? '(unnamed structure)', body.rows, body.optionalFields ?? []); maxTokens = 4000;

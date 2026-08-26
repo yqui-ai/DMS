@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Select } from '../../components/Select';
 import { useParams } from 'react-router-dom';
 import { Wand2 } from 'lucide-react';
 import { Dialog } from '../../components/Dialog';
@@ -86,33 +87,33 @@ export function RuleGeneratorDialog({ open, onClose }: { open: boolean; onClose:
         <Button variant="primary" onClick={save} disabled={!expression || busy}>{busy ? 'Saving…' : 'Save to Catalog'}</Button>
       </>
     }>
-      <p className="text-sm text-muted mb-4">Describe the check in plain language and generate a data quality rule.</p>
+      <p className="text-sm2 text-muted mb-4">Describe the check in plain language and generate a data quality rule.</p>
       <div className="flex flex-col gap-3.5">
         {!paramSubprojectId && (
           <Field label="Subproject">
-            <select value={subprojectId} onChange={(e) => setSubprojectId(e.target.value)} className="w-full text-base bg-surface border border-[#d6dbe2] rounded-[8px] px-[11px] py-2 min-h-[38px]">
+            <Select value={subprojectId} onChange={(e) => setSubprojectId(e.target.value)} className="w-full">
               <option value="">Select a subproject…</option>
               {subprojects.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
+            </Select>
           </Field>
         )}
         <Field label="Applies to">
-          <select value={objectId} onChange={(e) => setObjectId(e.target.value)} className="w-full text-base bg-surface border border-[#d6dbe2] rounded-[8px] px-[11px] py-2 min-h-[38px]">
+          <Select value={objectId} onChange={(e) => setObjectId(e.target.value)} className="w-full">
             <option value="">Select an object…</option>
             {targetObjects.map((o) => <option key={o.id} value={o.id}>{o.objectId} — {o.description}</option>)}
-          </select>
+          </Select>
         </Field>
         <Field label="Rule scope">
-          <select value={scope} onChange={(e) => setScope(e.target.value as 'Local' | 'Global')} className="w-full text-base bg-surface border border-[#d6dbe2] rounded-[8px] px-[11px] py-2 min-h-[38px]">
+          <Select value={scope} onChange={(e) => setScope(e.target.value as 'Local' | 'Global')} className="w-full">
             <option value="Local">Local (this program)</option>
             <option value="Global">Global (all programs)</option>
-          </select>
+          </Select>
         </Field>
         <Field label="Describe the check">
           <textarea
             value={description} onChange={(e) => setDescription(e.target.value)} rows={3}
             placeholder="e.g. MATNR must be 18 characters, numeric, no leading zeros stripped"
-            className="w-full text-base bg-surface border border-[#d6dbe2] rounded-[8px] px-[11px] py-2 resize-y"
+            className="w-full text-sm2 bg-surface border border-line-strong rounded-[8px] px-[11px] py-2 resize-y"
           />
         </Field>
         <Button variant="primary" onClick={generate} className="self-start"><Wand2 size={14} /> Generate Rule</Button>

@@ -56,10 +56,10 @@ export function InternalDataDictionary() {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-sm text-muted">A live data dictionary of the tables backing this app — for admins and support debugging.</p>
+      <p className="text-sm2 text-muted">A live data dictionary of the tables backing this app — for admins and support debugging.</p>
       <div className="relative w-72">
         <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search tables…" className="text-sm pl-8 pr-3 py-1.5 rounded-[8px] border border-[#d6dbe2] bg-surface w-full" />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search tables…" className="text-sm2 pl-8 pr-3 py-1.5 rounded-[8px] border border-line-strong bg-surface w-full" />
       </div>
       <div className="rounded-lg shadow-card overflow-hidden">
         {Array.from(byCategory.entries()).map(([category, defs]) => (
@@ -69,10 +69,10 @@ export function InternalDataDictionary() {
               <div key={t.table} className="flex items-start gap-3 px-3.5 py-2.5 border-t border-line bg-surface">
                 <Tag variant="table">{t.table}</Tag>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm text-text">{t.desc}</div>
+                  <div className="text-sm2 text-text">{t.desc}</div>
                   <div className="text-2xs font-mono text-muted mt-0.5 truncate">{t.fields}</div>
                 </div>
-                <span className="text-sm font-bold text-muted shrink-0">{counts[t.table] ?? '—'}</span>
+                <span className="text-sm2 font-bold text-muted shrink-0">{counts[t.table] ?? '—'}</span>
               </div>
             ))}
           </div>

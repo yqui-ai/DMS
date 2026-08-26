@@ -41,7 +41,7 @@ export function TimelinesSettingsTab({ programId }: { programId: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-sm text-muted">Milestones configured here render read-only on the Dashboard.</p>
+      <p className="text-sm2 text-muted">Milestones configured here render read-only on the Dashboard.</p>
 
       <div className="flex items-center gap-2">
         <Input value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="New category name" className="w-64" />
@@ -59,13 +59,13 @@ export function TimelinesSettingsTab({ programId }: { programId: string }) {
             </div>
             <div className="flex flex-col gap-1.5 mb-3">
               {catEntries.map((e) => (
-                <div key={e.id} className="flex items-center gap-2 text-sm bg-surface-2 rounded-[8px] px-2.5 py-1.5">
+                <div key={e.id} className="flex items-center gap-2 text-sm2 bg-surface-2 rounded-[8px] px-2.5 py-1.5">
                   <span className="font-semibold flex-1">{e.rowLabel} — {e.name}</span>
                   <span className="text-2xs text-muted">{e.startDate}{e.endDate ? ` → ${e.endDate}` : ''}</span>
                   <button onClick={() => mutations.removeEntry(e.id)} className="text-red hover:bg-red-light p-1 rounded"><Trash2 size={12} /></button>
                 </div>
               ))}
-              {catEntries.length === 0 && <p className="text-xs2 text-muted">No milestones yet.</p>}
+              {catEntries.length === 0 && <p className="text-2xs text-muted">No milestones yet.</p>}
             </div>
             <div className="grid grid-cols-5 gap-2 items-end">
               <Field label="Row"><Input value={f.rowLabel} onChange={(e) => setEntryForm((c) => ({ ...c, [cat.id]: { ...f, rowLabel: e.target.value } }))} /></Field>

@@ -19,7 +19,7 @@ export function RunDetailModal() {
     <Dialog open={!!run} onClose={() => navigate('..')} title={run?.code ?? ''} size="lg">
       {run && (
         <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-4 gap-3 text-sm">
+          <div className="grid grid-cols-4 gap-3 text-sm2">
             <Field label="Object"><span className="font-mono">{objLabel ?? '—'}</span></Field>
             <Field label="Status"><Tag variant={STATUS_VARIANT[run.status]}>{run.status}</Tag></Field>
             <Field label="Mode">{run.mode ?? '—'}</Field>
@@ -42,14 +42,14 @@ export function RunDetailModal() {
               {run.rulesVersion && <Tag variant="neutral">Rules {run.rulesVersion}</Tag>}
               {run.xrefVersion && <Tag variant="neutral">XREF {run.xrefVersion}</Tag>}
               {run.stagingSnapshot && <Tag variant="neutral">Staging {run.stagingSnapshot}</Tag>}
-              {!run.fmdVersion && !run.rulesVersion && !run.xrefVersion && !run.stagingSnapshot && <span className="text-sm text-muted">No version snapshot captured.</span>}
+              {!run.fmdVersion && !run.rulesVersion && !run.xrefVersion && !run.stagingSnapshot && <span className="text-sm2 text-muted">No version snapshot captured.</span>}
             </div>
           </div>
 
           {log.length > 0 && (
             <div>
               <div className="text-sm2 font-semibold text-muted mb-1.5">Log</div>
-              <pre className="font-mono text-xs bg-surface-2 rounded-[8px] p-3 max-h-64 overflow-auto whitespace-pre-wrap">
+              <pre className="font-mono text-2xs bg-surface-2 rounded-[8px] p-3 max-h-64 overflow-auto whitespace-pre-wrap">
                 {log.map((l) => l.line).filter(Boolean).join('\n') || 'No trace captured.'}
               </pre>
             </div>

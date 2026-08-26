@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Select } from '../../components/Select';
 import { useParams } from 'react-router-dom';
 import { CheckCircle2, FileSpreadsheet, RefreshCw, Sparkles } from 'lucide-react';
 import clsx from 'clsx';
 import { Dialog } from '../../components/Dialog';
 import { Button } from '../../components/Button';
-import { AiButton } from '../../components/AiButton';
 import { Field } from '../../components/Field';
 import { Tag } from '../../components/Tag';
 import { useToast } from '../../components/Toast';
@@ -409,20 +409,20 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
           </div>
           {!paramSubprojectId && (
             <Field label="Subproject" hint="Optional — leave blank to keep the result program-wide.">
-              <select value={subprojectId} onChange={(e) => setSubprojectId(e.target.value)} className="w-full text-base bg-surface border border-[#d6dbe2] rounded-[8px] px-[11px] py-2 min-h-[38px]">
+              <Select value={subprojectId} onChange={(e) => setSubprojectId(e.target.value)} className="w-full">
                 <option value="">No subproject</option>
                 {subprojects.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-              </select>
+              </Select>
             </Field>
           )}
           <label className="flex-1 min-h-[160px] border-[1.5px] border-dashed border-violet-bg rounded-[10px] p-7 text-center cursor-pointer hover:border-violet-deep hover:bg-violet-bg/30 transition-colors flex flex-col items-center justify-center">
             <FileSpreadsheet size={26} className="text-violet-deep mx-auto mb-2" />
-            <p className="text-sm text-muted">{file?.name || 'Drag and drop the legacy Excel file, or click to browse'}</p>
+            <p className="text-sm2 text-muted">{file?.name || 'Drag and drop the legacy Excel file, or click to browse'}</p>
             <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
           </label>
           <div className="flex justify-end gap-2.5">
             <Button variant="secondary" onClick={onClose}>Cancel</Button>
-            <AiButton onClick={parseFile} disabled={busy || !file}>{busy ? 'Reading…' : 'Parse File'}</AiButton>
+            <Button variant="ai" size="sm" onClick={parseFile} disabled={busy || !file}>{busy ? 'Reading…' : 'Parse File'}</Button>
           </div>
         </div>
       )}
@@ -441,7 +441,7 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
             <div className="text-2xs font-bold uppercase tracking-[.04em] text-muted mb-1">Detected existing source</div>
             <div className="font-mono font-bold text-sm2 text-text">{matchNotice.matchedName}</div>
           </div>
-          <p className="text-sm text-muted">
+          <p className="text-sm2 text-muted">
             Choose <b className="text-text">Yes</b> if this upload is an updated version of that same source — we'll create a <b className="text-text">new version</b> of "{matchNotice.matchedName}"'s already-tracked FMD(s), keeping their full version history intact instead of duplicating them.
             <br />
             Choose <b className="text-text">No</b> if this is actually a different, unrelated source — we'll create <b className="text-text">brand-new FMD(s)</b> from it instead.
@@ -451,7 +451,7 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
             <Button variant="secondary" onClick={onClose}>Cancel</Button>
             <div className="flex gap-2.5">
               <Button variant="secondary" onClick={confirmNewSource}>No, different file</Button>
-              <AiButton onClick={confirmSameSource}>Yes, same source</AiButton>
+              <Button variant="ai" size="sm" onClick={confirmSameSource}>Yes, same source</Button>
             </div>
           </div>
         </div>
@@ -460,7 +460,7 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
       {step === 'sheets' && historicalRaw && (
         <div className="flex flex-col gap-3.5">
           <div className="flex items-center justify-between gap-3">
-            <p className="text-sm text-muted">Pick which parsed sheets actually contain field-mapping data — likely candidates are pre-checked.</p>
+            <p className="text-sm2 text-muted">Pick which parsed sheets actually contain field-mapping data — likely candidates are pre-checked.</p>
             <div className="flex items-center gap-2 shrink-0">
               <button onClick={selectAllSheets} className="text-2xs font-semibold text-blue hover:underline">Select all</button>
               <button onClick={deselectAllSheets} className="text-2xs font-semibold text-blue hover:underline">Deselect all</button>
@@ -476,7 +476,7 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
           />
           <div className="flex justify-end gap-2.5">
             <Button variant="secondary" onClick={onClose}>Cancel</Button>
-            <AiButton onClick={goToPlan} disabled={selectedSheets.size === 0}>Continue</AiButton>
+            <Button variant="ai" size="sm" onClick={goToPlan} disabled={selectedSheets.size === 0}>Continue</Button>
           </div>
         </div>
       )}
@@ -484,11 +484,11 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
       {step === 'plan' && (
         <div className="flex flex-col gap-3.5">
           {!golden?.latestVersionId || !goldenStructure ? (
-            <p className="text-sm text-muted py-6 text-center">No Golden FMD structure exists yet — design one first in Library &gt; Field Mapping.</p>
+            <p className="text-sm2 text-muted py-6 text-center">No Golden FMD structure exists yet — design one first in Library &gt; Field Mapping.</p>
           ) : (
             <>
               <div className="flex items-center justify-between gap-3">
-                <p className="text-sm text-text">
+                <p className="text-sm2 text-text">
                   {plants.length === 0
                     ? 'No Plant was detected in the selected sheets — this will create one FMD.'
                     : `Found ${plants.length} distinct Plant${plants.length === 1 ? '' : 's'} — pick which ones to generate an FMD for.`}
@@ -522,22 +522,22 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
           )}
           <div className="flex justify-end gap-2.5">
             <Button variant="secondary" onClick={() => setStep('sheets')}>Back</Button>
-            <AiButton onClick={generate} disabled={!golden?.latestVersionId || !goldenStructure || plannedNames.length === 0}>
+            <Button variant="ai" size="sm" onClick={generate} disabled={!golden?.latestVersionId || !goldenStructure || plannedNames.length === 0}>
               <Sparkles size={14} /> Confirm & Generate {plannedNames.length} FMD{plannedNames.length === 1 ? '' : 's'}
-            </AiButton>
+            </Button>
           </div>
         </div>
       )}
 
       {step === 'compare' && (
         <div className="flex flex-col gap-3.5">
-          <h3 className="text-sm font-bold text-text">
+          <h3 className="text-sm2 font-bold text-text">
             Comparing {fmdName(compareTarget === '' ? null : compareTarget)}
           </h3>
           {comparing ? (
             <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
               <Sparkles size={26} className="text-violet-deep animate-pulse" />
-              <p className="text-sm font-semibold text-text">Converting and comparing with the tracked version…</p>
+              <p className="text-sm2 font-semibold text-text">Converting and comparing with the tracked version…</p>
             </div>
           ) : (
             <>
@@ -569,7 +569,7 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
       {step === 'converting' && (
         <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
           <Sparkles size={28} className="text-violet-deep animate-pulse" />
-          <p className="text-sm font-semibold text-text">Converting {progress.done} of {progress.total}…</p>
+          <p className="text-sm2 font-semibold text-text">Converting {progress.done} of {progress.total}…</p>
           <div className="w-64 h-1.5 rounded-full bg-blue-light overflow-hidden">
             <div className="h-full bg-gradient-to-r from-[#3b82f6] to-[#a855f7] transition-all" style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }} />
           </div>
@@ -579,14 +579,14 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
 
       {step === 'review' && (
         <div className="h-full flex flex-col gap-3.5">
-          <p className="text-sm text-text shrink-0">
+          <p className="text-sm2 text-text shrink-0">
             {created > 0 && <>{created} new FMD{created === 1 ? '' : 's'} already saved. </>}
             Review what changed for the {pendingUpdates.length} plant{pendingUpdates.length === 1 ? '' : 's'} that already had a tracked FMD before saving the update.
           </p>
           <div className="flex-1 min-h-0 overflow-auto flex flex-col gap-4 pr-1">
             {pendingUpdates.map((u) => (
               <div key={u.plant ?? 'single'} className={clsx('rounded-lg shadow-[inset_0_0_0_1px_var(--line)] overflow-hidden', u.skip && 'opacity-50')}>
-                <div className="flex items-center justify-between gap-2 px-4 py-3 bg-[#eef1f5] border-b border-line">
+                <div className="flex items-center justify-between gap-2 px-4 py-3 bg-surface-3 border-b border-line">
                   <span className="text-md font-mono font-bold text-text">{u.name}</span>
                   <button onClick={() => toggleSkipUpdate(u.plant)} className="text-2xs font-semibold text-blue hover:underline shrink-0">
                     {u.skip ? 'Include this update' : 'Skip this one'}
@@ -601,7 +601,7 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
                     <div className="text-2xs font-bold uppercase tracking-[.04em] text-muted mb-1.5">Version comment (edit before saving)</div>
                     <textarea
                       value={u.summary} onChange={(e) => updateSummary(u.plant, e.target.value)} rows={4} disabled={u.skip}
-                      className="w-full text-sm2 bg-surface border border-[#d6dbe2] rounded-[8px] px-[11px] py-2 resize-y disabled:opacity-60"
+                      className="w-full text-sm2 bg-surface border border-line-strong rounded-[8px] px-[11px] py-2 resize-y disabled:opacity-60"
                     />
                   </div>
                 </div>
@@ -610,9 +610,9 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
           </div>
           <div className="flex justify-end gap-2.5 shrink-0">
             <Button variant="secondary" onClick={onClose} disabled={savingUpdates}>Cancel remaining</Button>
-            <AiButton onClick={saveUpdates} disabled={savingUpdates}>
+            <Button variant="ai" size="sm" onClick={saveUpdates} disabled={savingUpdates}>
               {savingUpdates ? 'Saving…' : `Save ${pendingUpdates.filter((u) => !u.skip).length} Update${pendingUpdates.filter((u) => !u.skip).length === 1 ? '' : 's'}`}
-            </AiButton>
+            </Button>
           </div>
         </div>
       )}
@@ -669,7 +669,7 @@ function DiffSummaryPreview({ summary }: { summary: string }) {
         <p key={i} className="text-sm2 text-text">
           {e.kind === 'rename'
             ? <>Source file renamed from <span className="font-mono font-semibold">{e.from}</span> to <span className="font-mono font-semibold">{e.to}</span>.</>
-            : e.text}
+            : e.kind === 'plain' ? e.text : null}
         </p>
       ))}
       {[...byLabel.entries()].map(([label, changes]) => (
@@ -692,7 +692,7 @@ function DiffSummaryPreview({ summary }: { summary: string }) {
                     </div>
                   </div>
                 ) : c.kind === 'added' ? (
-                  <span className="inline-flex items-center gap-[5px] text-xs font-semibold px-2.5 py-[3px] rounded-pill bg-green-bg text-green">+ New field mapping</span>
+                  <span className="inline-flex items-center gap-[5px] text-2xs font-semibold px-2.5 py-[3px] rounded-pill bg-green-bg text-green">+ New field mapping</span>
                 ) : (
                   <Tag variant="danger">− Field mapping removed</Tag>
                 )}

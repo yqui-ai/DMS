@@ -41,6 +41,26 @@ export function useSubprojectObjects(subprojectId?: string) {
   });
 }
 
+/** Owner of one in-scope object, keyed `<subprojectId>::<migrationObjectId>`, across every
+ * subproject the user can see. An FMD's owner is NOT its own setting — it's whoever owns the
+ * migration object in the subproject the FMD belongs to, assigned during in-scope selection
+ * (Scope > Criteria). Keeping one source means an FMD can't disagree with the scope register
+ * about who is responsible for the object. */
+export function useScopeObjectOwners() {
+  return useQuery({
+    queryKey: ['scope-object-owners'],
+    queryFn: async (): Promise<Map<string, string>> => {
+      const { data, error } = await supabase
+        .from('subproject_objects').select('subproject_id, migration_object_id, owner').not('owner', 'is', null);
+      if (error) throw error;
+      return new Map((data ?? []).map((r: any) => [`${r.subproject_id}::${r.migration_object_id}`, r.owner as string]));
+    },
+  });
+}
+
+export const scopeOwnerKey = (subprojectId?: string, migrationObjectId?: string) =>
+  subprojectId && migrationObjectId ? `${subprojectId}::${migrationObjectId}` : '';
+
 export interface ObjectScopeUsage { subprojectId: string; subprojectName: string; projectCode?: string; programCode?: string }
 
 /** Every subproject that has this object in scope, program-wide — used by "Generate FMD" to
