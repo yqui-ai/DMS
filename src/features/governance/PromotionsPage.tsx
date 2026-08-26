@@ -25,7 +25,7 @@ export function PromotionsPage() {
     <div>
       <PageHeader title="Promotions" description="DEV → QSA → PRD transports with approvals." />
       {!isLoading && promotions.length === 0 ? (
-        <EmptyState title="No promotion requests" description="Requests to move artefacts between environments will list here." />
+        <EmptyState title="No promotion requests" description="Requests to move artifacts between environments will list here." />
       ) : (
         <div className="flex flex-col gap-3">
           {promotions.map((p) => (

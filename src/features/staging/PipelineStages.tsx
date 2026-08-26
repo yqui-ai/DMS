@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Search } from 'lucide-react';
+import { Toolbar } from '../../components/Toolbar';
 import clsx from 'clsx';
 import { EmptyState } from '../../components/EmptyState';
 import { Tag } from '../../components/Tag';
@@ -63,10 +63,7 @@ export function PipelineStages() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="relative w-72">
-        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search objects…" className="text-sm2 pl-8 pr-3 py-1.5 rounded-[8px] border border-line-strong bg-surface w-full" />
-      </div>
+      <Toolbar spacing="none" search={{ value: query, onChange: setQuery, placeholder: 'Search objects…' }} count={rows.length} noun="objects" />
 
       <div className="flex flex-col gap-2.5">
         {rows.map(({ obj, approach, run }) => {

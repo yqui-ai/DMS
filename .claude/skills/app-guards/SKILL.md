@@ -1,0 +1,175 @@
+---
+name: app-guards
+description: The cross-cutting safety rules in DMS — unsaved-change guards, destructive-action confirmation, input validation and type checks, and where each is enforced. Load this before adding a form, an editable surface, a delete, or anything that can lose someone's work. UPDATE THIS FILE whenever a guard is added, moved or corrected.
+---
+
+# App guards
+
+The rules that stop the app losing or corrupting someone's work. They are cross-cutting on purpose:
+each one is enforced in ONE place so a new screen inherits it instead of re-deciding it.
+
+**Whenever a guard is added, moved, relaxed or corrected, update this file in the same change.** A
+guard nobody can find is a guard the next screen won't have.
+
+## 1. Unsaved changes
+
+`<UnsavedChangesGuard when={dirty} what="…" />` — `src/components/UnsavedChangesGuard.tsx`.
+
+Mount it wherever a component holds edits that aren't saved yet. Two mechanisms, because neither
+covers both cases:
+
+- `useBlocker` intercepts **in-app route changes** and asks in the app's own `ConfirmDialog`.
+- `beforeunload` covers **leaving the site** — closing the tab, reloading, an external link.
+
+**The browser ignores custom `beforeunload` text.** That's a deliberate anti-abuse rule; don't try
+to work around it. The `what` prop is for the in-app dialog only.
+
+### Rules
+
+- **`Dialog`'s `unsavedWarning` is not enough on its own.** It only covers closing *that dialog* —
+  Escape, the X, a click outside. It cannot see the sidebar, the breadcrumb, browser Back or a
+  reload, and those are how an edit actually gets lost: you look something up mid-sentence and the
+  sentence is gone when you come back. A dirty surface needs both.
+- **Prefer a comparison to a flag.** `name !== savedName` is right; a `setDirty(true)` sprinkled
+  through handlers gets forgotten, and it calls "typed a change then typed it back" dirty.
+- **The guard releases itself** when `when` goes false (after a save), so it can't ask about changes
+  that no longer exist.
+
+### Where it is mounted
+
+| Surface | Dirty when |
+|---|---|
+| `GoldenFmdDesignerDialog` | `dirty` — structure edited, not saved as a version |
+| `GoldenXrefDesignerDialog` | `dirty` — same |
+| `GeneratedFmdTableView` → `CellEditorDialog` | `draft !== value` |
+| `AddReviewPointDialog` | the note body is non-empty |
+| `MyProfilePage` | `name !== savedName` |
+| `ProgramSettingsPage` | `editing` — a whole draft of the programme tree is in memory |
+| `ConvertHistoricalFmdWizard` | a file is picked, or reviewed updates aren't saved |
+| `FieldDetailView` | any cell has typed-but-uncommitted text, or an AI SQL draft is unaccepted |
+
+### Commit-on-blur is NOT the same as "nothing to lose"
+
+I originally left the field-level view unguarded on the reasoning that its cells commit on blur, so
+there could be no unsaved state. That was wrong, and it is the mistake to avoid repeating: a rule
+you are **halfway through typing has not blurred yet**, and navigating away takes it with you. An
+AI-drafted rule nobody has accepted is unsaved for the same reason.
+
+The draft text lives in the input component's own state, so the guard cannot see it unless that
+component says so. `EditableValue` takes an `onDirtyChange` callback and `FieldDetailView` keeps a
+Set of dirty field names — a Set, because several cells in one section can be part-typed at once.
+Its cleanup fires on unmount and on leaving edit mode, so a stale "dirty" can never be left behind.
+
+**Apply the same reasoning to any editor that commits on blur.** The grid cells in
+`GeneratedFmdTableView` have the identical exposure and are covered by the same pattern via the
+cell dialog; a new one must report its own uncommitted text too.
+
+### Most abandonment is NOT navigation
+
+`UnsavedChangesGuard` uses `useBlocker`, which only sees the ROUTER. Switching tab inside a dialog,
+opening a different field, prev/next, changing structure, closing the dialog — all plain `setState`,
+none of them navigation, none of them interceptable by any navigation API. I shipped the guard twice
+before this landed; the second attempt still did nothing, because every way to abandon an FMD edit
+is an in-app state change.
+
+**`useUnsavedGate(dirty, what)`** (`src/components/useUnsavedGate.tsx`) is for those. Wrap the
+handler — `onClick={gate(() => setTab('versions'))}` — and render its `dialog`. When nothing is
+dirty the action runs straight through, so guarding a usually-clean control costs one comparison.
+
+Gated today: the FMD dialog's five tab buttons and its close button; the field view's Back, prev/next
+and structure picker. **A new control that leaves an editable surface must be gated too — mounting
+`UnsavedChangesGuard` does not cover it.**
+
+### Cancel must call off the commit that its own click causes
+
+Clicking Cancel BLURS whichever input has focus, and in a commit-on-blur editor blur is what
+saves. So Cancel triggers the very write it is meant to undo, then races its own revert.
+
+Two rules, both needed:
+
+- **Set a cancelling flag on `onMouseDown`, not `onClick`** — mousedown fires before the blur. It
+  has to be a `useRef`: the blur handler reads it in the same tick the click sets it, and a state
+  update would not have landed. `EditableValue.commit` bails when the flag is set.
+- **Revert every snapshotted field unconditionally.** Comparing against the row from the render
+  closure reads the value from BEFORE the editing session, so the field just changed looks
+  unchanged and gets skipped — precisely the one that needed reverting. A write matching what is
+  already stored costs nothing, because `saveField` drops a change whose `from` equals its `to`.
+
+## Select all / deselect all
+
+One control that switches, never a pair — `<SelectAllToggle allSelected … />`. Half of any such pair
+is always a no-op ("Select all" does nothing when everything is already selected), and two buttons
+side by side ask the reader to work out which one applies.
+
+`allSelected` is the caller's own comparison, because only the caller knows what "all" means — the
+whole list, or just the rows a filter left visible. A toggle that ignored an active filter would be
+lying about what it is about to do.
+
+### Where editing is allowed
+
+`canEditSelected` in `FmdVersionHistoryDialog` is the single derivation BOTH editable surfaces read
+— the grid and the field-level view — so they cannot drift apart:
+
+    showingDraft || selected.id === latest.id
+
+That is: the newest version, **published or not**, plus the pending-edits overlay.
+
+- **The live version stays editable.** That is how a draft gets started; locking it would leave a
+  published FMD with no way back into editing at all.
+- **Older versions are not editable**, and the reason is stronger than "they're frozen":
+  `saveField` always writes against the NEWEST version. An edit made while reading an older one
+  would not touch what is on screen — it would silently change content the editor cannot see.
+- A DB trigger rejects content changes to a published version regardless of what the UI allows, so a
+  wrong gate can still never rewrite a release.
+
+Do not give the grid a narrower rule than the field view. I tried that once, reasoning that bulk
+Tab-to-commit shouldn't open a draft off a release; it just made the two surfaces disagree about the
+same version for no benefit the user could see.
+
+## 2. Destructive actions
+
+- **`ConfirmDialog` for anything hard to reverse** — publishing (freezes a version permanently),
+  discarding a section's edits, deleting a field that carries data.
+- **Say what is lost, in numbers.** "Discards 12 populated rows", not "are you sure?".
+- **Golden and Standard FMDs can never be deleted.** No delete action may be added for either.
+- **Baseline Golden fields can't be removed OR renamed** (`goldenFmdRequiredFields.ts`). A rename is
+  a removal by another route, so the name input is `readOnly` in place rather than rejected on save
+  — finding out at save time costs every edit made after it.
+
+## 3. Input validation
+
+One function decides what a value may be, so the editor and the review can never disagree:
+
+- **`valueTypeError(column, value)`** (`mappingRulePolicy.ts`) — checks a value against the kind and
+  value list its Golden column declares. Used by the field-level editor, the grid cell, the expanded
+  cell dialog **and** the mapping review.
+- **Refuse at the keystroke, not at the review.** A bad value never reaches the draft, so there is
+  nothing to find later and nothing to undo.
+- **`optionsOf(column)`** re-parses stored value lists on read, repairing lists saved before
+  `parseValueList` accepted semicolons. Read options through it, never `column.options` directly.
+- **A value already in a cell that isn't on the list stays selectable.** Opening an editor must
+  never silently rewrite data; the review is what flags it.
+
+## 4. Version and draft safety
+
+See `library-section-design` for the full model. The guards specifically:
+
+- **One unpublished version per FMD.** Editing folds into the open draft; Golden sync folds into it
+  too. Two unpublished rows means only the newest can ever be published and the other is unreachable
+  work.
+- **Allocate version numbers from the HIGHEST existing version**, not the newest published one.
+  They differ whenever an unpublished version sits above the live one, and bumping from the
+  published one produces a number that already exists — `unique (fmd_id, version)` then rejects the
+  publish outright.
+- **Read the newest version from the DATABASE before writing**, never from what the viewer had
+  selected. A stale selection must not rebuild content over newer work.
+- **A published version is frozen by a DB trigger**, not just by UI. Anything added under `sheets`
+  that isn't mapping content must be stripped in that trigger too.
+
+## 5. Navigation safety
+
+- **Deep views are routes**, so Back closes them (`library-section-design`).
+- **Never re-select a previous id to go "back"** — each hop is a real history entry, so that pushes
+  a third one. Take an `onBack` and call `navigate(-1)`.
+- **Whatever opens a view owns the way back**, and the label must name the real destination
+  (`backLabel` on `FieldDetailView`).

@@ -33,12 +33,12 @@ export function TimelineGantt() {
   const xOf = (d: Date) => Math.max(0, daysBetween(windowStart, d)) * PX_PER_DAY;
 
   if (categories.length === 0) {
-    return <EmptyState title="No programme milestones yet" description="Configure them in Program Settings → Timelines." />;
+    return <EmptyState title="No program milestones yet" description="Configure them in Program Settings → Timelines." />;
   }
 
   return (
     <Card>
-      <div className="text-sm2 font-bold uppercase tracking-[.05em] text-muted mb-3">Programme Timeline</div>
+      <div className="text-sm2 font-bold uppercase tracking-[.05em] text-muted mb-3">Program Timeline</div>
       <div className="overflow-x-auto">
         <div style={{ minWidth: totalDays * PX_PER_DAY + 160 }}>
           {categories.map((cat) => {

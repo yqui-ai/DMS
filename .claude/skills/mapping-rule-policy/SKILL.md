@@ -3,6 +3,68 @@ name: mapping-rule-policy
 description: DMS Field Mapping Document (FMD) MAPPING_TYPE enum and per-type rule conventions — the canonical policy enforced by Standard FMD generation defaults and the Custom FMD "Review Mapping" AI check. Load this before touching mapping-type, transformation-rule, or technical-rule logic anywhere in the FMD feature.
 ---
 
+## The Mapping Review runs in two passes — keep the line between them
+
+**Deterministic first, in `auditRow()` / `alwaysBlankFields()` (`src/lib/mappingRulePolicy.ts`).**
+Blank required fields, MAPPING_TYPE enum membership, prose sitting in TECHNICAL_RULE, a rule that
+points at another document, a CASE with no ELSE, an XREF with no join or COALESCE.
+
+**Then the model, on judgement only.** Does this SQL actually implement the requirement written
+beside it: a condition the SQL never tests, a rule that contradicts SRC/TGT_FIELD on its own row, a
+TRANSFORMATION_RULE too vague to verify.
+
+This split is not an optimisation, it is the correctness fix. All of the first list is decidable in
+JS, and a decidable question handed to a model gets a probabilistic answer — across ten-row batches
+it returned some findings and quietly skipped others, which is what "the review doesn't catch
+everything" actually was. The historical converter learned the same lesson for column
+classification and rename detection.
+
+Rules that follow:
+
+- **Never move a decidable check into the prompt.** If you can write the `if`, write the `if`.
+- **The prompt must keep telling the model what code already checked**, and to skip it. Otherwise
+  the two passes both report blank fields and every finding list doubles.
+- **The model may report MORE THAN ONE finding per row.** The old prompt said "report ONE finding",
+  so a row with three defects showed one and looked half-clean. This was the second-largest source
+  of missed issues after the split above.
+- **Rows failing a mechanical *error* are not sent for judgement.** "This rule is vague" adds
+  nothing to "this rule is blank", and the tokens are better spent on rows that might be subtly
+  wrong.
+- **A pointer is treated as missing.** "See migration document chapter 3.2.5", 'See tab "RB
+  Customer Rules"', "refer to STORT" — the cell is populated so completeness passes, but an ETL
+  developer cannot implement a reference to a document the FMD does not carry. `POINTER_RE`.
+- **A field blank in every row is one structure-level finding** (`rowIndex: -1`), not one per row.
+  Consumers resolve findings through `table.rows[rowIndex]`, so a negative index is skipped rather
+  than painting row 0.
+
+## Critical fields decide severity
+
+`GoldenFmdFieldDef.critical` marks a column the programme actually cares about. It is set in the
+**Golden FMD designer** — which columns matter is a decision about the template, and it differs
+between programmes — and snapshotted into each generated version's `generatedColumns`.
+
+- Blank in a critical field is an **error**; blank anywhere else is a **warning**. Before this,
+  every blank graded the same and a missing MIGRATION_IN_SCOPE was one of 68 identical errors.
+- **Read criticality from the VERSION's `generatedColumns` (`criticalFieldsOf`), never from the
+  live Golden FMD.** A review judges a version against the template it was generated from;
+  re-flagging the template must not silently re-grade old reviews.
+- Nothing marked means everything grades as a warning. An unconfigured template should not shout.
+- The prompt is told which fields are critical and weights its judgement toward them.
+
+## "Mark fixed" is verified, not asserted
+
+`outstandingIssue()` re-runs the audit against the CURRENT content — the draft when there is one,
+since that is where a fix lives before publishing — and refuses the mark if the same issue still
+stands. A sticky note that hides a finding while the cell is still blank is worse than no mark:
+the count says the work shrank when it did not.
+
+Only the mechanical half is verifiable. A judgement finding has no deterministic counterpart, so
+`outstandingIssue` returns null and the person's claim stands — re-running the review is the check
+for those.
+
+`MAPPING_RULE_POLICY_TEXT` is duplicated verbatim into the Edge Function (Deno can't import from
+`src/`). **Change both, then redeploy** — `supabase functions deploy convert-historical-fmd`.
+
 # FMD mapping rule policy
 
 This is the canonical, single policy for how a field-mapping row's `MAPPING_TYPE`,

@@ -3,7 +3,6 @@ import { Link, useLocation, useParams } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 import { NAV_GROUPS } from '../nav';
-import { useProject, useSubproject } from '../../lib/queries/programme';
 
 /** URL segment -> nav label, built from NAV_GROUPS so a renamed nav item renames its crumb too.
  * Keyed on the FIRST path segment after the subproject (`scope`, `rules`, `library`), which is what
@@ -26,12 +25,14 @@ interface Crumb { label: string; to?: string }
 /** Where you are, and the way back up. The app previously had neither: the header showed a
  * subproject *switcher* but no trail, and with the sidebar collapsed to icons the only clue to your
  * location was which icon was highlighted. Segments link wherever a real route exists and render as
- * plain text where one doesn't — no invented destinations. */
+ * plain text where one doesn't — no invented destinations.
+ *
+ * Sits directly above the page title (see `AppShell`). It carries its own bottom margin rather than
+ * being wrapped in a spacing div, because it renders nothing at all on the subproject picker and a
+ * wrapper would leave a gap where no trail exists. */
 export function Breadcrumb() {
   const { programId, subprojectId } = useParams();
   const { pathname } = useLocation();
-  const { data: subproject } = useSubproject(subprojectId);
-  const { data: project } = useProject(subproject?.projectId);
 
   const crumbs: Crumb[] = [];
   const segments = pathname.split('/').filter(Boolean);
@@ -39,8 +40,9 @@ export function Breadcrumb() {
   if (programId && subprojectId) {
     // /pg/:programId/sp/:subprojectId/<section>[/<subtab>...]
     const rest = segments.slice(4);
-    if (project) crumbs.push({ label: project.name });
-    crumbs.push({ label: subproject?.name ?? 'Subproject', to: `/pg/${programId}/sp/${subprojectId}/dashboard` });
+    // Project and subproject are NOT repeated here: the switcher in the header already names them,
+    // and it is the control that changes them. Two copies of the same context, one of them not
+    // clickable, is the widest thing on the trail saying the least.
 
     if (rest[0] === 'library') {
       crumbs.push({ label: 'Library' });
@@ -69,17 +71,20 @@ export function Breadcrumb() {
   if (crumbs.length === 0) return null;
 
   return (
-    <nav aria-label="Breadcrumb" className="flex items-center gap-1 min-w-0 text-sm2">
+    <nav aria-label="Breadcrumb" className="flex items-center gap-1 min-w-0 text-sm2 mb-2">
       <Link to="/" className="text-muted hover:text-blue shrink-0" title="All subprojects">Home</Link>
       {crumbs.map((c, i) => {
         const isLast = i === crumbs.length - 1;
         return (
           <Fragment key={`${c.label}-${i}`}>
             <ChevronRight size={13} className="text-muted shrink-0" />
+            {/* The last crumb is no longer the strongest thing on screen — the page title below it
+                is, and usually says the same word. Bolding it here as well made the pair read as two
+                competing headings. */}
             {c.to && !isLast ? (
               <Link to={c.to} className="text-muted hover:text-blue truncate">{c.label}</Link>
             ) : (
-              <span className={clsx('truncate', isLast ? 'text-text font-semibold' : 'text-muted')}>{c.label}</span>
+              <span className={clsx('truncate', isLast ? 'text-text' : 'text-muted')}>{c.label}</span>
             )}
           </Fragment>
         );

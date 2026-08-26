@@ -1,21 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Select } from '../../components/Select';
 import { Button } from '../../components/Button';
-import { useSearchParams } from 'react-router-dom';
-import { ChevronDown, ChevronRight, Download, Settings, Sparkles, X } from 'lucide-react';
+import { Outlet, useNavigate } from 'react-router-dom';
+import { ChevronDown, ChevronRight, Download, Settings, Sparkles } from 'lucide-react';
 import { PageHeader } from '../../components/PageHeader';
 import { ListEmptyState } from '../../components/ListEmptyState';
 import { Table, type Column } from '../../components/Table';
 import { Tag } from '../../components/Tag';
 import { MultiSelectFilter } from '../../components/MultiSelectFilter';
-import { ToolbarSearch } from '../../components/ToolbarSearch';
+import { Toolbar } from '../../components/Toolbar';
 import { fmtDateTime } from '../../lib/format';
 import { exportFmdsAsExcel } from '../../lib/fmdZipExport';
 import { useLibraryFmds, type LibraryFmdRow } from '../../lib/queries/fmds';
-import { markFmdSeen, isFmdSeen } from '../../lib/fmdSeen';
+import { useLibraryPath } from '../../lib/libraryNav';
+import { isFmdSeen } from '../../lib/fmdSeen';
 import { useToast } from '../../components/Toast';
 import { GoldenFmdDesignerDialog } from './GoldenFmdDesignerDialog';
-import { FmdVersionHistoryDialog } from './FmdVersionHistoryDialog';
 import { ConvertHistoricalFmdWizard } from './ConvertHistoricalFmdWizard';
 
 const CLASS_OPTIONS = ['Global', 'Local'];
@@ -49,9 +49,9 @@ const isNewVersion = (f: LibraryFmdRow) =>
 export function LibraryFmds() {
   const { data: fmds = [], isLoading } = useLibraryFmds();
   const toast = useToast();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const to = useLibraryPath();
   const [exporting, setExporting] = useState(false);
-  const [openHistory, setOpenHistory] = useState<LibraryFmdRow | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [goldenTarget, setGoldenTarget] = useState<LibraryFmdRow | 'new' | null>(null);
   const [query, setQuery] = useState('');
@@ -90,24 +90,11 @@ export function LibraryFmds() {
   /** Only one Golden FMD ever exists — the button edits it if present, otherwise starts one. */
   const openGoldenDesigner = () => setGoldenTarget(existingGolden ?? 'new');
 
-  /** Opening a row is what dismisses its "New" badge, not just viewing the list. Every FMD type
-   * uses the same full version-history viewer now — Versions and Where-used apply equally
-   * to Golden, Standard and Custom alike, not just the AI-converted ones. */
-  const openRow = (f: LibraryFmdRow) => {
-    markFmdSeen(f.id, f.latestVersionId);
-    setOpenHistory(f);
-  };
-
-  /** Deep link from a "View FMD" toast action (?open=<fmdId>) — opens the right viewer and clears
-   * the param so a refresh doesn't reopen it. */
-  useEffect(() => {
-    const openId = searchParams.get('open');
-    if (!openId || fmds.length === 0) return;
-    const target = fmds.find((f) => f.id === openId);
-    if (target) openRow(target);
-    setSearchParams((params) => { params.delete('open'); return params; }, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fmds]);
+  /** Every FMD type uses the same viewer — Versions and Where-used apply equally to Golden,
+   * Standard and Custom alike, not just the AI-converted ones. The viewer lives at its own URL, so
+   * opening a row is a navigation; dismissing the row's "New" badge happens there rather than here,
+   * so a deep link dismisses it too. */
+  const openRow = (f: LibraryFmdRow) => navigate(to('fmds', f.id));
 
   /** One selected FMD downloads directly; several are bundled into a .zip — each gets its own
    * real workbook (Golden's structure template, or a generated FMD's Overview + structure
@@ -116,7 +103,13 @@ export function LibraryFmds() {
     setExporting(true);
     try {
       const { exported, skipped } = await exportFmdsAsExcel([...selected]);
-      if (exported > 0) toast.success(`Exported ${exported} FMD${exported === 1 ? '' : 's'}${skipped.length ? ` (skipped ${skipped.length} with no data yet)` : ''}.`);
+      // Name the skipped FMDs rather than counting them: "skipped 3" leaves you to work out which
+      // three out of ten, and the names are already collected. Capped so a large selection doesn't
+      // produce a toast nobody can read.
+      const skippedNote = skipped.length
+        ? ` Skipped ${skipped.slice(0, 3).join(', ')}${skipped.length > 3 ? ` and ${skipped.length - 3} more` : ''} — no data to export yet.`
+        : '';
+      if (exported > 0) toast.success(`Exported ${exported} FMD${exported === 1 ? '' : 's'}.${skippedNote}`);
       else toast.error('None of the selected FMDs have exportable data yet.');
     } catch (err: any) {
       toast.error(err.message ?? 'Could not export the selected FMDs.');
@@ -169,54 +162,46 @@ export function LibraryFmds() {
               distinction, so a second colour would only imply a difference in severity. */}
           {isNewFmd(f) && <Tag variant="success" size="sm" className="shrink-0">New</Tag>}
           {isNewVersion(f) && <Tag variant="success" size="sm" className="shrink-0">New Version</Tag>}
+          {/* The flag, not the number it's behind. "Needs re-syncing" is actionable in a list;
+              "the template is on v1.0.2" is a detail you only need once you've opened it. */}
+          {(f.goldenOutdated || f.standardRefOutdated) && (
+            <Tag variant="warn" size="sm" className="shrink-0" title={f.goldenOutdated ? 'Behind the Golden FMD template' : 'Behind the object\'s Standard FMD'}>
+              Outdated
+            </Tag>
+          )}
         </span>
       ),
       sortValue: (f) => f.name,
     },
-    { key: 'class', header: 'Class', width: 90, render: (f) => f.class, sortValue: (f) => f.class },
+    { key: 'type', header: 'Type', width: 90, render: (f) => f.type, sortValue: (f) => f.type },
     {
-      key: 'type', header: 'Type', width: 90,
-      render: (f) => f.type,
-      sortValue: (f) => f.type,
+      // Where it lives, by NAME. `reference` said the same thing in codes (PRG-PRJ), which nobody
+      // reads at a glance — and the catalogue spans every subproject, so which one a row belongs to
+      // is exactly the sort of thing you scan a list for.
+      key: 'scope', header: 'Scope', width: 190,
+      render: (f) => (f.subprojectName ? (
+        <div className="text-2xs leading-tight">
+          <div className="text-sm2 text-text truncate">{f.subprojectName}</div>
+          <div className="text-muted truncate">{[f.programName, f.projectName].filter(Boolean).join(' › ') || '—'}</div>
+        </div>
+      ) : (
+        <span className="text-muted">Program-wide</span>
+      )),
+      sortValue: (f) => f.subprojectName ?? '',
     },
-    { key: 'reference', header: 'Reference', width: 150, render: (f) => <span className="font-mono text-sm2">{f.reference}</span>, sortValue: (f) => f.reference },
     {
-      // Just the number here — the Draft/Active badge lives in Status and repeating it made the two
-      // columns say the same thing twice. Shows the live (published) version when there is one,
-      // falling back to the latest draft for an FMD that has never been published.
-      key: 'latestVersion', header: 'Version', width: 90,
-      render: (f) => <span className="font-mono">{f.activeVersion ?? f.latestVersion ?? '—'}</span>,
+      // Version and status were two columns saying one thing. The number is the live (published)
+      // version; the Draft tag beside it is the whole of what Status used to carry, and only
+      // appears when there is unreleased work — Active is the resting state and needs no badge on
+      // every row.
+      key: 'latestVersion', header: 'Version', width: 130,
+      render: (f) => (
+        <span className="inline-flex items-center gap-1.5">
+          <span className="font-mono">{f.activeVersion ?? f.latestVersion ?? '—'}</span>
+          {(f.hasDraft || !f.activeVersion) && <Tag variant="danger" size="sm">{f.hasDraft ? 'Draft' : (f.latestState ?? 'Draft')}</Tag>}
+        </span>
+      ),
       sortValue: (f) => f.activeVersion ?? f.latestVersion,
-    },
-    {
-      // Active = a published version exists. Draft = everything so far is unreleased. When both are
-      // true (published, with newer edits pending) the draft is what needs attention, so it wins.
-      key: 'status', header: 'Status', width: 100,
-      // Active is the resting state, so it carries no colour — a badge on every row is just noise.
-      // Draft is the exception that needs picking out of a long list (unreleased work), so it keeps
-      // a quiet red at the small size.
-      render: (f) => f.hasDraft || !f.activeVersion
-        ? <Tag variant="danger" size="sm">{f.hasDraft ? 'Draft' : (f.latestState ?? 'Draft')}</Tag>
-        : <span className="text-muted">Active</span>,
-      sortValue: (f) => (f.hasDraft ? 'Draft' : f.activeVersion ? 'Active' : f.latestState),
-    },
-    {
-      key: 'goldenVersionLabel', header: 'Golden FMD Version', width: 150,
-      render: (f) => f.goldenVersionLabel ? (
-        <span className="inline-flex items-center gap-1.5 font-mono text-sm2">
-          {f.goldenVersionLabel}{f.goldenOutdated && <Tag variant="warn" size="sm">Outdated</Tag>}
-        </span>
-      ) : '—',
-      sortValue: (f) => f.goldenVersionLabel,
-    },
-    {
-      key: 'standardRefVersionLabel', header: 'Reference FMD Version', width: 160,
-      render: (f) => f.standardRefVersionLabel ? (
-        <span className="inline-flex items-center gap-1.5 font-mono text-sm2">
-          {f.standardRefVersionLabel}{f.standardRefOutdated && <Tag variant="warn" size="sm">Outdated</Tag>}
-        </span>
-      ) : '—',
-      sortValue: (f) => f.standardRefVersionLabel,
     },
     {
       // Falls back to Created when an FMD hasn't been changed yet — a brand-new FMD's most recent
@@ -239,30 +224,26 @@ export function LibraryFmds() {
   return (
     <div>
       <PageHeader title="Field Mapping" description="Field mapping documents across every subproject you have access to." />
-      <div className="flex flex-wrap items-center gap-2 mb-3">
-        <ToolbarSearch value={query} onChange={setQuery} placeholder="Search field mappings…" />
+      <Toolbar
+        search={{ value: query, onChange: setQuery, placeholder: 'Search field mappings…' }}
+        onClearFilters={hasActiveFilters ? clearFilters : undefined}
+        count={filtered.length} noun="FMDs" selectedCount={selected.size}
+        actions={
+          <>
+            <Button variant="quiet" size="sm" onClick={exportSelected} disabled={selected.size === 0 || exporting}>
+              <Download size={14} /> {exporting ? 'Exporting…' : `Export to Excel${selected.size > 0 ? ` (${selected.size})` : ''}`}
+            </Button>
+            <Button variant="quiet" size="sm" onClick={openGoldenDesigner}><Settings size={14} /> Golden FMD</Button>
+            <Button variant="ai" size="sm" onClick={() => setWizardOpen(true)}><Sparkles size={14} /> Convert Historical FMD</Button>
+          </>
+        }
+      >
         <MultiSelectFilter label="Class" options={CLASS_OPTIONS} selected={klass} onChange={setKlass} />
         <MultiSelectFilter label="Type" options={TYPE_OPTIONS} selected={type} onChange={setType} />
-        <Select
-          value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)}
-          size="sm"
-        >
+        <Select value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} size="sm">
           {GROUP_OPTIONS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
         </Select>
-        {hasActiveFilters && (
-          <Button variant="dangerGhost" size="sm" onClick={clearFilters}>
-            <X size={13} /> Clear filters
-          </Button>
-        )}
-        <span className="text-sm2 text-muted ml-1 shrink-0">{filtered.length.toLocaleString()} FMDs{selected.size > 0 ? ` · ${selected.size} selected` : ''}</span>
-        <div className="ml-auto flex items-center gap-2 shrink-0">
-          <Button variant="quiet" size="sm" onClick={exportSelected} disabled={selected.size === 0 || exporting}>
-            <Download size={14} /> {exporting ? 'Exporting…' : `Export to Excel${selected.size > 0 ? ` (${selected.size})` : ''}`}
-          </Button>
-          <Button variant="quiet" size="sm" onClick={openGoldenDesigner}><Settings size={14} /> Golden FMD</Button>
-          <Button variant="ai" size="sm" onClick={() => setWizardOpen(true)}><Sparkles size={14} /> Convert Historical FMD</Button>
-        </div>
-      </div>
+      </Toolbar>
       {!isLoading && filtered.length === 0 ? (
         <ListEmptyState
           noun="FMDs" filtered={hasActiveFilters} onClearFilters={clearFilters}
@@ -290,7 +271,7 @@ export function LibraryFmds() {
                 )}
                 {!collapsed && (
                   <Table
-                    columns={columns} rows={g.rows} rowKey={(f) => f.id} pageSize={30} emptyMessage="Loading…"
+                    columns={columns} rows={g.rows} rowKey={(f) => f.id} pageSize={groupBy === 'none' ? 30 : 200} emptyMessage="Loading…"
                     onRowClick={openRow}
                   />
                 )}
@@ -299,7 +280,7 @@ export function LibraryFmds() {
           })}
         </div>
       )}
-      <FmdVersionHistoryDialog fmd={openHistory} onClose={() => setOpenHistory(null)} />
+      <Outlet />
       <GoldenFmdDesignerDialog target={goldenTarget} onClose={() => setGoldenTarget(null)} />
       <ConvertHistoricalFmdWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
     </div>

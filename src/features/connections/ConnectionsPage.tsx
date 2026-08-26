@@ -40,7 +40,7 @@ export function ConnectionsPage() {
     <div>
       <PageHeader title="Connections" description="System landscape — SID, host, client, role and status." />
       {!isLoading && connections.length === 0 ? (
-        <EmptyState title="No connections configured" description="Connections created for this programme will list here." />
+        <EmptyState title="No connections configured" description="Connections created for this program will list here." />
       ) : (
         <Table columns={columns} rows={connections} rowKey={(c) => c.id} emptyMessage="Loading…" />
       )}

@@ -29,8 +29,8 @@ export function SubprojectPicker() {
       <div className="max-w-[760px] mx-auto py-16">
         <EmptyState
           icon={<Package size={26} />}
-          title="No programmes yet"
-          description="You don't have a membership on any programme. Ask a Program Admin to add you."
+          title="No programs yet"
+          description="You don't have a membership on any program. Ask a Program Admin to add you."
         />
       </div>
     );

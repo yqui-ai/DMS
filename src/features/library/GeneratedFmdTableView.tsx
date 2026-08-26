@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
-import { ChevronLeft, ChevronRight, Columns3, Type } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Columns3, Eye, Maximize2, Pencil, Type } from 'lucide-react';
+import { Dialog } from '../../components/Dialog';
+import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
+import { Button } from '../../components/Button';
+import { optionsOf, valueTypeError } from '../../lib/mappingRulePolicy';
 import { colorByKey } from '../../lib/goldenFmdColors';
 import { rowKey } from '../../lib/rowDiff';
 import type { GeneratedColumn, GeneratedTable } from '../../types/entities';
@@ -60,7 +64,145 @@ function sectionRuns(columns: GeneratedColumn[]): { sectionName: string; color: 
  * tab bar, since it applies to the whole FMD version, not just this table. */
 export interface ReviewCellFinding { severity: 'error' | 'warning'; issue: string }
 
-export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, reviewFindingsByTable, onOpenField, onAddReviewPoint, reviewPointCellsByTable }: {
+/** Which columns the expanded editor applies to: free text only. Everything else is either a
+ * fixed choice or a single token, and neither gains anything from a full-height textarea. */
+const isExpandable = (column: GeneratedColumn) => !column.kind || column.kind === 'text' || column.kind === 'longText';
+
+/** The full contents of one cell, in a dialog.
+ *
+ * A grid row is one line tall, so a transformation rule of five sentences is a cell you can type
+ * into but never read — you scroll a 200px input with the keyboard to check what you wrote. This is
+ * the same value with room to see it. Double-click is the way in, since single-click has to stay
+ * free for moving between cells. */
+function CellEditorDialog({ open, column, value, structureIdent, rowLabel, onSave, onClose }: {
+  open: boolean;
+  column?: GeneratedColumn;
+  value: string;
+  /** Which structure and which row — a full-screen dialog covers the grid that gave the cell its
+   * context, so without these you are editing a value with no idea which of thirty rows it is. */
+  structureIdent?: string;
+  rowLabel?: string;
+  onSave: (next: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setDraft(value); setError(null); }, [value, open]);
+
+  const save = async () => {
+    const problem = valueTypeError(column, draft);
+    if (problem) { setError(problem); return; }
+    setSaving(true);
+    try { await onSave(draft); onClose(); } finally { setSaving(false); }
+  };
+
+  return (
+    <Dialog
+      open={open} onClose={onClose} size="lg"
+      title={column?.field ?? 'Cell'}
+      subtitle={[structureIdent, rowLabel, column?.description].filter(Boolean).join('  ·  ') || undefined}
+      unsavedWarning={draft !== value ? 'This cell has unsaved changes.' : undefined}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button variant="primary" onClick={save} disabled={saving || draft === value}>
+            {saving ? 'Saving…' : 'Save to draft'}
+          </Button>
+        </>
+      }
+    >
+      <UnsavedChangesGuard when={open && draft !== value} what="This cell" />
+      <div className="flex flex-col gap-2">
+        <textarea
+          value={draft} onChange={(e) => { setDraft(e.target.value); setError(null); }} rows={16} autoFocus
+          className={clsx(
+            'w-full text-sm2 font-mono bg-surface border rounded-[8px] px-3 py-2.5 resize-y',
+            error ? 'border-red' : 'border-line-strong focus:border-blue',
+          )}
+        />
+        {error && <p className="text-2xs text-red">{error}</p>}
+        <p className="text-2xs text-muted">
+          Saving puts this in the draft — nothing is published until you publish the version.
+        </p>
+      </div>
+    </Dialog>
+  );
+}
+
+/** One cell in edit mode.
+ *
+ * A real input per cell rather than a single roving editor, so Tab moves between cells the way the
+ * browser already knows how to and commit-on-blur falls out of that for free — which is what "like
+ * Excel" actually means in practice. Escape puts the original value back.
+ *
+ * The column's declared kind picks the control, so a value list is a dropdown here exactly as it is
+ * in the field-level view, and a bad value is refused at the keystroke rather than found later by
+ * the review. */
+function GridCell({ column, value, onSave }: {
+  column: GeneratedColumn;
+  value: string;
+  onSave: (next: string) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { setDraft(value); setError(null); }, [value]);
+
+  const commit = async (next: string) => {
+    if (next === value) return;
+    const problem = valueTypeError(column, next);
+    if (problem) { setError(problem); setDraft(value); return; }
+    setError(null);
+    await onSave(next);
+  };
+
+  const base = 'w-full bg-transparent px-1 py-0.5 text-sm2 rounded-[3px] focus:outline-none focus:bg-surface focus:shadow-[inset_0_0_0_2px_var(--blue)]';
+
+  const listed = optionsOf(column);
+  if (column.kind === 'select' && listed.length) {
+    return (
+      <select
+        value={value}
+        onChange={(e) => commit(e.target.value)}
+        className={clsx(base, 'cursor-pointer')}
+        title={error ?? undefined}
+      >
+        <option value="">—</option>
+        {value && !listed.includes(value) && <option value={value}>{value}</option>}
+        {listed.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
+    );
+  }
+  if (column.kind === 'boolean') {
+    const on = /^(x|y|yes|true|1)$/i.test(value.trim());
+    return (
+      <input
+        type="checkbox" checked={on}
+        onChange={(e) => commit(e.target.checked ? 'X' : '')}
+        className="w-3.5 h-3.5 accent-[var(--blue)]"
+      />
+    );
+  }
+  return (
+    <input
+      value={draft}
+      {...(column.kind === 'integer' || column.kind === 'decimal'
+        ? { type: 'number' as const, step: column.kind === 'integer' ? 1 : 'any' }
+        : {})}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => commit(draft)}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') { setDraft(value); setError(null); (e.target as HTMLInputElement).blur(); }
+        // Enter commits and stays put; Tab commits and moves on, which the browser does for us.
+        if (e.key === 'Enter') { e.preventDefault(); commit(draft); }
+      }}
+      title={error ?? undefined}
+      className={clsx(base, error && 'shadow-[inset_0_0_0_2px_var(--red)]')}
+    />
+  );
+}
+
+export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, reviewFindingsByTable, onOpenField, onAddReviewPoint, reviewPointCellsByTable, canEdit = false, onSaveField }: {
   columns: GeneratedColumn[]; tables: GeneratedTable[];
   /** structureId -> rowKey -> changed field names, vs. the previous version — yellow-highlights
    * exactly the cells that changed since then. Undefined/absent means "nothing to compare against
@@ -75,6 +217,11 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
    * button: the button cost a whole leading column on every row to expose an action people use
    * occasionally, on a grid that is already very wide. */
   onOpenField?: (structureId: string, rowIndex: number) => void;
+  /** Whether inline editing may be switched on — the same gate as the field-level view's per-section
+   * pencil: the newest content of a Custom FMD, by someone allowed to change it. */
+  canEdit?: boolean;
+  /** Saves one cell. Every save lands in the draft; editing never publishes anything. */
+  onSaveField?: (structureId: string, rowIndex: number, field: string, value: string) => Promise<void>;
   /** When provided, right-clicking a cell raises a review point against that exact cell — the
    * in-app stand-in for commenting on a cell in the Excel FMD. Right-click rather than a hover
    * affordance because every cell would otherwise need one, on a grid that is already dense. */
@@ -85,8 +232,29 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
   const [activeTableId, setActiveTableId] = useState<string | null>(tables[0]?.structureId ?? null);
   const [tabLabelMode, setTabLabelMode] = useState<'ident' | 'description'>('ident');
   const [sortField, setSortField] = useState<string | null>(null);
+  /** Measured height of the section band, used as the field-name row's sticky offset so the two
+   * stay welded together while scrolling. Observed rather than computed: the band's height depends
+   * on the type scale and the browser's own rounding, and a hardcoded guess showed a strip of page
+   * between the rows. */
+  const bandRef = useRef<HTMLTableRowElement>(null);
+  const [bandHeight, setBandHeight] = useState(0);
+  useEffect(() => {
+    const el = bandRef.current;
+    if (!el) return;
+    const measure = () => setBandHeight(el.getBoundingClientRect().height);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
+  /** Off by default, exactly like the field-level view's sections. A grid you can change by clicking
+   * into it is a grid you can change by accident, so the mode makes the intent explicit and leaves
+   * read-only as the resting state. */
+  const [editing, setEditing] = useState(false);
+  /** Which cell is open in the expanded editor, by row index and field. */
+  const [expandedCell, setExpandedCell] = useState<{ rowIndex: number; field: string } | null>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -168,6 +336,25 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
           at the other) — which, above the section band and the field-name header, put five strips of
           chrome between the top of the dialog and the first row of data. */}
       <div className="flex items-center gap-1 border-b border-line mb-2 shrink-0">
+        {/* An icon toggle, sized like the field picker beside it — the same pencil the field-level
+            view uses to enter editing, and an eye to go back to reading. Editing is a mode you
+            enter, not a property of clicking; every save lands in the draft, so nothing publishes. */}
+        {canEdit && onSaveField && (
+          <button
+            onClick={() => setEditing((v) => !v)}
+            aria-label={editing ? 'Back to display' : 'Edit cells'}
+            aria-pressed={editing}
+            title={editing
+              ? 'Back to display. Your changes are already saved to the draft.'
+              : 'Edit cells directly in the grid. Tab moves on and saves, Escape undoes the cell.'}
+            className={clsx(
+              'flex items-center justify-center w-8 h-8 rounded-[8px]',
+              editing ? 'text-blue bg-blue-pale' : 'text-muted hover:text-blue hover:bg-blue-pale',
+            )}
+          >
+            {editing ? <Eye size={15} /> : <Pencil size={14} />}
+          </button>
+        )}
         <IconPopoverButton icon={<Columns3 size={15} />} label="Fields to show" active={hiddenColumns.size > 0}>
           {/* Grouped by Golden section, matching the grid's own colour bands — a flat list of
               twenty-plus SRC_/TGT_/LOAD_ fields gives no way to find one except by reading every
@@ -258,13 +445,17 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
 
       <div className="flex-1 overflow-auto">
         {/* border-separate + border-spacing-0 (NOT border-collapse): two stacked sticky <tr>s
-            (the section band at top-0, the field-name row at top-[29px]) render with a visible
-            white seam between them under border-collapse — a browser quirk with sticky table rows,
-            not a real gap in the markup. border-separate removes it; the per-row divider moves from
-            <tr> (unreliable under border-separate) onto each <td> instead. */}
+            render with a visible white seam between them under border-collapse — a browser quirk
+            with sticky table rows, not a real gap in the markup. border-separate removes it; the
+            per-row divider moves from <tr> (unreliable under border-separate) onto each <td>.
+
+            The field-name row's sticky offset is MEASURED from the band above it rather than
+            hardcoded. A guessed 29px against a band that actually rendered ~26 left a strip of
+            page showing between them the moment you scrolled — and any change to the band's
+            padding, the type scale or the browser's rounding would have re-opened it. */}
         <table className="border-separate border-spacing-0 text-sm2">
           <thead>
-            <tr>
+            <tr ref={bandRef}>
               {runs.map((run, i) => (
                 <th
                   key={i} colSpan={run.span}
@@ -279,8 +470,8 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
               {visibleColumns.map((c) => (
                 <th
                   key={c.field} onClick={() => toggleSort(c.field)}
-                  className="text-2xs font-bold uppercase tracking-[.04em] text-text px-2.5 py-2 sticky top-[29px] text-center whitespace-nowrap cursor-pointer select-none z-[2]"
-                  style={{ backgroundColor: colorByKey(c.color).bg }}
+                  className="text-2xs font-bold uppercase tracking-[.04em] text-text px-2.5 py-2 sticky text-center whitespace-nowrap cursor-pointer select-none z-[2]"
+                  style={{ backgroundColor: colorByKey(c.color).bg, top: bandHeight }}
                 >
                   {c.field}{sortField === c.field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
                 </th>
@@ -300,8 +491,8 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
               return (
                 <tr
                   key={i}
-                  onDoubleClick={onOpenField ? () => onOpenField(activeTable.structureId, originalIndex) : undefined}
-                  className={clsx(onOpenField && 'cursor-default select-none')}
+                  onDoubleClick={onOpenField && !editing ? () => onOpenField(activeTable.structureId, originalIndex) : undefined}
+                  className={clsx(onOpenField && !editing && 'cursor-default select-none')}
                 >
                   {visibleColumns.map((c) => {
                     const maxWidth = FIELD_MAX_WIDTH[c.field];
@@ -319,13 +510,36 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                         } : undefined}
                         className={clsx(
                           'px-2.5 py-1.5 text-sm2 border-t border-line-soft transition-colors',
-                          'hover:shadow-[inset_0_0_0_9999px_rgba(10,79,140,.08)] hover:text-blue-deep',
+                          !editing && 'hover:shadow-[inset_0_0_0_9999px_rgba(10,79,140,.08)] hover:text-blue-deep',
                           maxWidth ? 'whitespace-normal break-words text-left' : 'text-center whitespace-nowrap',
                           hasPoint && 'relative',
                         )}
                         style={{ ...(maxWidth ? { maxWidth } : {}), backgroundColor: bg }}
                       >
-                        {row[c.field]}
+                        {editing && onSaveField ? (
+                          <div
+                            className="flex items-center gap-1 group/cell"
+                            // Only free text gets the roomy editor. A dropdown, a checkbox or a
+                            // number has nothing to expand — a modal around a three-item select is
+                            // a dialog that wastes a click.
+                            onDoubleClick={isExpandable(c) ? () => setExpandedCell({ rowIndex: originalIndex, field: c.field }) : undefined}
+                          >
+                            <GridCell
+                              column={c} value={row[c.field] ?? ''}
+                              onSave={(next) => onSaveField(activeTable.structureId, originalIndex, c.field, next)}
+                            />
+                            {isExpandable(c) && (
+                              <button
+                                onClick={() => setExpandedCell({ rowIndex: originalIndex, field: c.field })}
+                                aria-label={`Open ${c.field} in a larger editor`}
+                                title="Open in a larger editor (or double-click the cell)"
+                                className="shrink-0 opacity-0 group-hover/cell:opacity-100 focus:opacity-100 text-muted hover:text-blue"
+                              >
+                                <Maximize2 size={11} />
+                              </button>
+                            )}
+                          </div>
+                        ) : row[c.field]}
                         {/* Folded-corner marker: this cell already carries a review point. */}
                         {hasPoint && (
                           <span
@@ -342,6 +556,24 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
           </tbody>
         </table>
       </div>
+
+      <CellEditorDialog
+        open={!!expandedCell}
+        column={columns.find((c) => c.field === expandedCell?.field)}
+        value={expandedCell ? activeTable?.rows[expandedCell.rowIndex]?.[expandedCell.field] ?? '' : ''}
+        structureIdent={activeTable?.structureIdent}
+        rowLabel={expandedCell ? (() => {
+          const r = activeTable?.rows[expandedCell.rowIndex];
+          // The row's own identity, the same way every other surface labels it.
+          return r?.SRC_FIELD || r?.TGT_FIELD || `Row ${expandedCell.rowIndex + 1}`;
+        })() : undefined}
+        onSave={async (next) => {
+          if (expandedCell && onSaveField && activeTable) {
+            await onSaveField(activeTable.structureId, expandedCell.rowIndex, expandedCell.field, next);
+          }
+        }}
+        onClose={() => setExpandedCell(null)}
+      />
     </div>
   );
 }

@@ -97,7 +97,7 @@ export function buildRowsFromClassification(sheet: HistoricalSheet, roles: Parti
 /** Golden structure's own field list, as the GeneratedColumn[] every generated FMD table uses —
  * unchanged regardless of how the row values were produced. */
 export function goldenColumns(structure: GoldenFmdStructure): GeneratedColumn[] {
-  return structure.sections.flatMap((s) => s.fields.map((f) => ({ field: f.field, sectionName: s.name, color: s.color, description: f.description })));
+  return structure.sections.flatMap((s) => s.fields.map((f) => ({ field: f.field, sectionName: s.name, color: s.color, description: f.description, critical: f.critical || undefined, kind: f.kind, options: f.options })));
 }
 
 export function toGeneratedTable(structureId: string, structureIdent: string, structureDescription: string | undefined, rows: ClassifiedRow[]): GeneratedTable {

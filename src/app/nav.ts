@@ -26,15 +26,9 @@ export const NAV_GROUPS: NavGroup[] = [
     { key: 'rules', label: 'Rules & XREF', icon: 'scale', to: 'rules' },
     { key: 'referenceData', label: 'Reference Data', icon: 'book-open', to: 'reference-data' },
   ]},
-  { title: 'EXECUTION', items: [
-    { key: 'migration', label: 'Data Migration', icon: 'shuffle', to: 'migration' },
-    { key: 'quality', label: 'Data Quality', icon: 'badge-check', to: 'quality' },
-    { key: 'cutover', label: 'Cutover', icon: 'flag', to: 'cutover' },
-  ]},
-  { title: 'GOVERNANCE', items: [
-    { key: 'promotions', label: 'Promotions', icon: 'arrow-up-right', to: 'promotions' },
-    { key: 'jobMonitor', label: 'Job Monitor', icon: 'activity', to: 'job-monitor' },
-  ]},
+  // EXECUTION and GOVERNANCE are out of the nav while Design > Scope is finished first. Their
+  // screens, routes and queries all still exist and are NOT dead code — see the deferred-scope
+  // skill for what each section held and how to bring it back.
   { title: 'LIBRARY', items: [
     { key: 'catalogObjects', label: 'Migration Object', icon: 'database', to: 'library/objects', standalone: () => '/library/objects' },
     { key: 'catalogFmds', label: 'Field Mapping', icon: 'files', to: 'library/fmds', standalone: () => '/library/fmds' },

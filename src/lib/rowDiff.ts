@@ -2,7 +2,7 @@ import type { GeneratedTable } from '../types/entities';
 
 /** Fields (in priority order) used to identify "the same field mapping" across two versions of a
  * table — content-based, not positional, so re-sorted or re-ordered rows still match correctly. */
-const IDENTITY_FIELDS = ['SRC_SYSTEM', 'SRC_TABLE', 'SRC_FIELD', 'TGT_TABLE', 'TGT_FIELD'];
+export const IDENTITY_FIELDS = ['SRC_SYSTEM', 'SRC_TABLE', 'SRC_FIELD', 'TGT_TABLE', 'TGT_FIELD'];
 
 /** A stable identity for a row: the identifying source/target fields joined together, or "#<index>"
  * as a last resort when a row has none of those fields populated (rare — only genuinely

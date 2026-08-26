@@ -129,10 +129,24 @@ export interface FmdVersion {
   publishedBy?: string; publishedAt?: string;
 }
 
-export interface GeneratedColumn { field: string; sectionName: string; color: string; description?: string }
+export interface GeneratedColumn {
+  field: string; sectionName: string; color: string; description?: string; critical?: boolean;
+  /** Snapshotted from the Golden template at generation, like `critical` — so an FMD keeps the
+   * input rules it was generated under even after the template moves on. */
+  kind?: GoldenFieldKind; options?: string[];
+}
 export interface GeneratedTable { structureId: string; structureIdent: string; structureDescription?: string; rows: Record<string, string>[] }
 
 export interface MappingReviewFinding {
+  /** Stable identity, so a finding can be marked addressed without depending on its position in
+   * the array. Absent on findings saved before this existed — see findingKey() for the fallback. */
+  id?: string;
+  /** Marked by a person as fixed in the draft and waiting to be published.
+   *
+   * Deliberately a claim by someone, not a computed fact: an edit to the cell a finding points at
+   * is not proof the finding was what the edit was for. Cleared when the same version is reviewed
+   * again — the fresh run is the real verdict on whether it's gone. */
+  addressed?: { by: string; at: string };
   structureId: string; structureIdent: string; rowIndex: number;
   /** The single column the AI pinned the violation on — used to highlight the exact offending
    * cell in the viewer. Absent for a batch-level failure finding (nothing to point at). */
@@ -149,6 +163,17 @@ export interface FmdPendingChange {
    * the change always reads as "what everyone else currently sees" → "what it will become". */
   from: string; to: string;
   by: string; at: string;
+}
+
+/** Uncommitted cell edits against one published version, stored on `fmds.draft`.
+ *
+ * Deliberately NOT a version row: saving an edit must not add an entry to an FMD's version list.
+ * It also holds no mapping content — only the changes — so the edited document is derived from
+ * `baseVersionId` + `pendingChanges` wherever it's shown, and there is nothing to keep in sync. */
+export interface FmdDraft {
+  /** The published version the changes were written against. */
+  baseVersionId: UUID;
+  pendingChanges: FmdPendingChange[];
 }
 
 export interface MappingReview {
@@ -186,7 +211,26 @@ export interface HistoricalRaw { sheets: HistoricalSheet[]; fileMeta?: Historica
 /** A Golden FMD is a template *structure*, not data — the designer edits the set of fields that
  * make up the FMD, grouped into user-orderable, user-named, color-coded sections, and what each
  * field means or which values it allows — not actual source -> target row instances. */
-export interface GoldenFmdFieldDef { id: string; field: string; description: string }
+/** What a Golden FMD column accepts. The template decides, so every FMD generated from it gets the
+ * same editor and the same restriction — MAPPING_TYPE's four values used to be hardcoded in the
+ * field editor, which meant no other column could ever have a value list without a code change. */
+export type GoldenFieldKind = 'text' | 'longText' | 'select' | 'boolean' | 'integer' | 'decimal';
+
+export interface GoldenFmdFieldDef {
+  id: string; field: string; description: string;
+  /** Defaults to 'text' when absent, so templates saved before this existed keep working. */
+  kind?: GoldenFieldKind;
+  /** The permitted values, for `kind: 'select'`. Ignored otherwise. */
+  options?: string[];
+  /** This field must be populated on every row, and the Mapping Review treats a blank one as an
+   * ERROR rather than a warning.
+   *
+   * The template is where this belongs, not the review: which columns a programme actually cares
+   * about is a decision about the document, and it varies (MIGRATION_IN_SCOPE matters everywhere;
+   * SRC_FIELD_DECIMAL rarely does). Without it the review graded every blank the same way and a
+   * genuinely missing scope flag was one of sixty-eight identical-looking errors. */
+  critical?: boolean;
+}
 export interface GoldenFmdSection { id: string; name: string; color: string; fields: GoldenFmdFieldDef[] }
 export interface GoldenFmdStructure { sections: GoldenFmdSection[] }
 export interface Rule {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import { Moon, Sun } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { useTheme } from '../../lib/theme';
@@ -14,6 +15,9 @@ export function MyProfilePage() {
   const { dark, toggle } = useTheme();
   const toast = useToast();
   const [name, setName] = useState('');
+  /** What's actually stored, so "dirty" is a comparison rather than a flag someone has to remember
+   * to set — and typing a change then typing it back counts as clean, which a flag would get wrong. */
+  const [savedName, setSavedName] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -21,6 +25,7 @@ export function MyProfilePage() {
     if (!user) return;
     supabase.from('app_users').select('name').eq('id', user.id).maybeSingle().then(({ data }) => {
       setName(data?.name ?? '');
+      setSavedName(data?.name ?? '');
       setLoading(false);
     });
   }, [user]);
@@ -36,6 +41,7 @@ export function MyProfilePage() {
 
   return (
     <div className="max-w-lg">
+      <UnsavedChangesGuard when={!loading && name !== savedName} what="Your profile changes" />
       <PageHeader title="My Profile" description="Preferences for your account." />
       <Card>
         <div className="flex flex-col gap-4">

@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Select } from '../../components/Select';
 import { useParams } from 'react-router-dom';
-import { Search, ShieldAlert, LockOpen, FileUp, ListPlus } from 'lucide-react';
+import { ShieldAlert, LockOpen, FileUp, ListPlus } from 'lucide-react';
+import { Toolbar } from '../../components/Toolbar';
 import { Table, type Column } from '../../components/Table';
 import { Tag } from '../../components/Tag';
 import { Button } from '../../components/Button';
@@ -43,6 +44,8 @@ export function MigrationObjectCatalogue() {
   const [importOpen, setImportOpen] = useState(false);
   const [selectStandardOpen, setSelectStandardOpen] = useState(false);
   const [detailObject, setDetailObject] = useState<MigrationObject | null>(null);
+  const hasActiveFilters = query !== '' || category !== 'All' || approach !== 'All' || component !== 'All';
+  const clearFilters = () => { setQuery(''); setCategory('All'); setApproach('All'); setComponent('All'); };
 
   const subprojectObjByMoId = useMemo(() => new Map(subprojectObjects.map((w) => [w.migrationObjectId, w])), [subprojectObjects]);
 
@@ -139,7 +142,7 @@ export function MigrationObjectCatalogue() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-6">
         <Kpi label="Objects in scope" value={inScopeCount} accent="blue" />
-        <Kpi label="Catalogue size" value={objects.length} />
+        <Kpi label="Catalog size" value={objects.length} />
         <Kpi label="Missing prerequisites" value={missingPrereqs.length} accent={missingPrereqs.length ? 'amber' : 'muted'} />
         <div className="ml-auto flex items-center gap-2">
           {scopeFinalized && <Tag variant="accent">Scope finalized</Tag>}
@@ -157,19 +160,16 @@ export function MigrationObjectCatalogue() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
-          <input
-            value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search object id, name, description…"
-            className="text-sm2 pl-8 pr-3 py-1.5 rounded-[8px] border border-line-strong bg-surface min-w-[260px]"
-          />
-        </div>
+      <Toolbar
+        spacing="none"
+        search={{ value: query, onChange: setQuery, placeholder: 'Search object id, name, description…' }}
+        onClearFilters={hasActiveFilters ? clearFilters : undefined}
+        count={filtered.length} noun="objects"
+      >
         <FilterSelect label="Category" value={category} options={categories} onChange={setCategory} />
         <FilterSelect label="Approach" value={approach} options={approaches} onChange={setApproach} />
         <FilterSelect label="Component" value={component} options={components} onChange={setComponent} />
-        <span className="text-sm2 text-muted ml-1">{filtered.length.toLocaleString()} objects</span>
-      </div>
+      </Toolbar>
 
       <Table
         columns={columns}

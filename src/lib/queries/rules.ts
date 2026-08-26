@@ -46,9 +46,10 @@ export function useAllRules() {
 export interface LibraryRuleRow extends Rule, LibraryListing {}
 
 /** Rules enriched with the program/project reference — for the Library > Rule catalogue. */
-export function useLibraryRules() {
+export function useLibraryRules(enabled = true) {
   return useQuery({
     queryKey: ['rules-library'],
+    enabled,
     queryFn: async (): Promise<LibraryRuleRow[]> => {
       const { data, error } = await supabase
         .from('rules')
@@ -111,9 +112,10 @@ export interface LibraryXrefRow extends XrefTable, LibraryListing {
 
 /** XREF tables across every subproject the user can access, enriched with the program/project
  * reference — for the Library > Cross Reference (XREF) catalogue. */
-export function useLibraryXrefTables() {
+export function useLibraryXrefTables(enabled = true) {
   return useQuery({
     queryKey: ['xref-tables-library'],
+    enabled,
     queryFn: async (): Promise<LibraryXrefRow[]> => {
       const { data, error } = await supabase
         .from('xref_tables')

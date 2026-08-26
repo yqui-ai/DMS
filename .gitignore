@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# .env.local is covered by *.local above; a plain .env is not, and that is the one
+# people create by hand when following a quickstart.
+.env
+.env.*
+!.env.example
+
 # Supabase CLI local state (which project is linked on this machine) — not shared config
 supabase/.temp
 

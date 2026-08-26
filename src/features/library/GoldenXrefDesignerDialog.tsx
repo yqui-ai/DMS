@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import { GripVertical, Plus, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import { Dialog } from '../../components/Dialog';
@@ -64,6 +65,9 @@ export function GoldenXrefDesignerDialog({ target, onClose }: { target: LibraryX
   const [structure, setStructure] = useState<GoldenFmdStructure>(defaultStructure());
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  // Same guard as the Golden FMD designer: a structure edited but not saved as a version is exactly
+  // the kind of work that disappears when someone clicks the sidebar to check something.
+  const guard = <UnsavedChangesGuard when={!!target && dirty} what="Your Golden XREF changes" />;
   const [saving, setSaving] = useState(false);
   const [drag, setDrag] = useState<Drag>(null);
   const [commentOpen, setCommentOpen] = useState(false);
@@ -173,6 +177,8 @@ export function GoldenXrefDesignerDialog({ target, onClose }: { target: LibraryX
   };
 
   return (
+    <>
+    {guard}
     <Dialog
       open={!!target} onClose={onClose}
       unsavedWarning={dirty ? 'Your changes to the Golden XREF structure have not been saved as a version yet.' : undefined} title={GOLDEN_XREF_NAME} size="win"
@@ -320,5 +326,6 @@ export function GoldenXrefDesignerDialog({ target, onClose }: { target: LibraryX
         <p className="text-2xs text-muted mt-1.5">Saved as this version's note in Versions.</p>
       </Dialog>
     </Dialog>
+    </>
   );
 }
