@@ -293,7 +293,7 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
               {structure.sections.length === 0 && <p className="text-sm2 text-muted px-3 py-4">No sections yet.</p>}
             </div>
             <button onClick={addSection} className="text-blue text-sm2 font-semibold px-3 py-2.5 hover:bg-blue-pale w-full text-left border-t border-line">
-              <Plus size={13} className="inline -mt-0.5" /> Add Section
+              <Plus size={13} className="inline -mt-0.5" /> Add section
             </button>
           </div>
 
@@ -332,23 +332,23 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
                   <table className="w-full border-collapse text-sm2 table-fixed">
                     <thead>
                       <tr>
-                        <th className="w-8 bg-surface-3 px-2.5 py-2" />
-                        <th className="w-[32%] text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 text-left sticky top-0">Field</th>
-                        <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 text-left sticky top-0">Description</th>
+                        <th className="w-8 bg-surface border-b border-line px-2.5 py-2" />
+                        <th className="w-[32%] text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface border-b border-line px-2.5 py-2 text-left sticky top-0">Field</th>
+                        <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface border-b border-line px-2.5 py-2 text-left sticky top-0">Description</th>
                         <th
-                          className="w-28 text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 text-left sticky top-0"
+                          className="w-28 text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface border-b border-line px-2.5 py-2 text-left sticky top-0"
                           title="What this column accepts. Every FMD generated from this template gets the matching editor, so the restriction is set once here rather than re-argued per FMD."
                         >
                           Type
                         </th>
-                        <th className="w-[22%] text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 text-left sticky top-0">Allowed values</th>
+                        <th className="w-[22%] text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface border-b border-line px-2.5 py-2 text-left sticky top-0">Allowed values</th>
                         <th
-                          className="w-16 text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 text-center sticky top-0"
+                          className="w-16 text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface border-b border-line px-2.5 py-2 text-center sticky top-0"
                           title="Critical fields are what the Mapping Review checks first: a blank one is an error rather than a warning, and the AI weighs its judgement toward them."
                         >
                           Critical
                         </th>
-                        <th className="w-8 bg-surface-3" />
+                        <th className="w-8 bg-surface border-b border-line" />
                       </tr>
                     </thead>
                     <tbody>
@@ -455,7 +455,7 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
         <textarea
           value={comment} onChange={(e) => setComment(e.target.value)} rows={3} autoFocus
           placeholder="e.g. Added SRC_CHECK_TABLE and reordered Load Section"
-          className="w-full text-sm2 bg-surface border border-line-strong rounded-[8px] px-[11px] py-2 resize-y"
+          className="w-full text-sm2 bg-surface border border-line-strong rounded px-[11px] py-2 resize-y"
         />
         <p className="text-2xs text-muted mt-1.5">Saved as this version's note in Versions.</p>
       </Dialog>

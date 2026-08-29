@@ -32,10 +32,10 @@ export function TableViewer<T>({ title, columns, rows, rowKey, filterRow }: Tabl
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Filter rows…"
-              className="text-sm2 pl-8 pr-3 py-1.5 rounded-[8px] border border-line-strong bg-surface min-w-[220px]"
+              className="text-sm2 pl-8 pr-3 py-1.5 rounded border border-line-strong bg-surface min-w-[220px]"
             />
           </div>
-          <div className="flex rounded-[8px] shadow-[inset_0_0_0_1px_var(--line)] overflow-hidden">
+          <div className="flex rounded shadow-[inset_0_0_0_1px_var(--line)] overflow-hidden">
             <button
               onClick={() => setTab('data')}
               className={`px-3 py-1.5 text-sm2 font-semibold ${tab === 'data' ? 'bg-blue text-white' : 'bg-surface text-text hover:bg-blue-pale'}`}

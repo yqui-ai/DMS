@@ -29,6 +29,15 @@ interface RuleRequestRow { id: string; srcField?: string; srcFieldDesc?: string;
 interface MappingReviewRow { id: string; fields: Record<string, string> }
 interface GoldenSyncField { field: string; description?: string }
 
+/** One logged write, flattened for the model. `fields` is already limited by the client. */
+interface ChangeSummaryEntry {
+  id: string;
+  entity: string;
+  op: string;
+  label?: string;
+  fields?: string[];
+}
+
 /** Everything the model may use when drafting a technical rule. Deliberately explicit: the prompt
  * forbids inventing any table or field name not present here, because a plausible-looking rule
  * naming a table that doesn't exist is worse than no rule at all — it looks implementable. */
@@ -46,7 +55,8 @@ type RequestBody =
   | { task: 'rules'; rows: RuleRequestRow[] }
   | { task: 'mapping-review'; structureIdent: string; rows: MappingReviewRow[]; optionalFields: string[]; criticalFields?: string[] }
   | { task: 'golden-sync'; removed: GoldenSyncField[]; added: GoldenSyncField[] }
-  | { task: 'technical-rule'; context: TechnicalRuleContext };
+  | { task: 'technical-rule'; context: TechnicalRuleContext }
+  | { task: 'change-summary'; entries: ChangeSummaryEntry[] };
 
 // Mirrors src/lib/mappingRulePolicy.ts's MAPPING_RULE_POLICY_TEXT — Deno can't import from src/,
 // so this is a deliberate duplicate. Update both together.
@@ -62,6 +72,38 @@ A rule that POINTS somewhere else instead of stating the rule — "See migration
 - If MAPPING_TYPE is DEFAULT: TECHNICAL_RULE must set a literal value in SQL, e.g. SELECT 'X' AS <target_field> for an unconditional default, or CASE WHEN <source_field> IS NULL THEN 'X' ELSE <source_field> END when the default only applies to blanks. TRANSFORMATION_RULE must make clear which of the two it is.
 - If MAPPING_TYPE is TRANSFORM: TECHNICAL_RULE must be a CASE expression or equivalent statement covering every stated condition INCLUDING the ELSE/otherwise case.
 - If MAPPING_TYPE is XREF: the cross-reference (XREF) table/object name must be explicitly mentioned in BOTH TRANSFORMATION_RULE and TECHNICAL_RULE, and TECHNICAL_RULE must show the lookup in SQL. It must also show the no-match behaviour (for example a LEFT JOIN with COALESCE, or an explicit default) — a rule that only covers the matching case is incomplete.`;
+
+/** Plain-English one-liners for a batch of logged writes.
+ *
+ * The trigger already writes a deterministic summary for every entry ("Updated FMDCST-9
+ * (sheets, changed_by)"), and that is what the UI shows by default. This exists because that
+ * sentence is accurate and unreadable once a change touches a JSON column: an FMD publish reads as
+ * one altered `sheets` field when what actually happened was fourteen mapping cells and a version
+ * release.
+ *
+ * Deliberately narrow: it renames what already happened. It is never asked to infer intent, judge
+ * whether a change was correct, or say anything the `fields` list does not support — an audit log
+ * that speculates is worse than one that is terse.
+ */
+function changeSummaryPrompt(entries: ChangeSummaryEntry[]): string {
+  const lines = entries.map((e) =>
+    `${e.id} | ${e.op} | ${e.entity} | ${e.label ?? '(unnamed)'} | fields: ${(e.fields ?? []).join(', ') || '(none)'}`);
+  return `Rewrite each system change-log entry below as ONE short sentence a project manager would understand.
+
+Each line is: id | operation | record type | record name | fields that changed
+
+Rules:
+- One sentence per entry, at most 14 words. No trailing period.
+- Name the record the way the line does. Do not invent identifiers.
+- Say WHAT changed, not why. You do not know why, and guessing in an audit log is a defect.
+- Translate technical column names into plain words (in_scope -> "in scope", load_seq -> "load order", fmd_id -> "assigned Field Mapping", published_at -> "published").
+- If the only changed field is a JSON blob (sheets, structure, draft), say what that record type uses it for, e.g. "Field mapping content edited" for an FMD version.
+- Never claim a count you were not given.
+
+Return ONLY JSON: {"summaries": {"<id>": "<sentence>", ...}} with an entry for every id.
+
+${lines.join('\n')}`;
+}
 
 function rulesPrompt(rows: RuleRequestRow[]): string {
   const lines = rows.map((r) =>
@@ -245,6 +287,9 @@ Deno.serve(async (req: Request) => {
     } else if (body.task === 'technical-rule') {
       if (!body.context) return new Response(JSON.stringify({ error: 'No row context supplied.' }), { status: 400, headers: jsonHeaders });
       prompt = technicalRulePrompt(body.context); maxTokens = 1200;
+    } else if (body.task === 'change-summary') {
+      if (!body.entries?.length) return new Response(JSON.stringify({ summaries: {} }), { headers: jsonHeaders });
+      prompt = changeSummaryPrompt(body.entries); maxTokens = 1500;
     } else if (body.task === 'mapping-review') {
       if (!body.rows?.length) return new Response(JSON.stringify({ findings: [] }), { headers: jsonHeaders });
       prompt = mappingReviewPrompt(body.structureIdent ?? '(unnamed structure)', body.rows, body.optionalFields ?? [], body.criticalFields ?? []); maxTokens = 4000;

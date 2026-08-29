@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, XCircle } from 'lucide-react';
 import { Pane } from '../../../components/Pane';
 import { Tag } from '../../../components/Tag';
 import { Segmented } from '../../../components/Segmented';
 import { fmtDateTime } from '../../../lib/format';
-import { analyseFmd, type CheckStatus } from '../../../lib/fmdHealth';
+import { analyseFmd, type CheckStatus, type HealthCheck } from '../../../lib/fmdHealth';
 import { MAPPING_EFFORT_WEIGHTS } from '../../../lib/mappingRulePolicy';
 import { Button } from '../../../components/Button';
 import { SyncGoldenFmdDialog } from '../SyncGoldenFmdDialog';
@@ -114,6 +114,8 @@ export function FmdHealthTab({ fmd, latest, notes, pendingChanges, versionLabel,
    * it was excluded. Off by default; the choice is visible. */
   const [inScopeOnly, setInScopeOnly] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
+  /** Passing checks start folded — they are the proof, not the work. */
+  const [showPassing, setShowPassing] = useState(false);
   const health = useMemo(
     () => analyseFmd(latest, notes, pendingChanges, inScopeOnly),
     [latest, notes, pendingChanges, inScopeOnly],
@@ -125,6 +127,7 @@ export function FmdHealthTab({ fmd, latest, notes, pendingChanges, versionLabel,
 
   const failing = health.checks.filter((c) => c.status === 'fail').length;
   const warning = health.checks.filter((c) => c.status === 'warn').length;
+  const passing = health.checks.filter((c) => c.status === 'pass');
   const filled = health.blanks.totalCells - health.blanks.blankCells;
   const filledPct = health.blanks.totalCells === 0 ? 0 : Math.round((filled / health.blanks.totalCells) * 100);
 
@@ -139,14 +142,14 @@ export function FmdHealthTab({ fmd, latest, notes, pendingChanges, versionLabel,
         </p>
         <div className="ml-auto flex items-center gap-2">
           {health.excluded > 0 && (
-            <span className="text-2xs text-muted">{health.excluded} out-of-scope field{health.excluded === 1 ? '' : 's'} excluded</span>
+            <span className="text-2xs text-muted">{health.excluded} field{health.excluded === 1 ? '' : 's'} excluded — out of scope or undecided</span>
           )}
           <Segmented
             value={inScopeOnly ? 'in' : 'all'}
             onChange={(v) => setInScopeOnly(v === 'in')}
             options={[
               { value: 'all' as const, label: 'All fields', title: 'Judge every field in the document' },
-              { value: 'in' as const, label: 'In scope only', title: 'Ignore fields explicitly marked out of scope. Fields with no scope stated are still judged — undecided is not excluded.' },
+              { value: 'in' as const, label: 'In scope only', title: 'Judge only fields marked MIGRATION_IN_SCOPE. Fields left undecided are excluded too — decide them, or grade the whole document.' },
             ]}
           />
         </div>
@@ -232,19 +235,43 @@ export function FmdHealthTab({ fmd, latest, notes, pendingChanges, versionLabel,
             </>
           }
         >
+          {/* Ordered fail → watch → pass, and the passing ones collapse.
+              Eight checks rendered at identical weight, distinguished only by a 14px icon, meant
+              the five things wrong were the same size as the three things right and you had to read
+              every row to find them. What needs doing is now at the top, carries a severity stripe,
+              and the rest folds into one line you can open if you want the proof. */}
           <div className="flex flex-col overflow-auto">
-            {health.checks.map((c) => {
-              const Icon = STATUS[c.status].icon;
-              return (
-                <div key={c.key} className="flex items-start gap-2.5 px-3.5 py-2 border-b border-line-soft last:border-b-0 shrink-0">
-                  <Icon size={14} className={clsx('shrink-0 mt-0.5', STATUS[c.status].className)} />
-                  <div className="min-w-0">
-                    <div className="text-sm2 font-semibold text-text">{c.label}</div>
-                    <div className="text-2xs text-muted">{c.detail}</div>
-                  </div>
-                </div>
-              );
-            })}
+            {[...health.checks]
+              .filter((c) => c.status !== 'pass')
+              .sort((a, b) => (a.status === 'fail' ? 0 : 1) - (b.status === 'fail' ? 0 : 1))
+              .map((c) => <CheckRow key={c.key} check={c} />)}
+
+            {passing.length > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowPassing((v) => !v)}
+                  className="flex items-center gap-2 px-3.5 py-2 text-left border-t border-line hover:bg-surface-2 shrink-0"
+                >
+                  <CheckCircle2 size={14} className="text-green shrink-0" />
+                  <span className="text-sm2 text-text">
+                    <span className="font-semibold tabular-nums">{passing.length}</span> check
+                    {passing.length === 1 ? '' : 's'} passing
+                  </span>
+                  <ChevronDown
+                    size={14}
+                    className={clsx('ml-auto text-muted transition-transform', showPassing && 'rotate-180')}
+                  />
+                </button>
+                {showPassing && passing.map((c) => <CheckRow key={c.key} check={c} />)}
+              </>
+            )}
+
+            {health.checks.every((c) => c.status === 'pass') && (
+              <p className="text-sm2 text-muted px-3.5 py-6 text-center">
+                Every check passes on this version.
+              </p>
+            )}
           </div>
         </Pane>
 
@@ -309,6 +336,28 @@ export function FmdHealthTab({ fmd, latest, notes, pendingChanges, versionLabel,
         goldenVersionId={goldenVersionId} goldenVersionLabel={goldenVersionLabel}
         onClose={() => setSyncOpen(false)}
       />
+    </div>
+  );
+}
+
+/** One check. The severity stripe does the work the icon alone was doing — a failing check is
+ * visible from the edge of the panel rather than only after reading its title. */
+function CheckRow({ check: c }: { check: HealthCheck }) {
+  const Icon = STATUS[c.status].icon;
+  return (
+    <div
+      className={clsx(
+        'flex items-start gap-2.5 px-3.5 py-2 border-b border-line-soft last:border-b-0 shrink-0 border-l-[3px]',
+        c.status === 'fail' && 'border-l-red bg-red-light/25',
+        c.status === 'warn' && 'border-l-amber-ink bg-amber-bg/40',
+        c.status === 'pass' && 'border-l-transparent',
+      )}
+    >
+      <Icon size={14} className={clsx('shrink-0 mt-0.5', STATUS[c.status].className)} />
+      <div className="min-w-0">
+        <div className="text-sm2 font-semibold text-text">{c.label}</div>
+        <div className="text-2xs text-muted">{c.detail}</div>
+      </div>
     </div>
   );
 }

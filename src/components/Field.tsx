@@ -23,7 +23,7 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
   return (
     <input
       className={clsx(
-        'w-full text-sm2 bg-surface border border-line-strong rounded-[8px] px-[11px] py-2 min-h-[38px]',
+        'w-full text-sm2 bg-surface border border-line-strong rounded px-[11px] py-2 min-h-[38px]',
         'hover:border-[#b9c1cc] focus-visible:outline-none focus-visible:border-blue-mid focus-visible:ring-4 focus-visible:ring-blue-light',
         className,
       )}

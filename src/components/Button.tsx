@@ -38,7 +38,7 @@ export function Button({ variant = 'secondary', size = 'md', className, ...props
   return (
     <button
       className={clsx(
-        'inline-flex items-center justify-center font-semibold rounded-[8px] shrink-0 whitespace-nowrap',
+        'inline-flex items-center justify-center font-semibold rounded shrink-0 whitespace-nowrap',
         'disabled:opacity-50 disabled:pointer-events-none transition-all',
         SIZE_CLASSES[size],
         VARIANT_CLASSES[variant],

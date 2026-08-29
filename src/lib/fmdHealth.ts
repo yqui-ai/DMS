@@ -57,12 +57,19 @@ export function analyseFmd(
   /** Judge only the fields being migrated. An excluded field needs no rule and no target, so
    * grading it drags the score down for work nobody intends to do. Coverage still counts every
    * field, because "how much of this is in scope" is the one question the filter can't answer
-   * about itself. */
+   * about itself.
+   *
+   * **In scope means `MIGRATION_IN_SCOPE = in`, not "not explicitly out".** It used to keep every
+   * row that wasn't marked out, which made the toggle a no-op on the overwhelmingly common FMD
+   * where nobody has filled the column yet: 38 in scope, 0 out, 229 not stated — so filtering
+   * removed nothing and the control looked broken. It was doing what its comment said and not what
+   * its label said. If that now yields zero rows, the honest reading is "scope has not been decided
+   * yet", and the Coverage figures above say so. */
   inScopeOnly = false,
 ): FmdHealth | null {
   const allTables: GeneratedTable[] = version?.sheets.generatedTables ?? [];
   const tables: GeneratedTable[] = inScopeOnly
-    ? allTables.map((t) => ({ ...t, rows: t.rows.filter((r) => scopeOf(r.MIGRATION_IN_SCOPE) !== 'out') }))
+    ? allTables.map((t) => ({ ...t, rows: t.rows.filter((r) => scopeOf(r.MIGRATION_IN_SCOPE) === 'in') }))
     : allTables;
   const columns = version?.sheets.generatedColumns;
   if (!version || allTables.length === 0) return null;
@@ -208,6 +215,6 @@ export function analyseFmd(
     structures, totalRows, scope,
     blanks: { criticalBlank, criticalCells, blankCells, totalCells },
     mapping, untyped, totalEffort, rules, review, points, pendingChanges, checks,
-    excluded: inScopeOnly ? scope.out : 0,
+    excluded: inScopeOnly ? scope.out + scope.unset : 0,
   };
 }

@@ -11,7 +11,7 @@ export function ToolbarSearch({ value, onChange, placeholder = 'Search…' }: { 
         // Quiet until focused or filled, matching MultiSelectFilter — the search box is the widest
         // thing in the toolbar, so a permanent border made every list screen read as chrome-first.
         className={clsx(
-          'text-sm2 pl-8 pr-3 py-1.5 rounded-[8px] border bg-transparent min-w-[260px]',
+          'text-sm2 pl-8 pr-3 py-1.5 rounded border bg-transparent min-w-[260px]',
           'focus:bg-surface focus:border-line-strong',
           value ? 'border-line-strong bg-surface' : 'border-transparent hover:bg-surface-2',
         )}

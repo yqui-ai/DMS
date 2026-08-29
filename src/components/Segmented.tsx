@@ -15,7 +15,7 @@ export function Segmented<T extends string>({ options, value, onChange, classNam
   className?: string;
 }) {
   return (
-    <div className={clsx('inline-flex items-center gap-0.5 bg-surface-2 rounded-[8px] p-0.5', className)} role="group">
+    <div className={clsx('inline-flex items-center gap-0.5 bg-surface-2 rounded p-0.5', className)} role="group">
       {options.map((o) => (
         <button
           key={o.value}
@@ -23,7 +23,7 @@ export function Segmented<T extends string>({ options, value, onChange, classNam
           title={o.title}
           aria-pressed={value === o.value}
           className={clsx(
-            'flex items-center gap-1.5 text-sm2 font-semibold px-2.5 py-1 rounded-[6px] whitespace-nowrap transition-colors',
+            'flex items-center gap-1.5 text-sm2 font-semibold px-2.5 py-1 rounded whitespace-nowrap transition-colors',
             value === o.value
               ? 'bg-surface text-text shadow-[0_1px_2px_rgba(22,28,40,.08)]'
               : 'text-muted hover:text-text',

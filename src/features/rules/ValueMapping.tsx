@@ -32,7 +32,7 @@ export function ValueMapping() {
             key={t.id}
             onClick={() => setSelectedId(t.id)}
             className={clsx(
-              'text-left px-3 py-2.5 rounded-[8px] border',
+              'text-left px-3 py-2.5 rounded border',
               selected === t.id ? 'bg-blue-light border-blue-mid' : 'bg-surface border-line hover:bg-blue-pale',
             )}
           >

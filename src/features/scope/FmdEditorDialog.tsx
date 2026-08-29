@@ -165,9 +165,9 @@ export function FmdEditorDialog({ fmd, onClose }: { fmd: Fmd | null; onClose: ()
                 <thead>
                   <tr>
                     {columns.map((c) => (
-                      <th key={c} className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 sticky top-0 text-left">{c}</th>
+                      <th key={c} className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface border-b border-line px-2.5 py-2 sticky top-0 text-left">{c}</th>
                     ))}
-                    <th className="bg-surface-3 sticky top-0 w-8" />
+                    <th className="bg-surface border-b border-line sticky top-0 w-8" />
                   </tr>
                 </thead>
                 <tbody>

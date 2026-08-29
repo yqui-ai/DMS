@@ -47,6 +47,10 @@ export function Breadcrumb() {
     if (rest[0] === 'library') {
       crumbs.push({ label: 'Library' });
       if (rest[1]) crumbs.push({ label: LIBRARY_LABELS[rest[1]] ?? humanise(rest[1]) });
+    } else if (rest[0] === 'scope' && rest[1] === 'wizard') {
+      // A wizard has its own trail — the numbered step flow, right under this. Adding
+      // 'Wizard > Objects' on top states the same position twice, in two different vocabularies.
+      crumbs.push({ label: 'Scope' });
     } else if (rest[0]) {
       const sectionPath = `/pg/${programId}/sp/${subprojectId}/${rest[0]}`;
       crumbs.push({
@@ -65,6 +69,14 @@ export function Breadcrumb() {
     // Program-level screen (settings/admin) with no subproject open.
     crumbs.push({ label: segments[2] ? humanise(segments[2]) : 'Program' });
   } else if (segments.length > 0) {
+    // The three launchpad AREAS are the top of their own trail: the page title already names them,
+    // and 'Migration Project › Projects' is the same word twice.
+    //
+    // Archive and Approvals are NOT areas — they are reached from Migration Project, so they get a
+    // trail back to it. They were listed here by mistake, which left them with no way back at all
+    // once the switcher was cut to the three areas.
+    const AREA_ROOTS = ['projects', 'status', 'admin', 'me', 'search'];
+    if (segments.length === 1 && AREA_ROOTS.includes(segments[0])) return null;
     crumbs.push({ label: humanise(segments[segments.length - 1]) });
   }
 
@@ -72,7 +84,14 @@ export function Breadcrumb() {
 
   return (
     <nav aria-label="Breadcrumb" className="flex items-center gap-1 min-w-0 text-sm2 mb-2">
-      <Link to="/" className="text-muted hover:text-blue shrink-0" title="All subprojects">Home</Link>
+      {/* The root of the trail is Migration Project, not the launchpad. The DMS wordmark in the
+          sidebar is already the way home, and two controls a few pixels apart both going to `/`
+          made one of them redundant — worse, this one was labelled "Home" while landing you
+          somewhere the trail never passed through. Going UP from a screen inside a project means
+          the project list. */}
+      <Link to="/projects" className="text-muted hover:text-blue shrink-0" title="All programs and projects">
+        Migration Project
+      </Link>
       {crumbs.map((c, i) => {
         const isLast = i === crumbs.length - 1;
         return (

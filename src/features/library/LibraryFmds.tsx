@@ -2,13 +2,15 @@ import { useMemo, useState } from 'react';
 import { Select } from '../../components/Select';
 import { Button } from '../../components/Button';
 import { Outlet, useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronRight, Download, Settings, Sparkles } from 'lucide-react';
+import { Archive, ChevronDown, ChevronRight, Download, Settings, Sparkles } from 'lucide-react';
 import { PageHeader } from '../../components/PageHeader';
 import { ListEmptyState } from '../../components/ListEmptyState';
 import { Table, type Column } from '../../components/Table';
 import { Tag } from '../../components/Tag';
 import { MultiSelectFilter } from '../../components/MultiSelectFilter';
 import { Toolbar } from '../../components/Toolbar';
+import { Menu } from '../../components/Menu';
+import { ArchiveDialog, type ArchiveTarget } from '../../components/ArchiveDialog';
 import { fmtDateTime } from '../../lib/format';
 import { exportFmdsAsExcel } from '../../lib/fmdZipExport';
 import { useLibraryFmds, type LibraryFmdRow } from '../../lib/queries/fmds';
@@ -23,10 +25,13 @@ const TYPE_OPTIONS = ['Standard', 'Golden', 'Custom'];
 const NEW_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 type GroupBy = 'none' | 'type' | 'reference';
+/** Read as "Group: <value>", matching the filters beside it ("Class: All"). The old labels each
+ * repeated the word "grouping" and the longest ran to 37 characters, which is what made the control
+ * twice the width of everything else in the row. */
 const GROUP_OPTIONS: { value: GroupBy; label: string }[] = [
-  { value: 'none', label: 'No grouping' },
-  { value: 'type', label: 'Group by Type' },
-  { value: 'reference', label: 'Group by Program/Project/Subproject' },
+  { value: 'none', label: 'Group: None' },
+  { value: 'type', label: 'Group: Type' },
+  { value: 'reference', label: 'Group: Scope' },
 ];
 
 /** Two recency flags, and a row shows at most one of them: "New" for an FMD that has only ever had
@@ -52,6 +57,7 @@ export function LibraryFmds() {
   const navigate = useNavigate();
   const to = useLibraryPath();
   const [exporting, setExporting] = useState(false);
+  const [archiving, setArchiving] = useState<ArchiveTarget | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [goldenTarget, setGoldenTarget] = useState<LibraryFmdRow | 'new' | null>(null);
   const [query, setQuery] = useState('');
@@ -219,6 +225,29 @@ export function LibraryFmds() {
       },
       sortValue: (f) => f.changedAt ?? f.createdAt,
     },
+    {
+      key: 'actions', width: 44, header: '',
+      render: (f) => (
+        <div onClick={(e) => e.stopPropagation()}>
+          <Menu
+            label={`Manage ${f.name}`}
+            actions={[{
+              key: 'archive',
+              label: 'Archive FMD',
+              icon: <Archive size={14} />,
+              danger: true,
+              // Disabled rather than hidden: the reason is the useful part, and it goes in the
+              // tooltip via the label so a refused action explains itself.
+              disabled: !!f.archiveBlockedReason,
+              title: f.archiveBlockedReason,
+              onSelect: () => f.programId && setArchiving({
+                entityType: 'fmd', entityId: f.id, entityLabel: f.name, programId: f.programId,
+              }),
+            }]}
+          />
+        </div>
+      ),
+    },
   ];
 
   return (
@@ -240,7 +269,10 @@ export function LibraryFmds() {
       >
         <MultiSelectFilter label="Class" options={CLASS_OPTIONS} selected={klass} onChange={setKlass} />
         <MultiSelectFilter label="Type" options={TYPE_OPTIONS} selected={type} onChange={setType} />
-        <Select value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} size="sm">
+        <Select
+          value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)}
+          size="sm" quiet={groupBy === 'none'} aria-label="Group rows by"
+        >
           {GROUP_OPTIONS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
         </Select>
       </Toolbar>
@@ -283,6 +315,7 @@ export function LibraryFmds() {
       <Outlet />
       <GoldenFmdDesignerDialog target={goldenTarget} onClose={() => setGoldenTarget(null)} />
       <ConvertHistoricalFmdWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
+      <ArchiveDialog target={archiving} onClose={() => setArchiving(null)} />
     </div>
   );
 }

@@ -64,7 +64,7 @@ function Reply({ note, childrenOf, depth, replyingTo, setReplyingTo, onReply, co
             <textarea
               value={draft} onChange={(e) => setDraft(e.target.value)} rows={2} autoFocus
               placeholder={`Reply to ${note.createdBy}…`}
-              className="flex-1 text-sm2 bg-surface border border-line-strong rounded-[8px] px-2 py-1.5 resize-none"
+              className="flex-1 text-sm2 bg-surface border border-line-strong rounded px-2 py-1.5 resize-none"
             />
             <Button variant="primary" size="sm" onClick={send} disabled={sending || !draft.trim()} aria-label="Post reply">
               <Send size={13} />
@@ -208,7 +208,7 @@ export function ReviewPointThread({ point, allNotes, onReply, onToggleResolved, 
         <div className="border-t border-line p-2 flex items-end gap-1.5">
           <textarea
             value={draft} onChange={(e) => setDraft(e.target.value)} rows={2} autoFocus placeholder="Add a comment…"
-            className="flex-1 text-sm2 bg-surface border border-line-strong rounded-[8px] px-2 py-1.5 resize-none"
+            className="flex-1 text-sm2 bg-surface border border-line-strong rounded px-2 py-1.5 resize-none"
           />
           <Button variant="primary" size="sm" onClick={send} disabled={sending || !draft.trim()} aria-label="Post comment">
             <Send size={13} />

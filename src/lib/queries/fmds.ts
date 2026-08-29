@@ -14,109 +14,13 @@ const toFmdVersion = (v: any): FmdVersion => ({
   publishedBy: v.published_by ?? undefined, publishedAt: v.published_at ?? undefined,
 });
 
-/** What an unpublished editing draft carries in `fmd_versions.version`.
- *
- * A draft is a staging area, not a version: it collects edits until someone decides to release
- * them. Numbering it at the first keystroke made a new version appear the moment anyone touched a
- * cell, and pinned the number before it was known to be right — publish anything else in between
- * and the draft would be released under a number that no longer followed. The number is allocated
- * at publish instead, by `nextPublishedVersion`.
- *
- * `unique (fmd_id, version)` therefore also enforces at most one editing draft per FMD, for free. */
-export const DRAFT_VERSION = 'Draft';
+/** The draft/version model lives in `../fmdDraft` — pure, and therefore testable without a
+ * database. Re-exported here so every existing import of these names keeps working. */
+export {
+  DRAFT_VERSION, DRAFT_VERSION_ID, applyPendingChanges, draftOverlayVersion, nextPublishedVersion, bumpVersion,
+} from '../fmdDraft';
+import { DRAFT_VERSION, DRAFT_VERSION_ID, applyPendingChanges, bumpVersion, nextPublishedVersion } from '../fmdDraft';
 
-/** Bumps the patch segment of a 'vMAJOR.MINOR.PATCH' version string; falls back to 'v1.0.1' for
- * anything that doesn't match (shouldn't happen — every version is app-generated). */
-const bumpVersion = (version: string): string => {
-  const m = /^v(\d+)\.(\d+)\.(\d+)$/.exec(version);
-  if (!m) return 'v1.0.1';
-  return `v${m[1]}.${m[2]}.${Number(m[3]) + 1}`;
-};
-
-/** The number a draft is released under. Generated and converted FMDs arrive already numbered
- * and keep what they have — there is nothing to bump from on a first release. Everything else is
- * an editing draft, which takes the next number after whatever is published right now.
- *
- * Used by both `usePublishFmdVersion` and the Draft tab, so the number offered before publishing
- * is by construction the number that gets written. */
-const SEMVER = /^v(\d+)\.(\d+)\.(\d+)$/;
-
-/** Highest vX.Y.Z among the given versions, ignoring anything that isn't one (a draft label, or a
- * hand-typed value from an imported FMD). */
-const highestVersion = (versions: { version: string }[]): string | undefined => {
-  const parsed = versions
-    .map((v) => ({ v: v.version, m: SEMVER.exec(v.version) }))
-    .filter((x): x is { v: string; m: RegExpExecArray } => !!x.m)
-    .sort((a, b) =>
-      Number(a.m[1]) - Number(b.m[1]) || Number(a.m[2]) - Number(b.m[2]) || Number(a.m[3]) - Number(b.m[3]));
-  return parsed.pop()?.v;
-};
-
-/** The number a draft is released under.
- *
- * Bumped from the HIGHEST existing version, not from the newest published one. Those differ whenever
- * an unpublished version sits above the live one — a generation, or a sync that was never released
- * — and bumping from the published version then produces a number that already exists, which
- * `unique (fmd_id, version)` rejects outright. The symptom is a publish that simply fails on an FMD
- * whose history has a gap in it.
- *
- * Generated and converted FMDs arrive already numbered and keep what they have; there is nothing to
- * bump from on a first release. */
-export const nextPublishedVersion = (
-  draft: { version: string },
-  versions: { version: string }[],
-): string => {
-  if (draft.version !== DRAFT_VERSION) return draft.version;
-  const highest = highestVersion(versions);
-  return highest ? bumpVersion(highest) : 'v1.0.0';
-};
-
-/** Id of the synthetic version that represents "the draft". Not a database row — see FmdDraft.
- * Anything comparing against a real version id must therefore tolerate this value. */
-export const DRAFT_VERSION_ID = 'draft';
-
-/** Applies pending changes onto mapping tables. Used to derive what a draft looks like on screen
- * and, at publish, to produce the released content — the same function both times, so what you
- * reviewed is what gets written. */
-export const applyPendingChanges = (tables: GeneratedTable[], changes: FmdPendingChange[]): GeneratedTable[] =>
-  tables.map((t) => {
-    const mine = changes.filter((c) => c.structureId === t.structureId);
-    if (!mine.length) return t;
-    return {
-      ...t,
-      rows: t.rows.map((r, i) => {
-        const hits = mine.filter((c) => c.rowIndex === i);
-        return hits.length ? hits.reduce((acc, c) => ({ ...acc, [c.field]: c.to }), r) : r;
-      }),
-    };
-  });
-
-/** The draft as a version-shaped object, so every view that renders a version can render the draft
- * without knowing it isn't one. Derived on read — nothing of this shape is ever stored. */
-export const draftOverlayVersion = (base: FmdVersion, draft: FmdDraft): FmdVersion => {
-  const last = draft.pendingChanges[draft.pendingChanges.length - 1];
-  return {
-    ...base,
-    id: DRAFT_VERSION_ID,
-    version: DRAFT_VERSION,
-    state: 'Draft',
-    publishedBy: undefined, publishedAt: undefined,
-    // Attribution belongs to whoever made the edits, not to whoever published the version they
-    // sit on top of.
-    createdBy: draft.pendingChanges[0]?.by ?? base.createdBy,
-    createdAt: draft.pendingChanges[0]?.at ?? base.createdAt,
-    changedBy: last?.by, changedAt: last?.at,
-    comment: `${draft.pendingChanges.length} unpublished change${draft.pendingChanges.length === 1 ? '' : 's'} on top of ${base.version}`,
-    sheets: {
-      ...base.sheets,
-      // Reviews assessed the PUBLISHED content. Carrying them onto edited content would report
-      // that something was checked when what is on screen is not what was checked.
-      mappingReview: undefined, mappingReviews: undefined,
-      generatedTables: applyPendingChanges(base.sheets.generatedTables ?? [], draft.pendingChanges),
-      pendingChanges: draft.pendingChanges,
-    },
-  };
-};
 
 export function useAllFmds() {
   return useQuery({
@@ -130,6 +34,8 @@ export function useAllFmds() {
 }
 
 export interface LibraryFmdRow extends Fmd, LibraryListing {
+  /** Why archiving is refused, or undefined when it is allowed — see archiveBlockedReason. */
+  archiveBlockedReason?: string;
   latestVersion?: string; latestVersionId?: string;
   createdBy?: string; createdAt?: string; changedBy?: string; changedAt?: string;
   /** Which Golden FMD version this FMD was generated against, and whether Golden has since moved
@@ -159,6 +65,32 @@ export interface LibraryFmdRow extends Fmd, LibraryListing {
 /** FMDs enriched with the program/project reference (via subproject -> project -> program) and
  * latest version — for the Library > Field Mapping catalogue. Newest-generated/changed first, so
  * new work always surfaces at the top instead of getting buried alphabetically. */
+/** Why this FMD cannot be archived, or undefined when it can.
+ *
+ * Returns a SENTENCE rather than a boolean, because every one of these has a different reason and
+ * a disabled menu item with no explanation is the thing people file bugs about.
+ *
+ *  - Golden is the template every Standard and Custom is generated from, and
+ *    `based_on_golden_version_id` points at its versions. Archiving it orphans the lot. It also
+ *    has no program to scope a request to — it belongs to neither a subproject nor an object.
+ *  - Standard is the reference its Customs align to (`based_on_standard_fmd_version_id`), so it
+ *    goes only once none are left. */
+const archiveBlockedReason = (
+  f: any,
+  programId: string | undefined,
+  customCountByObject: Map<string, number>,
+): string | undefined => {
+  if (f.type === 'Golden') return 'The Golden FMD is the template every other FMD is generated from.';
+  if (!programId) return 'This FMD is not scoped to a program, so it cannot be archived.';
+  if (f.type === 'Standard') {
+    const dependents = f.migration_object_id ? customCountByObject.get(f.migration_object_id) ?? 0 : 0;
+    if (dependents > 0) {
+      return `${dependents} Custom FMD${dependents === 1 ? '' : 's'} still reference this Standard FMD. Archive ${dependents === 1 ? 'it' : 'them'} first.`;
+    }
+  }
+  return undefined;
+};
+
 export function useLibraryFmds(enabled = true) {
   return useQuery({
     queryKey: ['fmds-library'],
@@ -166,7 +98,12 @@ export function useLibraryFmds(enabled = true) {
     queryFn: async (): Promise<LibraryFmdRow[]> => {
       const { data, error } = await supabase
         .from('fmds')
-        .select('*, subprojects(name, projects(code, name, programs(code, name))), fmd_versions!fmd_id(id, version, state, created_at, created_by, changed_at, changed_by, published_at)')
+        // migration_objects.program_id is how a STANDARD fmd finds its program: it has no
+        // subproject (it is program-wide), but it always has an object, and every object has a
+        // program. The Golden fmd has neither and therefore no program at all — which is one
+        // reason it can never be archived.
+        .select('*, subprojects(name, project_id, projects(id, code, name, program_id, programs(code, name))), migration_objects(program_id), fmd_versions!fmd_id(id, version, state, created_at, created_by, changed_at, changed_by, published_at)')
+        .is('archived_at', null)
         .order('name');
       if (error) throw error;
       const rows = data ?? [];
@@ -181,6 +118,14 @@ export function useLibraryFmds(enabled = true) {
         const sorted = [...(f.fmd_versions ?? [])].sort((a: any, b: any) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
         return sorted[0]?.id as string | undefined;
       };
+      // How many Custom FMDs exist per object. A Standard FMD is the reference its Customs align
+      // to, so archiving one with live children would leave them pointing at an archived parent.
+      const customCountByObject = new Map<string, number>();
+      for (const f of rows as any[]) {
+        if (f.type !== 'Custom' || !f.migration_object_id) continue;
+        customCountByObject.set(f.migration_object_id, (customCountByObject.get(f.migration_object_id) ?? 0) + 1);
+      }
+
       const goldenFmd = (rows as any[]).find((f) => f.type === 'Golden');
       const goldenLatestVersionId = goldenFmd ? latestVersionId(goldenFmd) : undefined;
       const standardLatestVersionIdByObject = new Map<string, string>();
@@ -191,6 +136,7 @@ export function useLibraryFmds(enabled = true) {
       }
 
       const decorated = (rows as any[]).map((f) => {
+        const programId = (f.subprojects?.projects?.program_id ?? f.migration_objects?.program_id) as string | undefined;
         const programCode = f.subprojects?.projects?.programs?.code as string | undefined;
         const projectCode = f.subprojects?.projects?.code as string | undefined;
         const programName = f.subprojects?.projects?.programs?.name as string | undefined;
@@ -214,6 +160,8 @@ export function useLibraryFmds(enabled = true) {
           class: f.class, type: f.type, displayId: f.display_id ?? undefined, aiGenerated: !!f.ai_generated,
           histSourceName: f.hist_source_name ?? undefined, histPlant: f.hist_plant ?? undefined,
           reference: formatLibraryReference(f.class, programCode, projectCode),
+          programId,
+          archiveBlockedReason: archiveBlockedReason(f, programId, customCountByObject),
           programName, projectName, subprojectName,
           latestVersion: latest?.version as string | undefined, latestVersionId: latest?.id as string | undefined,
           activeVersion: [...versions].reverse().find((v: any) => v.published_at)?.version as string | undefined,
@@ -381,6 +329,60 @@ export function useApplyGoldenTemplateMutation(fmdId: string) {
 export interface GoldenWhereUsedRow {
   fmdId: string; name: string; displayId?: string; reference: string; objectId?: string;
   basedOnVersion?: string; isOutdated: boolean;
+}
+
+/** Where one FMD sits, and what it is joined to in both directions. */
+export interface FmdUsage {
+  /** The Golden template this FMD was generated from, if any. */
+  basedOn?: { fmdId: string; name: string; displayId?: string; version?: string; isOutdated: boolean };
+}
+
+/** What one FMD was generated FROM — the upward half of the Where-Used tab.
+ *
+ * Placement (programme / project / subproject / object) is deliberately NOT here. It was, resolved
+ * with `subprojects(projects(programs(...)))`, and that silently returned null whenever RLS
+ * filtered any level of the chain — the tab showed a real object beside three em-dashes.
+ * `hierarchy.ts` already documents why: RLS filters each level independently, so the hierarchy is
+ * fetched flat and joined in memory. `FmdWhereUsedTab` reads it from there.
+ *
+ * Every query below is a single table for the same reason.
+ */
+export function useFmdUsage(fmdId?: string) {
+  return useQuery({
+    queryKey: ['fmd-usage', fmdId],
+    enabled: !!fmdId,
+    queryFn: async (): Promise<FmdUsage> => {
+      const { data: fmd, error } = await supabase
+        .from('fmds').select('based_on_golden_version_id').eq('id', fmdId!).single();
+      if (error) throw error;
+
+      const goldenVersionId = (fmd as any).based_on_golden_version_id as string | null;
+      if (!goldenVersionId) return {};
+
+      const { data: gv, error: gvErr } = await supabase
+        .from('fmd_versions').select('id, version, fmd_id').eq('id', goldenVersionId).single();
+      if (gvErr) throw gvErr;
+
+      const [templateRes, newestRes] = await Promise.all([
+        supabase.from('fmds').select('name, display_id').eq('id', (gv as any).fmd_id).single(),
+        supabase.from('fmd_versions').select('id').eq('fmd_id', (gv as any).fmd_id)
+          .order('created_at', { ascending: false }).limit(1),
+      ]);
+      if (templateRes.error) throw templateRes.error;
+      if (newestRes.error) throw newestRes.error;
+      const newest = newestRes.data?.[0];
+
+      return {
+        basedOn: {
+          fmdId: (gv as any).fmd_id,
+          name: (templateRes.data as any)?.name ?? 'Golden FMD',
+          displayId: (templateRes.data as any)?.display_id ?? undefined,
+          version: (gv as any).version,
+          isOutdated: !!newest && newest.id !== goldenVersionId,
+        },
+      };
+    },
+  });
 }
 
 /** Every Standard/Custom FMD that's declared itself built from the Golden FMD, with whether it's
@@ -680,13 +682,26 @@ export function useEditFmdField(fmdId: string) {
           await queryClient.invalidateQueries({ queryKey: ['fmd-field-notes', fmdId] });
         }
       }
-      // An unpublished version is a generation nobody has released yet — edit it in place. There
-      // are no pending changes to record: the entire version is unreleased, so publishing releases
-      // all of it. A pending change only means something measured against a published baseline.
+      // An unpublished version is a generation nobody has released yet — edit it in place. It needs
+      // no PENDING CHANGES, because those are a publish selector and there is nothing to select:
+      // publishing releases the whole version. It does need a CHANGE LOG. Without one, edits here
+      // left no trace at all — the version's comment said why it existed ('Golden FMD updated') and
+      // nothing recorded what anyone then changed inside it.
       if (!current.published_at) {
+        const entry: FmdPendingChange = {
+          id: crypto.randomUUID(), structureId, structureIdent: target.structureIdent,
+          rowIndex, rowLabel, field, from: before, to: value, by: who, at: now,
+        };
         const { error } = await supabase
           .from('fmd_versions')
-          .update({ sheets: { ...sheets, generatedTables: nextTables }, changed_by: who, changed_at: now })
+          .update({
+            sheets: {
+              ...sheets,
+              generatedTables: nextTables,
+              changeLog: [...(sheets.changeLog ?? []), entry],
+            },
+            changed_by: who, changed_at: now,
+          })
           .eq('id', current.id);
         if (error) throw error;
         await invalidateFmd(queryClient, fmdId);
@@ -775,7 +790,21 @@ export function usePublishFmdVersion() {
         ? draft.sheets.generatedTables ?? []
         : applyPendingChanges(basePublished!.sheets.generatedTables!, selected);
 
-      const { pendingChanges: _p, ...draftSheets } = draft.sheets;
+      const { pendingChanges: _p, ...rest } = draft.sheets;
+
+      /** A review describes the content it ran against. An INHERITED one (stamped `inheritedFrom`
+       * by `draftOverlayVersion`) ran against the previous published version — carrying it onto the
+       * version being released now asserts that this content was reviewed when it never was, and
+       * its findings then highlight cells in a version they were never about. The reviewer's work
+       * is not lost: it stays on the version it actually assessed, and the draft keeps showing it
+       * while you fix things. It simply does not get promoted.
+       *
+       * A review with no `inheritedFrom` ran against this content and is published with it. */
+      const draftSheets = {
+        ...rest,
+        mappingReview: rest.mappingReview?.inheritedFrom ? undefined : rest.mappingReview,
+        mappingReviews: rest.mappingReviews?.filter((r) => !r.inheritedFrom),
+      };
 
       // The number is allocated HERE, not when the draft was opened, so it always follows what is
       // actually published at this moment.
@@ -788,22 +817,31 @@ export function usePublishFmdVersion() {
       // The version's comment becomes the change log for what was actually released. The draft's
       // own comment ("Working draft from v1.0.0") describes how the draft started, which is useless
       // once it's a published version in the history — what people need there is what changed.
-      // Capped, because a session can release hundreds of edits and a comment nobody can read is
-      // the same as no comment.
-      const MAX_LISTED = 20;
-      const line = (c: FmdPendingChange) =>
-        `- ${c.structureIdent ? `${c.structureIdent} · ` : ''}${c.rowLabel} · ${c.field}: "${c.from || '—'}" → "${c.to || '—'}"`;
-      const listed = selected.slice(0, MAX_LISTED).map(line);
-      if (selected.length > MAX_LISTED) listed.push(`- …and ${selected.length - MAX_LISTED} more`);
+      // It does NOT list them. The comment used to spell out every change as a bullet, because at
+      // the time nothing else recorded what a version contained. `changeLog` does now, structured
+      // and with the author and timestamp per entry — so listing them here printed the same three
+      // edits twice on one pane, once as prose and once as data. The comment summarises; the log is
+      // the record.
       const heldBack = remaining.length && !publishWholeDraft
-        ? `\n\n${remaining.length} change${remaining.length === 1 ? '' : 's'} held back in a new draft.`
+        ? ` ${remaining.length} change${remaining.length === 1 ? '' : 's'} held back in a new draft.`
         : '';
       const comment = selected.length
-        ? `Published ${selected.length} change${selected.length === 1 ? '' : 's'}:\n${listed.join('\n')}${heldBack}`
+        ? `Published ${selected.length} change${selected.length === 1 ? '' : 's'}.${heldBack}`
         : draft.comment ?? `Published ${releasedVersion}`;
 
       const row = {
-        sheets: { ...draftSheets, generatedTables: publishedTables },
+        sheets: {
+          ...draftSheets,
+          generatedTables: publishedTables,
+          // What actually produced this version, kept with it. The comment summarises and truncates
+          // at 20 lines; this is the full record, and it is what the Version details pane reads.
+          // Appended to anything the version already logged — an unreleased row that was edited in
+          // place before being published has its own log, and both halves belong to this version.
+          changeLog: [...(draftSheets.changeLog ?? []), ...selected],
+          // Pending changes are a publish selector and this version is now published: whatever was
+          // held back has already been re-based into a fresh draft below.
+          pendingChanges: undefined,
+        },
         comment, version: releasedVersion,
         state, published_by: who, published_at: now,
       };

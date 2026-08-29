@@ -3,23 +3,41 @@ import { supabase } from '../supabase';
 import { useAuth } from '../auth';
 import type { Cycle, Program, Project, Subproject } from '../../types/entities';
 
+/** The columns every level shares (migration 0037) — spread into each mapper so a new audit
+ * field is added in one place rather than four. */
+const auditOf = (r: any) => ({
+  guid: r.guid, status: r.status ?? undefined,
+  createdBy: r.created_by ?? undefined, createdAt: r.created_at ?? undefined,
+  changedBy: r.changed_by ?? undefined, changedAt: r.changed_at ?? undefined,
+});
+
 const toProgram = (p: any): Program => ({
+  ...auditOf(p),
   id: p.id, code: p.code, name: p.name, description: p.description ?? undefined,
   startDate: p.start_date ?? undefined, endDate: p.end_date ?? undefined,
+  owner: p.owner ?? undefined, coLead: p.co_lead ?? undefined,
 });
 const toProject = (r: any): Project => ({
+  ...auditOf(r),
   id: r.id, programId: r.program_id, code: r.code, name: r.name, description: r.description ?? undefined,
   seq: r.seq, startDate: r.start_date ?? undefined, endDate: r.end_date ?? undefined,
 });
 const toSubproject = (w: any): Subproject => ({
+  ...auditOf(w),
   id: w.id, projectId: w.project_id, code: w.code, name: w.name, description: w.description ?? undefined,
   startDate: w.start_date ?? undefined, endDate: w.end_date ?? undefined,
+  prepStartDate: w.prep_start_date ?? undefined, prepEndDate: w.prep_end_date ?? undefined,
   freezeDate: w.freeze_date ?? undefined, scopeFinalized: w.scope_finalized, seq: w.seq,
 });
 const toCycle = (c: any): Cycle => ({
-  id: c.id, subprojectId: c.subproject_id, name: c.name, seq: c.seq, description: c.description ?? undefined,
+  ...auditOf(c),
+  id: c.id, subprojectId: c.subproject_id, code: c.code ?? undefined, name: c.name, seq: c.seq,
+  description: c.description ?? undefined,
+  startDate: c.start_date ?? undefined, endDate: c.end_date ?? undefined,
   migStart: c.mig_start ?? undefined, migEnd: c.mig_end ?? undefined, dataFreeze: c.data_freeze ?? undefined,
 });
+
+export { toProgram, toProject, toSubproject, toCycle };
 
 /** Programs the current user has any membership in — drives the subproject picker/switcher. */
 export function usePrograms() {

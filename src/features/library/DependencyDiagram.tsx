@@ -51,7 +51,7 @@ function DepNode({ data }: NodeProps<Node<DepNodeData>>) {
           : {}),
       }}
       className={clsx(
-        'flex flex-col justify-center gap-1.5 px-3.5 py-2.5 rounded-[10px] transition-opacity',
+        'flex flex-col justify-center gap-1.5 px-3.5 py-2.5 rounded-lg transition-opacity',
         !futuristic && (data.isRoot
           ? 'bg-blue'
           : clsx(
@@ -103,7 +103,7 @@ function Legend({ theme }: { theme: ErdTheme }) {
   return (
     <div
       className={clsx(
-        'absolute top-2.5 right-2.5 z-10 rounded-[8px] shadow-cardHover px-3 py-2 flex flex-col gap-1.5',
+        'absolute top-2.5 right-2.5 z-10 rounded shadow-cardHover px-3 py-2 flex flex-col gap-1.5',
         futuristic ? 'bg-[#141b30]/95 text-white' : 'bg-surface/95 text-text',
       )}
     >
@@ -122,7 +122,7 @@ function Legend({ theme }: { theme: ErdTheme }) {
 function ThemeToggle({ theme, onChange }: { theme: ErdTheme; onChange: (t: ErdTheme) => void }) {
   const futuristic = theme === 'futuristic';
   return (
-    <div className={clsx('absolute top-2.5 left-2.5 z-10 inline-flex rounded-[8px] overflow-hidden shadow-cardHover', futuristic ? 'bg-[#141b30]/95' : 'bg-surface/95')}>
+    <div className={clsx('absolute top-2.5 left-2.5 z-10 inline-flex rounded overflow-hidden shadow-cardHover', futuristic ? 'bg-[#141b30]/95' : 'bg-surface/95')}>
       <button
         onClick={() => onChange('simple')}
         className={clsx(

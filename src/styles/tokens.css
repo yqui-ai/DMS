@@ -57,3 +57,89 @@ body{
 .card-shadow-hover{box-shadow:0 6px 20px rgba(10,79,140,.13)}
 .node-shadow{box-shadow:0 1px 3px rgba(15,23,42,.08)}
 .node-shadow-selected{box-shadow:0 3px 12px rgba(15,23,42,.16)}
+
+/* ─────────────────────────────────────────────────────────────── brand themes
+
+   A brand theme repaints the ACCENTS only. Surfaces, text and lines are untouched, so the app
+   stays the clean white/grey it is and the brand shows up where attention already goes: primary
+   actions, links, selection, tags and status.
+
+   Set with data-brand on <html>, independent of the .dark class — the two compose, and a brand
+   must look right in both. Add a new brand by copying this block; never by editing :root, which
+   is the neutral default every brand falls back to.
+
+   Theme 1. Interactive accent is a strong blue rather than the palette red, deliberately: red is already
+   this app's error colour, and a primary button the same colour as a validation failure teaches
+   people to stop reading either. The red keeps its job in the danger/error role, where red
+   belongs anyway. */
+/* Chrome — the header and the sidebar. Held apart from --surface so a theme can darken the frame
+   without touching the content area, which is the whole point: the work stays on clean white, the
+   app around it takes the brand.
+
+   Declared BEFORE any brand block — :root and [data-brand] have equal specificity, so a default
+   written afterwards would silently beat every brand. */
+:root{
+  --chrome-bg:var(--surface); --chrome-text:var(--text); --chrome-muted:var(--muted);
+  --chrome-line:var(--line); --chrome-hover:var(--blue-pale);
+  --nav-bg:var(--surface); --nav-text:var(--text); --nav-muted:var(--muted);
+  --nav-line:var(--line); --nav-hover:var(--blue-pale);
+}
+
+/* Theme 1 — drawn from the ConnectedWorld stage: a midnight-indigo ground lit with electric blue,
+ * turquoise and violet.
+ *
+ * **The workspace stays light.** `--bg`, `--surface`, `--surface-2/3`, `--line*`, `--text` and
+ * `--muted` are NOT touched here — this theme changes the frame and the accents only. A dark
+ * content area is a different product, and the people using this read tables all day.
+ *
+ * Every value below is measured, not picked by eye. The previous palette sat at 4.54–4.58 : 1 on
+ * white — technically AA, but it FAILED on `--surface-2` (4.20–4.23), which is the hover fill under
+ * half the muted text in the app. Each ink is now checked against both grounds, so a row lighting up
+ * on hover can no longer push its own text under the threshold. */
+[data-brand="theme1"]{
+  /* Electric blue from the stage wash. 5.63 : 1 on white, 5.20 on --surface-2 — real headroom
+     rather than the 0.07 the old #007bc0 had. */
+  --blue:#0a63d2; --blue-deep:#0847a0; --blue-mid:#4f8fe8; --blue-light:#e6effd; --blue-pale:#f3f7fe;
+  /* Bosch red, one step down so it also clears 4.5 on a hover fill (5.44 / 5.02). `text-red` is
+     used as real text in 48 places, so this one has to survive both grounds. */
+  --red:#d60006; --red-light:#fdeaea; --red-ink:#bc0004;
+  --amber:#ffcf00; --amber-ink:#7d6100; --amber-bg:#fff9e0;
+  /* The neon bar, dialled back to a readable ink: 5.38 / 4.97. */
+  --green:#007a51; --green-bg:#e2f3ec;
+  /* The violet cast across the letters — bluer than the old magenta, and far more legible. */
+  --violet:#6d33d9; --violet-deep:#4f1fb0; --violet-bg:#f1ecfd;
+  /* The turquoise fins: 5.33 / 4.92. */
+  --teal:#0c7684; --teal-bg:#e0f3f6;
+
+  /* The stage itself. Indigo rather than the old neutral slate — still deliberately not black,
+     because black chrome against a white content area is a hard edge that makes the page look like
+     two applications stapled together. The sidebar sits one step deeper than the header so the
+     navigation reads as BEHIND the content. */
+  --chrome-bg:#12295c; --chrome-text:#eaf1fd; --chrome-muted:#a3b8dd;
+  --chrome-line:#1d3a75; --chrome-hover:#1e3d7a60;
+  --nav-bg:#0b1a42; --nav-text:#e6edfb; --nav-muted:#94a9d1;
+  --nav-line:#16295e; --nav-hover:#17306b;
+}
+[data-brand="theme1"].dark{
+  /* Tints have to be re-derived on a dark ground; the light-mode ones glow. */
+  --blue-light:#0e2450; --blue-pale:#0b1c3e;
+  --red-light:#3a1214; --amber-bg:#332a05; --green-bg:#052a1d;
+  --violet-bg:#221046; --teal-bg:#062629;
+}
+
+
+/* Reduced motion — the floor, not a substitute for restraint.
+   38 transition/animation usages shipped with no handling of this preference at all. Vestibular
+   disorders are a real accessibility need, not a taste setting: for someone who has set it, a
+   sliding panel or an animated diagram is nausea rather than polish.
+   Durations collapse to ~0 rather than 0 so transitionend/animationend listeners still fire —
+   setting them to 0s silently breaks any code that waits for one. Never override this block with
+   !important or an inline duration; the design-system skill (section 21) treats that as a bug. */
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.01ms !important;
+    scroll-behavior:auto !important;
+  }
+}

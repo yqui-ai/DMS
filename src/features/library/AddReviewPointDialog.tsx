@@ -89,7 +89,7 @@ export function AddReviewPointDialog({ target, canAdd, onSubmit, onClose }: {
               <button
                 key={c.key} onClick={() => setTag(c.key)} title={c.hint}
                 className={clsx(
-                  'text-sm2 font-semibold px-3 py-1.5 rounded-[8px] border',
+                  'text-sm2 font-semibold px-3 py-1.5 rounded border',
                   tag === c.key ? 'bg-blue text-white border-blue' : 'bg-surface text-text border-line-strong hover:border-blue-mid/40',
                 )}
               >
@@ -105,12 +105,12 @@ export function AddReviewPointDialog({ target, canAdd, onSubmit, onClose }: {
           <textarea
             value={body} onChange={(e) => setBody(e.target.value)} rows={4} autoFocus disabled={!canAdd}
             placeholder="What needs attention on this field?"
-            className="w-full text-sm2 bg-surface border border-line-strong rounded-[8px] px-[11px] py-2 resize-y disabled:opacity-60"
+            className="w-full text-sm2 bg-surface border border-line-strong rounded px-[11px] py-2 resize-y disabled:opacity-60"
           />
         </div>
 
         {!canAdd && (
-          <p className="text-2xs text-amber-ink bg-amber-bg rounded-[8px] px-3 py-2">
+          <p className="text-2xs text-amber-ink bg-amber-bg rounded px-3 py-2">
             Only this FMD's owner can add review points. Claim ownership from the viewer's header first.
           </p>
         )}

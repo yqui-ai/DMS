@@ -18,7 +18,7 @@ export const NAV_GROUPS: NavGroup[] = [
   { title: 'MY WORK', items: [{ key: 'myWork', label: 'My Work', icon: 'inbox', to: 'my-work' }] },
   { title: 'PROJECT', items: [
     { key: 'dashboard', label: 'Dashboard', icon: 'layout-dashboard', to: 'dashboard' },
-    { key: 'programSettings', label: 'Program Settings', icon: 'settings', to: '../../settings' },
+    { key: 'programSettings', label: 'Program Settings', icon: 'settings', to: 'settings', standalone: (programId) => (programId ? `/pg/${programId}/settings` : undefined) },
     { key: 'programAdmin', label: 'Program Admin', icon: 'shield-check', to: 'admin', standalone: (programId) => programId ? `/pg/${programId}/admin` : undefined },
   ]},
   { title: 'DESIGN', items: [
@@ -29,13 +29,16 @@ export const NAV_GROUPS: NavGroup[] = [
   // EXECUTION and GOVERNANCE are out of the nav while Design > Scope is finished first. Their
   // screens, routes and queries all still exist and are NOT dead code — see the deferred-scope
   // skill for what each section held and how to bring it back.
+  // Four direct entries. The tile page at /library still exists and is the front door reached
+  // from Migration Project; the sidebar is for someone already working, who wants the catalogue
+  // itself rather than a page describing it.
   { title: 'LIBRARY', items: [
     { key: 'catalogObjects', label: 'Migration Object', icon: 'database', to: 'library/objects', standalone: () => '/library/objects' },
     { key: 'catalogFmds', label: 'Field Mapping', icon: 'files', to: 'library/fmds', standalone: () => '/library/fmds' },
     { key: 'catalogRules', label: 'Rule', icon: 'list-checks', to: 'library/rules', standalone: () => '/library/rules' },
     { key: 'catalogXref', label: 'Cross Reference (XREF)', icon: 'arrow-left-right', to: 'library/xref', standalone: () => '/library/xref' },
   ]},
-  { title: 'SYSTEMS', items: [{ key: 'connections', label: 'Connections', icon: 'plug', to: '/systems/connections' }] },
+  { title: 'SYSTEMS', items: [{ key: 'connections', label: 'Connections', icon: 'plug', to: 'connections', standalone: () => '/systems/connections' }] },
 ];
 
 export const MIGRATION_TABS = [

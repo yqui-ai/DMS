@@ -64,7 +64,8 @@ export function ObjectDetailDialog({ object, onClose }: { object: MigrationObjec
               <div className="grid grid-cols-2 gap-3">
                 <SummaryField label="In scope">{subprojectObj?.inScope ? 'Yes' : 'No'}</SummaryField>
                 <SummaryField label="Approach">{subprojectObj?.approach ?? '—'}</SummaryField>
-                <SummaryField label="Data owner">{subprojectObj?.owner ?? '—'}</SummaryField>
+                <SummaryField label="Consultant">{subprojectObj?.consultant ?? '—'}</SummaryField>
+                <SummaryField label="ETL developer">{subprojectObj?.etlDeveloper ?? '—'}</SummaryField>
                 <SummaryField label="FMD status">{fmd ? 'Assigned' : 'Not created'}</SummaryField>
                 <SummaryField label="Category">{object.category ?? '—'}</SummaryField>
                 <SummaryField label="Technical name"><span className="font-mono">{object.technicalName ?? '—'}</span></SummaryField>
@@ -99,7 +100,7 @@ export function ObjectDetailDialog({ object, onClose }: { object: MigrationObjec
               <div className="flex flex-col gap-1.5">
                 {objRules.length === 0 && <p className="text-sm2 text-muted">No rules target this object.</p>}
                 {objRules.map((r) => (
-                  <div key={r.id} className="flex items-center gap-2 px-3 py-2 rounded-[8px] bg-surface-2 text-sm2">
+                  <div key={r.id} className="flex items-center gap-2 px-3 py-2 rounded bg-surface-2 text-sm2">
                     <span className="font-mono font-bold">{r.code}</span>
                     <span className="flex-1">{r.name}</span>
                     <Tag variant={r.status === 'Approved' ? 'accent' : 'neutral'}>{r.status}</Tag>
@@ -111,7 +112,7 @@ export function ObjectDetailDialog({ object, onClose }: { object: MigrationObjec
             {tab === 'env' && (
               <div className="flex flex-col gap-1.5">
                 {(['Scope', 'Field Mapping', 'Rules', 'Value Mapping'] as const).map((artifact) => (
-                  <div key={artifact} className="flex items-center gap-3 px-3 py-2 rounded-[8px] bg-surface-2 text-sm2">
+                  <div key={artifact} className="flex items-center gap-3 px-3 py-2 rounded bg-surface-2 text-sm2">
                     <span className="flex-1 font-semibold">{artifact}</span>
                     <span className="text-muted text-2xs w-16">DEV</span>
                     <span className="text-muted text-2xs w-16">QSA</span>
@@ -142,7 +143,7 @@ function SummaryField({ label, children }: { label: string; children: React.Reac
 function LineageStep({ icon, label, value, detail, last }: { icon: React.ReactNode; label: string; value: string; detail: string; last?: boolean }) {
   return (
     <div className="flex items-center gap-3">
-      <div className="w-8 h-8 rounded-[9px] bg-blue-light text-blue grid place-items-center shrink-0">{icon}</div>
+      <div className="w-8 h-8 rounded bg-blue-light text-blue grid place-items-center shrink-0">{icon}</div>
       <div className="flex-1 min-w-0">
         <div className="text-2xs font-semibold uppercase tracking-[.04em] text-muted">{label}</div>
         <div className="text-sm2 font-semibold text-text truncate">{value}</div>

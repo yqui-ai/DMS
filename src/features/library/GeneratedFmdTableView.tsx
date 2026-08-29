@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
-import { ChevronLeft, ChevronRight, Columns3, Eye, Maximize2, Pencil, Type } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Columns3, Maximize2, Pencil, Type } from 'lucide-react';
 import { Dialog } from '../../components/Dialog';
 import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
+import { useDismiss } from '../../components/useDismiss';
 import { Button } from '../../components/Button';
 import { optionsOf, valueTypeError } from '../../lib/mappingRulePolicy';
 import { colorByKey } from '../../lib/goldenFmdColors';
@@ -22,24 +23,17 @@ const REVIEW_WARNING_BG = '#fed7aa';
 
 function IconPopoverButton({ icon, label, active, children }: { icon: ReactNode; label: string; active?: boolean; children: ReactNode }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onClick = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, [open]);
+  const ref = useDismiss<HTMLDivElement>(open, () => setOpen(false));
 
   return (
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)} aria-label={label}
-        className={clsx('flex items-center justify-center w-8 h-8 rounded-[8px]', active ? 'text-blue bg-blue-pale' : 'text-muted hover:text-blue hover:bg-blue-pale')}
+        className={clsx('flex items-center justify-center w-8 h-8 rounded', active ? 'text-blue bg-blue-pale' : 'text-muted hover:text-blue hover:bg-blue-pale')}
       >
         {icon}
       </button>
-      {open && <div className="absolute left-0 mt-1 min-w-[280px] bg-surface rounded-[8px] shadow-cardHover p-3 z-20">{children}</div>}
+      {open && <div className="absolute left-0 mt-1 min-w-[280px] bg-surface rounded shadow-cardHover p-3 z-20">{children}</div>}
     </div>
   );
 }
@@ -117,7 +111,7 @@ function CellEditorDialog({ open, column, value, structureIdent, rowLabel, onSav
         <textarea
           value={draft} onChange={(e) => { setDraft(e.target.value); setError(null); }} rows={16} autoFocus
           className={clsx(
-            'w-full text-sm2 font-mono bg-surface border rounded-[8px] px-3 py-2.5 resize-y',
+            'w-full text-sm2 font-mono bg-surface border rounded px-3 py-2.5 resize-y',
             error ? 'border-red' : 'border-line-strong focus:border-blue',
           )}
         />
@@ -156,7 +150,7 @@ function GridCell({ column, value, onSave }: {
     await onSave(next);
   };
 
-  const base = 'w-full bg-transparent px-1 py-0.5 text-sm2 rounded-[3px] focus:outline-none focus:bg-surface focus:shadow-[inset_0_0_0_2px_var(--blue)]';
+  const base = 'w-full bg-transparent px-1 py-0.5 text-sm2 rounded-xs focus:outline-none focus:bg-surface focus:shadow-[inset_0_0_0_2px_var(--blue)]';
 
   const listed = optionsOf(column);
   if (column.kind === 'select' && listed.length) {
@@ -259,11 +253,25 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
+  /** Identity of the DOCUMENT, not of the array holding it.
+   *
+   * This effect resets the view when you open a different FMD. It used to depend on `tables`, which
+   * is rebuilt from the version's JSON on every fetch — so saving a single cell produced a new array
+   * with identical contents, the effect fired, and the open structure tab snapped back to the first
+   * one. Editing three fields in S_ROLES meant being thrown back to S_CUST_GEN three times.
+   *
+   * The set of structure ids is stable across edits and changes only when a genuinely different
+   * document (or one with different structures) is loaded, which is exactly when a reset is wanted. */
+  const structureKey = tables.map((t) => t.structureId).join('|');
+
   useEffect(() => {
-    setActiveTableId(tables[0]?.structureId ?? null);
+    // Keep the open tab if it still exists — switching version keeps you where you were reading.
+    setActiveTableId((cur) => (
+      cur && tables.some((t) => t.structureId === cur) ? cur : tables[0]?.structureId ?? null
+    ));
     setSortField(null); setSortDir('asc'); setHiddenColumns(new Set());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tables]);
+  }, [structureKey]);
 
   const updateTabScrollState = () => {
     const el = tabsRef.current;
@@ -336,23 +344,25 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
           at the other) — which, above the section band and the field-name header, put five strips of
           chrome between the top of the dialog and the first row of data. */}
       <div className="flex items-center gap-1 border-b border-line mb-2 shrink-0">
-        {/* An icon toggle, sized like the field picker beside it — the same pencil the field-level
-            view uses to enter editing, and an eye to go back to reading. Editing is a mode you
-            enter, not a property of clicking; every save lands in the draft, so nothing publishes. */}
+        {/* Pencil to enter, CHECK to finish — the same pair the field-level view and the scope
+            register use, so "this is being edited" reads the same everywhere in the app. It was an
+            eye here, which meant "view" rather than "done" and made this the one edit toggle whose
+            exit icon differed. Editing is a mode you enter, not a property of clicking; every save
+            lands in the draft, so nothing publishes. */}
         {canEdit && onSaveField && (
           <button
             onClick={() => setEditing((v) => !v)}
-            aria-label={editing ? 'Back to display' : 'Edit cells'}
+            aria-label={editing ? 'Finish editing cells' : 'Edit cells'}
             aria-pressed={editing}
             title={editing
-              ? 'Back to display. Your changes are already saved to the draft.'
+              ? 'Done. Your changes are already saved to the draft.'
               : 'Edit cells directly in the grid. Tab moves on and saves, Escape undoes the cell.'}
             className={clsx(
-              'flex items-center justify-center w-8 h-8 rounded-[8px]',
+              'flex items-center justify-center w-8 h-8 rounded',
               editing ? 'text-blue bg-blue-pale' : 'text-muted hover:text-blue hover:bg-blue-pale',
             )}
           >
-            {editing ? <Eye size={15} /> : <Pencil size={14} />}
+            {editing ? <Check size={15} /> : <Pencil size={14} />}
           </button>
         )}
         <IconPopoverButton icon={<Columns3 size={15} />} label="Fields to show" active={hiddenColumns.size > 0}>
@@ -376,7 +386,7 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                   {/* The section header is itself a checkbox: all-on when every field shows, and
                       toggling it flips the whole section rather than making you click each field. */}
                   <label
-                    className="flex items-center gap-2 px-2 py-1 rounded-[6px] cursor-pointer text-2xs font-bold uppercase tracking-[.04em] sticky top-0"
+                    className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer text-2xs font-bold uppercase tracking-[.04em] sticky top-0"
                     style={{ backgroundColor: sc.bg, color: sc.text }}
                   >
                     <input
@@ -412,7 +422,7 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
               onClick={() => setTabLabelMode((m) => (m === 'ident' ? 'description' : 'ident'))}
               title={tabLabelMode === 'ident' ? 'Show structure names' : 'Show structure IDs'}
               aria-label={tabLabelMode === 'ident' ? 'Show structure names' : 'Show structure IDs'}
-              className={clsx('flex items-center justify-center w-8 h-8 rounded-[8px] shrink-0',
+              className={clsx('flex items-center justify-center w-8 h-8 rounded shrink-0',
                 tabLabelMode === 'description' ? 'text-blue bg-blue-pale' : 'text-muted hover:text-blue hover:bg-blue-pale')}
             >
               <Type size={15} />
@@ -423,12 +433,23 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                 <ChevronLeft size={16} />
               </button>
             )}
-            <div ref={tabsRef} onScroll={updateTabScrollState} className="flex items-center gap-1 flex-1 min-w-0 overflow-hidden">
+            {/* `self-stretch items-end -mb-px` is what puts the active underline ON the toolbar's
+                bottom border instead of floating above it.
+                The tabs sat in an `items-center` wrapper, so they were centred against a row made
+                taller by the 32px icon buttons beside them — and their own `-mb-px` was clipped by
+                this wrapper's `overflow-hidden` before it could reach the row's border. The result
+                was a tab that looked lifted, with a hairline gap under it. The overhang moves to
+                the wrapper, which nothing clips; the tabs keep a plain `border-b-2` inside it. */}
+            <div
+              ref={tabsRef}
+              onScroll={updateTabScrollState}
+              className="flex items-end self-stretch -mb-px gap-1 flex-1 min-w-0 overflow-hidden"
+            >
               {tables.map((t) => (
                 <button
                   key={t.structureId} onClick={() => setActiveTableId(t.structureId)}
                   title={t.structureDescription || t.structureIdent}
-                  className={clsx('px-2.5 py-1.5 text-sm2 border-b-2 -mb-px whitespace-nowrap shrink-0', t.structureId === activeTable.structureId ? 'border-blue text-blue font-semibold' : 'border-transparent text-muted hover:text-text')}
+                  className={clsx('px-2.5 py-1.5 text-sm2 border-b-2 whitespace-nowrap shrink-0', t.structureId === activeTable.structureId ? 'border-blue text-blue font-semibold' : 'border-transparent text-muted hover:text-text')}
                 >
                   {tabLabelMode === 'ident' ? t.structureIdent : (t.structureDescription || t.structureIdent)}
                 </button>

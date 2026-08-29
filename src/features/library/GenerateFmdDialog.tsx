@@ -169,7 +169,14 @@ async function resolveTarget(object: MigrationObject): Promise<ResolvedTarget> {
  * selection): every sender structure is included automatically for each, and a confirmation step
  * shows which objects already have an FMD (will get a new version) versus which will be created
  * fresh, before anything is written. */
-export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObject[] | null; onClose: () => void }) {
+export function GenerateFmdDialog({ objects, onClose, onGenerated }: {
+  objects: MigrationObject[] | null;
+  onClose: () => void;
+  /** Called for each FMD created, so a caller that opened this can act on the result — Scope uses
+   * it to assign the new document to the subproject straight away, which is the whole reason it
+   * asked for one. Absent in the Library, where generating is the end of the task. */
+  onGenerated?: (fmdId: string, migrationObjectId: string) => void;
+}) {
   const toast = useToast();
   const navigate = useNavigate();
   const { programId, subprojectId: routeSubprojectId } = useParams();
@@ -201,7 +208,16 @@ export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObje
   }, [senderStructures, structureQuery]);
 
 
-  useEffect(() => { setSubprojectId(scopeUsage[0]?.subprojectId ?? ''); }, [scopeUsage]);
+  /** Default to the subproject you are STANDING IN, when the object is in scope there.
+   *
+   * It used to always take `scopeUsage[0]`. Opened from Scope > FMD Mapping inside Wave 1B, an
+   * object also in Wave 1A would silently generate the FMD against 1A — the right dialog producing
+   * the wrong record, with nothing on screen to say so. Falls back to the first usage when the
+   * route has no subproject (the Library's program-wide mount). */
+  useEffect(() => {
+    const here = scopeUsage.find((s) => s.subprojectId === routeSubprojectId);
+    setSubprojectId(here?.subprojectId ?? scopeUsage[0]?.subprojectId ?? '');
+  }, [scopeUsage, routeSubprojectId]);
   useEffect(() => { setSelectedStructureIds(new Set(senderStructures.map((s) => s.id))); setStructureQuery(''); }, [single?.id, senderStructures.length]);
   useEffect(() => { setResolvedTargets(null); }, [objects]);
 
@@ -253,6 +269,7 @@ export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObje
         goldenVersionId, goldenVersionLabel: goldenVersion.version, columns, tables,
         basedOnStandardFmdVersionId,
       });
+      onGenerated?.(fmdId, single.id);
       toast.success(`${name} generated.`, viewAction(fmdId));
       onClose();
     } catch (err: any) {
@@ -303,12 +320,13 @@ export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObje
             ? await ensureStandardReference(r.object, columns, goldenVersionId, goldenVersion.version, generateMutation.generate, programCode)
             : undefined;
 
-          await generateMutation.generate({
+          const { fmdId: bulkFmdId } = await generateMutation.generate({
             migrationObjectId: r.object.id, name, type: r.isCustom ? 'Custom' : 'Standard', class: r.isCustom ? 'Local' : 'Global',
             subprojectId: r.scope?.subprojectId ?? null,
             goldenVersionId, goldenVersionLabel: goldenVersion.version, columns, tables,
             basedOnStandardFmdVersionId,
           });
+          onGenerated?.(bulkFmdId, r.object.id);
           created += 1;
         } catch (err: any) {
           toast.error(`${r.object.objectId}: ${err.message ?? 'generation failed'}`);
@@ -345,13 +363,13 @@ export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObje
       ) : (
         <div className="flex flex-col gap-4">
           {isBulk ? (
-            <div className="rounded-[8px] bg-surface-2 px-3.5 py-2.5 text-sm2">
+            <div className="rounded bg-surface-2 px-3.5 py-2.5 text-sm2">
               Generating for <strong>{objects.length}</strong> selected objects — Standard or Custom is resolved per object,
               and every sender structure is included automatically for each.
             </div>
           ) : (
             <>
-              <div className="rounded-[8px] bg-surface-2 px-3.5 py-2.5 text-sm2">
+              <div className="rounded bg-surface-2 px-3.5 py-2.5 text-sm2">
                 {isCustom ? (
                   <>This object is in scope — generating a <strong>Custom</strong> FMD.</>
                 ) : (
@@ -389,7 +407,7 @@ export function GenerateFmdDialog({ objects, onClose }: { objects: MigrationObje
                     <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
                     <input
                       value={structureQuery} onChange={(e) => setStructureQuery(e.target.value)} placeholder="Search structures…"
-                      className="w-full text-sm2 pl-7 pr-3 py-1.5 rounded-[8px] border border-line-strong bg-surface"
+                      className="w-full text-sm2 pl-7 pr-3 py-1.5 rounded border border-line-strong bg-surface"
                     />
                   </div>
                 )}

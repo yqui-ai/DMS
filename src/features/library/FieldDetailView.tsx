@@ -134,7 +134,7 @@ function EditableValue({ value, wide, mono, options, kind, editing, onSave, onDi
     ...(kind === 'integer' || kind === 'decimal' ? { type: 'number', step: kind === 'integer' ? 1 : 'any' } : {}),
     onChange: (e: { target: { value: string } }) => setDraft(e.target.value),
     onBlur: () => commit(),
-    className: clsx('w-full text-sm2 bg-surface border border-line-strong focus:border-blue rounded-[6px] px-1.5 py-1', mono && 'font-mono'),
+    className: clsx('w-full text-sm2 bg-surface border border-line-strong focus:border-blue rounded px-1.5 py-1', mono && 'font-mono'),
   };
   return wide ? (
     <textarea
@@ -202,6 +202,11 @@ export function FieldDetailView({
 }) {
   const [listOpen, setListOpen] = useState(true);
   const [reviewOpen, setReviewOpen] = useState(true);
+  /** AI findings start VISIBLE — they are why most people open this pane. The toggle is for the
+   * other half of the job: writing and reading the human review, on a field the AI has already had
+   * plenty to say about. Deliberately not per-field state — paging through fields with the machine
+   * findings re-appearing each time is the thing being fixed. */
+  const [showAiFindings, setShowAiFindings] = useState(true);
   const [fieldSearch, setFieldSearch] = useState('');
   const [draft, setDraft] = useState('');
   const [draftTag, setDraftTag] = useState<string>('todo');
@@ -338,7 +343,7 @@ export function FieldDetailView({
                 <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted" />
                 <input
                   value={fieldSearch} onChange={(e) => setFieldSearch(e.target.value)} placeholder="Find a field…"
-                  className="w-full text-sm2 pl-6 pr-2 py-1.5 rounded-[8px] border border-line-strong bg-surface"
+                  className="w-full text-sm2 pl-6 pr-2 py-1.5 rounded border border-line-strong bg-surface"
                 />
               </div>
             </div>
@@ -445,7 +450,7 @@ export function FieldDetailView({
                     A refusal is displayed just as prominently as a success — being told the
                     requirement is too vague is the useful answer, not a failure to route around. */}
                 {sqlDraft && editingSection === g.sectionName && g.cols.some((col) => col.field === 'TECHNICAL_RULE') && (
-                  <div className={clsx('mx-3 mt-3 rounded-[8px] p-2.5', sqlDraft.ok ? 'bg-blue-pale' : 'bg-amber-bg')}>
+                  <div className={clsx('mx-3 mt-3 rounded p-2.5', sqlDraft.ok ? 'bg-blue-pale' : 'bg-amber-bg')}>
                     {sqlDraft.ok ? (
                       <>
                         <div className="text-2xs font-bold uppercase tracking-[.04em] text-muted mb-1">Suggested SQL</div>
@@ -484,7 +489,7 @@ export function FieldDetailView({
                       <div
                         key={col.field}
                         className={clsx(
-                          'rounded-[6px]',
+                          'rounded',
                           WIDE_FIELDS.has(col.field) && 'col-span-2',
                           NARROW_FIELDS.has(col.field) && 'max-w-[220px]',
                           finding && 'px-2 py-1.5 -mx-0.5',
@@ -530,15 +535,33 @@ export function FieldDetailView({
             <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 border-b border-line shrink-0">
               <span className="text-2xs font-bold uppercase tracking-[.04em] text-muted">Review points</span>
               <div className="flex items-center gap-1.5">
+                {/* The AI's findings and the points people wrote share this pane, and on a field
+                    the review flagged the machine ones can crowd out the conversation. One toggle,
+                    counted so you know what you're hiding — it never removes anything silently. */}
+                {findings && findings.size > 0 && (
+                  <button
+                    onClick={() => setShowAiFindings((v) => !v)}
+                    aria-pressed={showAiFindings}
+                    title={showAiFindings
+                      ? `Hide the ${findings.size} AI finding${findings.size === 1 ? '' : 's'} on this field`
+                      : `Show the ${findings.size} AI finding${findings.size === 1 ? '' : 's'} on this field`}
+                    className={clsx(
+                      'flex items-center gap-1 text-2xs font-semibold rounded-xs px-1.5 py-0.5 transition-colors',
+                      showAiFindings ? 'bg-violet-bg text-violet-deep' : 'text-muted hover:text-text hover:bg-surface-2',
+                    )}
+                  >
+                    <Sparkles size={11} /> {findings.size}
+                  </button>
+                )}
                 {openTodos > 0 && <Tag variant="warn">{openTodos} open</Tag>}
                 <button onClick={() => setReviewOpen(false)} className="text-muted hover:text-text" aria-label="Collapse review points"><PanelRightClose size={14} /></button>
               </div>
             </div>
             <div className="flex-1 min-h-0 overflow-auto flex flex-col gap-2 p-2.5">
-              {findings && findings.size > 0 && (
+              {showAiFindings && findings && findings.size > 0 && (
                 <div className="flex flex-col gap-1.5">
                   {[...findings.entries()].map(([field, f]) => (
-                    <div key={field} className="rounded-[8px] p-2" style={{ backgroundColor: HIGHLIGHT_BG[f.severity] }}>
+                    <div key={field} className="rounded p-2" style={{ backgroundColor: HIGHLIGHT_BG[f.severity] }}>
                       <div className="flex items-center gap-1.5 mb-0.5">
                         <Tag variant={f.severity === 'error' ? 'danger' : 'warn'}>{f.severity}</Tag>
                         <span className="text-2xs font-mono font-bold text-text">{field}</span>
@@ -548,8 +571,14 @@ export function FieldDetailView({
                   ))}
                 </div>
               )}
-              {notes.length === 0 && (!findings || findings.size === 0) && (
-                <p className="text-sm2 text-muted text-center py-6">No review points on this field yet.</p>
+              {/* An empty pane has to say WHY it's empty. With the AI findings toggled off, "no
+                  review points yet" would be a lie about a field the review flagged. */}
+              {topLevelNotes.length === 0 && !(showAiFindings && findings && findings.size > 0) && (
+                <p className="text-sm2 text-muted text-center py-6">
+                  {findings && findings.size > 0
+                    ? `No review points written on this field. ${findings.size} AI finding${findings.size === 1 ? '' : 's'} hidden.`
+                    : 'No review points on this field yet.'}
+                </p>
               )}
               {/* The same ReviewPointThread the Versions & Review tab renders, in `compact`.
                   This panel used to hand-roll its own version of a review point, and the copy had
@@ -574,7 +603,7 @@ export function FieldDetailView({
                   <div className="flex items-end gap-1.5">
                     <textarea
                       value={draft} onChange={(e) => setDraft(e.target.value)} rows={2} placeholder="Add a review point…"
-                      className="flex-1 text-sm2 bg-surface border border-line-strong rounded-[8px] px-2 py-1.5 resize-none"
+                      className="flex-1 text-sm2 bg-surface border border-line-strong rounded px-2 py-1.5 resize-none"
                     />
                     <Button variant="primary" size="sm" onClick={submitNote} disabled={posting || !draft.trim()} aria-label="Post note">
                       <Send size={13} />

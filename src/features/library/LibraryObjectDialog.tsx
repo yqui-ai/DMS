@@ -32,9 +32,17 @@ export interface LibraryObjectDialogProps {
    * history entries now: re-selecting the previous id would push a third entry that merely looks
    * like going back, leaving browser Back pointing forward. */
   onBack: () => void;
+  /** Generating an FMD is a LIBRARY action — it authors a new record in the Field Mapping
+   * catalogue. The same dialog opens from Design > Scope, where the object is being read to
+   * decide whether to migrate it; offering to create a document there is an unrelated,
+   * irreversible side trip out of the step someone is in the middle of. Defaults to true so
+   * the Library keeps it without opting in. */
+  allowGenerateFmd?: boolean;
 }
 
-export function LibraryObjectDialog({ object, onClose, onSelectObject, onBack }: LibraryObjectDialogProps) {
+export function LibraryObjectDialog({
+  object, onClose, onSelectObject, onBack, allowGenerateFmd = true,
+}: LibraryObjectDialogProps) {
   const [tab, setTab] = useState<Tab>('details');
   const [history, setHistory] = useState<string[]>([]);
   const [generateOpen, setGenerateOpen] = useState(false);
@@ -80,13 +88,17 @@ export function LibraryObjectDialog({ object, onClose, onSelectObject, onBack }:
                 </button>
               ))}
             </div>
-            <Button variant="quiet" size="sm" onClick={() => setGenerateOpen(true)} className="shrink-0 -mt-[5px]"><Files size={13} /> Generate FMD</Button>
+            {allowGenerateFmd && (
+              <Button variant="quiet" size="sm" onClick={() => setGenerateOpen(true)} className="shrink-0 -mt-[5px]"><Files size={13} /> Generate FMD</Button>
+            )}
           </div>
           <div className="flex-1 min-h-0 overflow-auto">
             {tab === 'details' && <DetailsTab object={object} onSelectObject={navigateTo} />}
             {tab === 'structure' && <StructureTab object={object} />}
           </div>
-          <GenerateFmdDialog objects={generateOpen ? [object] : null} onClose={() => setGenerateOpen(false)} />
+          {allowGenerateFmd && (
+            <GenerateFmdDialog objects={generateOpen ? [object] : null} onClose={() => setGenerateOpen(false)} />
+          )}
         </div>
       )}
     </Dialog>
@@ -243,7 +255,7 @@ function StructureTreeRow({
     <div>
       <div
         onClick={() => onSelect(node.structure.id)}
-        className={clsx('relative flex items-center gap-1 rounded-[4px] cursor-pointer py-0.5 pr-1', isSelected ? 'bg-blue-light' : 'hover:bg-blue-pale')}
+        className={clsx('relative flex items-center gap-1 rounded-xs cursor-pointer py-0.5 pr-1', isSelected ? 'bg-blue-light' : 'hover:bg-blue-pale')}
       >
         {depth > 0 && <span className="absolute -left-3 top-1/2 w-3 h-px" style={{ backgroundColor: RAIL_COLOR }} />}
         <div className="min-w-0 flex-1 py-0.5">
@@ -324,7 +336,7 @@ function StructureTab({ object }: { object: MigrationObject }) {
     <div className="flex gap-4 h-full min-h-0">
       <div className="w-[340px] shrink-0 overflow-auto border-r border-line pr-3">
         <div className="sticky top-0 z-10 bg-surface pb-3">
-          <div className="flex rounded-[8px] border border-line-strong overflow-hidden">
+          <div className="flex rounded border border-line-strong overflow-hidden">
             <button
               onClick={() => setSide('sender')} disabled={sender.length === 0}
               className={clsx(

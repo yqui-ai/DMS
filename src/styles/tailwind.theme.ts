@@ -14,14 +14,21 @@ export const dmsTheme: Config['theme'] = {
       line: { DEFAULT: 'var(--line)', strong: 'var(--line-strong)', soft: 'var(--line-soft)' },
       text: 'var(--text)',
       muted: 'var(--muted)',
-      blue: { DEFAULT: '#0a4f8c', deep: '#003a70', mid: '#3d7dbd', light: '#e8f0f9', pale: '#f3f7fb' },
-      red: { DEFAULT: '#da291c', light: '#fdecea', ink: '#a81409' },
-      amber: { DEFAULT: '#e2a900', ink: '#8a5a00', bg: '#fff7e6' },
-      green: { DEFAULT: '#15803d', bg: '#e7f6ed' },
-      violet: { DEFAULT: '#7c3aed', deep: '#6d28d9', bg: '#ede9fe' },
-      teal: { DEFAULT: '#0f766e', bg: '#e6f4f1' },
-      slate2: '#334155',
-      neutralTag: { bg: '#eceff3', ink: '#525a66' },
+      // Every accent reads from a CSS variable, like the surfaces above. These were hardcoded
+      // hex, which meant the variables in tokens.css that carry the same names were dead — nothing
+      // could retheme an accent, in dark mode or anywhere else. See the `brand-themes` skill.
+      blue: { DEFAULT: 'var(--blue)', deep: 'var(--blue-deep)', mid: 'var(--blue-mid)', light: 'var(--blue-light)', pale: 'var(--blue-pale)' },
+      red: { DEFAULT: 'var(--red)', light: 'var(--red-light)', ink: 'var(--red-ink)' },
+      amber: { DEFAULT: 'var(--amber)', ink: 'var(--amber-ink)', bg: 'var(--amber-bg)' },
+      green: { DEFAULT: 'var(--green)', bg: 'var(--green-bg)' },
+      violet: { DEFAULT: 'var(--violet)', deep: 'var(--violet-deep)', bg: 'var(--violet-bg)' },
+      teal: { DEFAULT: 'var(--teal)', bg: 'var(--teal-bg)' },
+      slate2: 'var(--slate)',
+      neutralTag: { bg: 'var(--neutral-bg)', ink: 'var(--neutral-ink)' },
+      // The frame — header and sidebar. Separate from surface so a theme can darken the chrome
+      // without touching the content area. See the `brand-themes` skill.
+      chrome: { DEFAULT: 'var(--chrome-bg)', text: 'var(--chrome-text)', muted: 'var(--chrome-muted)', line: 'var(--chrome-line)', hover: 'var(--chrome-hover)' },
+      nav: { DEFAULT: 'var(--nav-bg)', text: 'var(--nav-text)', muted: 'var(--nav-muted)', line: 'var(--nav-line)', hover: 'var(--nav-hover)' },
     },
     fontFamily: {
       sans: ["'IBM Plex Sans'", 'system-ui', 'sans-serif'],
@@ -46,7 +53,28 @@ export const dmsTheme: Config['theme'] = {
       '2xl': ['16px', '1.35'],
       '3xl': ['16px', '1.35'],
     },
-    borderRadius: { sm: '6px', DEFAULT: '8px', md: '9px', lg: '10px', xl: '11px', '2xl': '12px', pill: '999px' },
+    /** Three radii, three jobs — see the `design-system` skill.
+     *
+     * Was `sm 6 / DEFAULT 8 / md 9 / lg 10 / xl 11 / 2xl 12`: six steps between 6px and 12px, most
+     * of them 1px apart. A 1px difference is invisible as hierarchy and very visible as
+     * inconsistency, which is the same defect the type scale had before it collapsed to four sizes.
+     * Call sites then invented their own on top — thirteen distinct radii shipped, including
+     * `rounded-[3px]`, `[5px]`, `[7px]` and `[11px]`.
+     *
+     * 4 / 8 / 12 are far enough apart to read as a decision. `md`, `xl` and `2xl` are kept as
+     * ALIASES of the nearest survivor so existing markup renders correctly, exactly like the
+     * retired type sizes — but they must not appear in new code. */
+    borderRadius: {
+      /** Micro chips and inline markers inside a dense grid, where 8px reads as a pill. */
+      xs: '4px',
+      /** Controls: buttons, inputs, selects, icon buttons, tags that are not pills. */
+      DEFAULT: '8px',
+      /** Containers: cards, panes, dialogs, table shells, diagram nodes and bands. */
+      lg: '12px',
+      pill: '999px',
+      // Aliases for markup written against the old scale. Do not use.
+      sm: '8px', md: '8px', xl: '12px', '2xl': '12px',
+    },
     boxShadow: {
       card: '0 1px 2px rgba(22,28,40,.06), 0 0 0 1px rgba(22,28,40,.04)',
       cardHover: '0 6px 20px rgba(10,79,140,.13)',

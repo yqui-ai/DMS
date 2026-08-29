@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { Sparkles } from 'lucide-react';
+import { History, Pencil, Sparkles } from 'lucide-react';
 import { Pane } from '../../../components/Pane';
 import { Tag } from '../../../components/Tag';
 import { Select } from '../../../components/Select';
@@ -25,7 +25,7 @@ const STATE_VARIANT: Record<GovState, 'neutral' | 'warn' | 'accent' | 'danger'> 
  * outside this tab. The selected REVIEW stays with the parent, because it also decides which
  * findings highlight cells over on the mapping grid. */
 export function FmdReviewTab({
-  fmd, selected, owner, isCustomFmd, isGenerated, reviewing,
+  fmd, selected, owner, etlDeveloper, objectIdent, isCustomFmd, isGenerated, reviewing,
   reviews, activeReview, onSelectReview,
   fieldNotes, onReply, onToggleResolved, onGoToFinding, onGoToNote, onToggleAddressed,
 
@@ -33,6 +33,10 @@ export function FmdReviewTab({
   fmd: LibraryFmdRow;
   selected?: FmdVersion;
   owner?: string;
+  /** Shown beside the consultant — "who is building this" is the next question anyone asks. */
+  etlDeveloper?: string;
+  /** The migration object this FMD maps, resolved by the caller from the catalogue it holds. */
+  objectIdent?: string;
   isCustomFmd: boolean;
   isGenerated: boolean;
   reviewing: boolean;
@@ -71,6 +75,8 @@ export function FmdReviewTab({
 
   const allFindings = activeReview?.findings ?? [];
   const addressedCount = allFindings.filter((f) => f.addressed).length;
+  /** Findings on an inherited review whose exact cell the draft has since touched. */
+  const editedFindingCount = allFindings.filter((f) => f.editedInDraft && !f.addressed).length;
   const errorCount = allFindings.filter((f) => f.severity === 'error').length;
   const warningCount = allFindings.length - errorCount;
   const structureOptions = useMemo(() => [...new Set(allFindings.map((f) => f.structureIdent))], [activeReview]);
@@ -124,7 +130,7 @@ export function FmdReviewTab({
             audit trail. Right: the two kinds of review side by side — the AI's findings and
             the points people wrote — since they're read together, not either/or. */}
         <VersionDetailsPane
-          fmd={fmd} selected={selected} owner={owner}
+          fmd={fmd} selected={selected} owner={owner} etlDeveloper={etlDeveloper} objectIdent={objectIdent}
           className={clsx('shrink-0', isCustomFmd ? 'w-[300px]' : 'flex-1 min-w-0')}
         />
         {isCustomFmd && (
@@ -158,11 +164,33 @@ export function FmdReviewTab({
             </div>
           ) : !activeReview ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-              <p className="text-sm2 text-muted">This version hasn't been reviewed yet.</p>
+              <p className="text-sm2 text-muted">
+                {selected.version === DRAFT_VERSION
+                  ? 'The version this draft sits on has not been reviewed.'
+                  : "This version hasn't been reviewed yet."}
+              </p>
               <p className="text-2xs text-muted">Click "Review Mapping" above to check it against the mapping rule policy.</p>
             </div>
           ) : (
             <>
+              {/* An inherited review is the previous run, shown against edited content. Saying so
+                  once at the top is what lets the findings below be read as a worklist rather than
+                  as a verdict on what is currently on screen. */}
+              {activeReview.inheritedFrom && (
+                <div className="flex items-start gap-2 rounded bg-surface-2 px-2.5 py-2 shrink-0">
+                  <History size={13} className="text-muted shrink-0 mt-0.5" />
+                  <p className="text-2xs text-muted">
+                    Carried over from{' '}
+                    <span className="font-mono font-semibold text-text">{activeReview.inheritedFrom.version}</span>
+                    {' '}— this draft has not been reviewed.
+                    {editedFindingCount > 0 && (
+                      <> <span className="font-semibold text-text">{editedFindingCount}</span> of these
+                        {' '}{allFindings.length} findings point at a cell the draft has since changed.</>
+                    )}
+                    {' '}Publish, then review again for a fresh verdict.
+                  </p>
+                </div>
+              )}
               {/* Each fact once. The run picker already carries the date and the pane header already
                   counts the findings, so the prose says only who — and the picker's options drop the
                   finding count they were repeating. */}
@@ -243,6 +271,14 @@ export function FmdReviewTab({
                         {f.addressed && (
                           <div className="text-2xs text-muted mt-0.5">
                             Fixed in draft by {f.addressed.by} · {fmtDateTime(f.addressed.at)}
+                          </div>
+                        )}
+                        {/* Deliberately not "fixed": an edit to the cell is a fact, whether it
+                            resolves the finding is a judgement, and `addressed` is where someone
+                            makes that judgement. */}
+                        {f.editedInDraft && !f.addressed && (
+                          <div className="text-2xs text-blue mt-0.5 flex items-center gap-1">
+                            <Pencil size={10} /> This cell has been edited in the draft
                           </div>
                         )}
                       </div>
@@ -406,9 +442,29 @@ function By({ who, at }: { who?: string; at?: string }) {
  * built from. Lives on the Versions tab, beside the review panes for Custom FMDs and full-width for
  * everything else) rather than next to the mapping data, so the Field Mapping tab is nothing but
  * the mapping itself. */
-function VersionDetailsPane({ fmd, selected, owner, className }: {
-  fmd: LibraryFmdRow; selected?: FmdVersion; owner?: string; className?: string;
+function VersionDetailsPane({ fmd, selected, owner, etlDeveloper, objectIdent, className }: {
+  fmd: LibraryFmdRow; selected?: FmdVersion; owner?: string; etlDeveloper?: string;
+  objectIdent?: string; className?: string;
 }) {
+  /** The comment with its bullet list stripped when the change log already carries the detail.
+   *
+   * Publishing no longer writes those bullets, but versions released before that still hold them,
+   * and re-rendering history is not an option — so they are dropped at read time instead. Only
+   * `- ` lines go: a comment somebody typed by hand survives intact, which is the whole reason
+   * this filters rather than hiding the block outright whenever a log exists. */
+  const hasLog = (selected?.sheets.changeLog?.length ?? 0) > 0;
+  const commentText = (() => {
+    const raw = selected?.comment?.trim();
+    if (!raw) return '';
+    if (!hasLog) return raw;
+    return raw
+      .split('\n')
+      .filter((l) => !l.trimStart().startsWith('- '))
+      .join('\n')
+      .replace(/:\s*$/, '.')
+      .trim();
+  })();
+
   return (
     <Pane title="Version details" className={className} bodyClassName="p-3.5">
       <div>
@@ -426,9 +482,10 @@ function VersionDetailsPane({ fmd, selected, owner, className }: {
               across a rule as though they were different kinds of fact; they are the same kind —
               a person and a date — and reading them together is how you answer "who has had this". */}
           <Group>
-            <Fact label="Owner">
+            <Fact label="Consultant">
               {owner ? <span className="font-semibold break-all">{owner}</span> : <span className="text-muted">Not assigned in scope</span>}
             </Fact>
+            {etlDeveloper && <Fact label="ETL developer"><span className="font-semibold break-all">{etlDeveloper}</span></Fact>}
             <Fact label="Modified by"><By who={selected.createdBy} at={selected.createdAt} /></Fact>
             {selected.approvedBy && (
               <Fact label="Approved by"><By who={selected.approvedBy} at={selected.approvedAt} /></Fact>
@@ -446,6 +503,16 @@ function VersionDetailsPane({ fmd, selected, owner, className }: {
               to the Health check tab, because it is a fact about the FMD and not about the version
               you happen to be reading. */}
           <Group>
+            {/* The object this document maps, stated on the document itself.
+                It is not decoration: assignment matches an in-scope migration object to the FMDs
+                written for that object, so this ident is the key the Assign FMD list searches on.
+                A version detail pane that showed Class and Reference but not WHICH OBJECT the
+                mapping is for was missing the one field the rest of the flow keys on. */}
+            <Fact label="Object">
+              {objectIdent
+                ? <span className="font-mono font-semibold">{objectIdent}</span>
+                : <span className="text-muted">Not tied to an object</span>}
+            </Fact>
             <Fact label="Class">{fmd.class}</Fact>
             <Fact label="Reference">{fmd.reference}</Fact>
             {!!selected.sheets.generatedTables?.length && (
@@ -461,12 +528,43 @@ function VersionDetailsPane({ fmd, selected, owner, className }: {
 
           {/* Full width, not in the label column: a change log runs to several lines and a 74px
               indent would cost a third of the width it needs. */}
-          <div className="border-t border-line pt-2.5">
-            <div className="text-2xs font-bold uppercase tracking-[.05em] text-muted mb-1">Comment</div>
-            <p className="text-sm2 whitespace-pre-wrap break-words">
-              {selected.comment || <span className="text-muted">No comment provided</span>}
-            </p>
-          </div>
+          {!!commentText && (
+            <div className="border-t border-line pt-2.5">
+              <div className="text-2xs font-bold uppercase tracking-[.05em] text-muted mb-1">Comment</div>
+              <p className="text-sm2 whitespace-pre-wrap break-words">{commentText}</p>
+            </div>
+          )}
+
+          {/* The comment says WHY this version exists, in one line. This is the complete record of
+              WHAT changed, kept on the version itself, so a released version can still answer 'who
+              changed this field, and when'. The two must never say the same thing twice. */}
+          {(selected.sheets.changeLog?.length ?? 0) > 0 && (
+            <div className="border-t border-line pt-2.5">
+              <div className="flex items-baseline gap-2 mb-1.5">
+                <span className="text-2xs font-bold uppercase tracking-[.05em] text-muted">Change log</span>
+                <span className="text-2xs text-muted tabular-nums">{selected.sheets.changeLog!.length}</span>
+              </div>
+              <div className="flex flex-col gap-1.5 max-h-[220px] overflow-auto">
+                {selected.sheets.changeLog!.map((c) => (
+                  <div key={c.id} className="text-2xs">
+                    <div className="text-muted">
+                      {c.structureIdent ? `${c.structureIdent} · ` : ''}{c.rowLabel} ·{' '}
+                      <span className="font-mono font-semibold text-text">{c.field}</span>
+                    </div>
+                    {/* Muted → emphasised, not red → green. Those are the app's error and success
+                        colours; spending them on every row of an ordinary edit list makes a dozen
+                        routine changes read as six failures and six wins. Matches the Draft tab. */}
+                    <div className="flex items-baseline gap-1 flex-wrap">
+                      <span className="text-muted line-through decoration-1">{c.from || '—'}</span>
+                      <span className="text-muted">→</span>
+                      <span className="text-text font-semibold">{c.to || '—'}</span>
+                    </div>
+                    <div className="text-muted">{c.by} · {fmtDateTime(c.at)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <p className="text-sm2 text-muted">Select a version to see its details.</p>

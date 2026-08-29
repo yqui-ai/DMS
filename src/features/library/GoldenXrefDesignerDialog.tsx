@@ -220,7 +220,7 @@ export function GoldenXrefDesignerDialog({ target, onClose }: { target: LibraryX
               {structure.sections.length === 0 && <p className="text-sm2 text-muted px-3 py-4">No sections yet.</p>}
             </div>
             <button onClick={addSection} className="text-blue text-sm2 font-semibold px-3 py-2.5 hover:bg-blue-pale w-full text-left border-t border-line">
-              <Plus size={13} className="inline -mt-0.5" /> Add Section
+              <Plus size={13} className="inline -mt-0.5" /> Add section
             </button>
           </div>
 
@@ -259,10 +259,10 @@ export function GoldenXrefDesignerDialog({ target, onClose }: { target: LibraryX
                   <table className="w-full border-collapse text-sm2 table-fixed">
                     <thead>
                       <tr>
-                        <th className="w-8 bg-surface-3 px-2.5 py-2" />
-                        <th className="w-[32%] text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 text-left sticky top-0">Field</th>
-                        <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 text-left sticky top-0">Description / Allowed Values</th>
-                        <th className="w-8 bg-surface-3" />
+                        <th className="w-8 bg-surface border-b border-line px-2.5 py-2" />
+                        <th className="w-[32%] text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface border-b border-line px-2.5 py-2 text-left sticky top-0">Field</th>
+                        <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface border-b border-line px-2.5 py-2 text-left sticky top-0">Description / Allowed Values</th>
+                        <th className="w-8 bg-surface border-b border-line" />
                       </tr>
                     </thead>
                     <tbody>
@@ -321,7 +321,7 @@ export function GoldenXrefDesignerDialog({ target, onClose }: { target: LibraryX
         <textarea
           value={comment} onChange={(e) => setComment(e.target.value)} rows={3} autoFocus
           placeholder="e.g. Added Field 4 Section, reordered General fields"
-          className="w-full text-sm2 bg-surface border border-line-strong rounded-[8px] px-[11px] py-2 resize-y"
+          className="w-full text-sm2 bg-surface border border-line-strong rounded px-[11px] py-2 resize-y"
         />
         <p className="text-2xs text-muted mt-1.5">Saved as this version's note in Versions.</p>
       </Dialog>

@@ -97,14 +97,14 @@ export function SyncGoldenFmdDialog({ open, fmdId, fmdName, current, goldenStruc
       ) : (
         <div className="flex flex-col gap-4">
           {plan.summary && (
-            <div className="rounded-[8px] bg-blue-pale p-3 text-sm2 text-text">{plan.summary}</div>
+            <div className="rounded bg-blue-pale p-3 text-sm2 text-text">{plan.summary}</div>
           )}
 
           {/* Changes that move no data but change what the FMD ACCEPTS — a column's type, its value
               list, whether it's critical. These were computed but never shown, so re-typing a column
               in the template produced a plan that looked empty with an active Approve button. */}
           {plan.metadataChanges.length > 0 && (
-            <div className="rounded-[8px] shadow-[inset_0_0_0_1px_var(--line)] overflow-hidden">
+            <div className="rounded shadow-[inset_0_0_0_1px_var(--line)] overflow-hidden">
               <div className="px-3 py-1.5 bg-surface-3 border-b border-line">
                 <span className="text-2xs font-bold uppercase tracking-[.04em] text-muted">Column definitions</span>
                 <span className="text-2xs text-muted ml-1.5">no data moves — this changes what the column accepts</span>
@@ -121,7 +121,7 @@ export function SyncGoldenFmdDialog({ open, fmdId, fmdName, current, goldenStruc
           )}
 
           {plan.dataLossFields.length > 0 && (
-            <div className="rounded-[8px] bg-red-light p-3">
+            <div className="rounded bg-red-light p-3">
               <div className="flex items-center gap-1.5 mb-1.5">
                 <AlertTriangle size={14} className="text-red-ink shrink-0" />
                 <span className="text-sm2 font-semibold text-red-ink">This will discard data</span>
@@ -184,7 +184,7 @@ function Section({ title, hide, children }: { title: string; hide?: boolean; chi
   return (
     <div>
       <div className="text-2xs font-bold uppercase tracking-[.04em] text-muted mb-1.5">{title}</div>
-      <div className="rounded-[8px] shadow-[inset_0_0_0_1px_var(--line)] p-3">{children}</div>
+      <div className="rounded shadow-[inset_0_0_0_1px_var(--line)] p-3">{children}</div>
     </div>
   );
 }

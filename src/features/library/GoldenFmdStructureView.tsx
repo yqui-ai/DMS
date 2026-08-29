@@ -23,8 +23,8 @@ export function GoldenFmdStructureView({ structure }: { structure: GoldenFmdStru
               <table className="w-full border-collapse text-sm2 table-fixed">
                 <thead>
                   <tr>
-                    <th className="w-[30%] text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 text-left">Field</th>
-                    <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 text-left">Description / Allowed Values</th>
+                    <th className="w-[30%] text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface border-b border-line px-2.5 py-2 text-left">Field</th>
+                    <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface border-b border-line px-2.5 py-2 text-left">Description / Allowed Values</th>
                   </tr>
                 </thead>
                 <tbody>

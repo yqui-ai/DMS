@@ -1,3 +1,4 @@
+import { useParams } from 'react-router-dom';
 import { Table, type Column } from '../../components/Table';
 import { Tag } from '../../components/Tag';
 import { PageHeader } from '../../components/PageHeader';
@@ -11,7 +12,12 @@ const STATUS_VARIANT = { Connected: 'accent', Error: 'danger', 'Not Configured':
 const STATUSES: Connection['status'][] = ['Connected', 'Error', 'Not Configured'];
 
 export function ConnectionsPage() {
-  const { data: program } = useDefaultProgram();
+  // Prefer the program in the URL. This page used to exist only at /systems/connections, where
+  // there is no :programId, so it always fell back to the default program — nested inside program B
+  // it would have shown program A's connections.
+  const { programId } = useParams();
+  const { data: defaultProgram } = useDefaultProgram();
+  const program = programId ? { id: programId } : defaultProgram;
   const toast = useToast();
   const { data: connections = [], isLoading } = useConnections(program?.id);
   const mutations = useConnectionMutations(program?.id ?? '');
