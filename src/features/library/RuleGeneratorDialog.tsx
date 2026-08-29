@@ -113,10 +113,10 @@ export function RuleGeneratorDialog({ open, onClose }: { open: boolean; onClose:
           <textarea
             value={description} onChange={(e) => setDescription(e.target.value)} rows={3}
             placeholder="e.g. MATNR must be 18 characters, numeric, no leading zeros stripped"
-            className="w-full text-sm2 bg-surface border border-line-strong rounded-[8px] px-[11px] py-2 resize-y"
+            className="w-full text-sm2 bg-surface border border-line-strong rounded px-[11px] py-2 resize-y"
           />
         </Field>
-        <Button variant="primary" onClick={generate} className="self-start"><Wand2 size={14} /> Generate Rule</Button>
+        <Button variant="primary" onClick={generate} className="self-start"><Wand2 size={14} /> Generate rule</Button>
         {expression && (
           <Card className="bg-surface-2">
             <div className="text-2xs font-bold uppercase tracking-[.04em] text-muted mb-1.5">Generated rule preview</div>

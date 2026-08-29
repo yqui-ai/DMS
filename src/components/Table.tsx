@@ -25,6 +25,11 @@ export interface TableProps<T> {
   rowClickable?: (row: T) => boolean;
   selectedKey?: string;
   pageSize?: number;
+  /** Fill the parent instead of capping at 70vh, so the table scrollbar is the only one on
+   * screen. Opt-in: it needs an UNBROKEN chain of flex-1/min-h-0 ancestors back to the shell,
+   * and one auto-height wrapper anywhere in that chain makes the table overflow its parent
+   * instead of scrolling inside it. */
+  fill?: boolean;
   emptyMessage?: string;
   /** Tighter row height/padding and smaller text — for data-dense lists (e.g. a structure's field
    * list) where the default row height wastes space without adding readability. */
@@ -33,7 +38,7 @@ export interface TableProps<T> {
 
 type SortDir = 'asc' | 'desc';
 
-export function Table<T>({ columns, rows, rowKey, onRowClick, rowClickable, selectedKey, pageSize = 25, emptyMessage = 'No records.', dense = false }: TableProps<T>) {
+export function Table<T>({ columns, rows, rowKey, onRowClick, rowClickable, selectedKey, pageSize = 25, emptyMessage = 'No records.', dense = false, fill = false }: TableProps<T>) {
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<{ key: string; dir: SortDir } | null>(null);
 
@@ -66,13 +71,16 @@ export function Table<T>({ columns, rows, rowKey, onRowClick, rowClickable, sele
   const paged = sorted.slice(page * pageSize, page * pageSize + pageSize);
 
   return (
-    <div className={clsx('overflow-hidden', !dense && 'rounded-lg shadow-card')}>
+    // `bg-surface` is load-bearing, not decoration. The table set no background at all, so every
+    // list in the app showed the page's grey `--bg` between its rows and the whole catalogue read
+    // as a grey slab. A list is a document: it sits ON the page, it is not part of it.
+    <div className={clsx('overflow-hidden bg-surface', fill && 'flex flex-col flex-1 min-h-0', !dense && 'rounded-lg shadow-card')}>
       {/* text-sm2 (not text-sm2) here is load-bearing for consistency: this is the ONE place body
           text size was left to inherit the browser/Tailwind default instead of matching every
           hand-rolled table in the app (FMD viewers, Roles/Approvals tabs, dense mode of this same
           component) — which all already use text-sm2. Individual columns' own `sm2` overrides
           elsewhere become redundant no-ops now, not a second competing size. */}
-      <div className="overflow-auto max-h-[70vh]">
+      <div className={clsx('overflow-auto', fill ? 'flex-1 min-h-0' : 'max-h-[70vh]')}>
         <table className="w-full border-collapse text-sm2">
           <thead>
             <tr>
@@ -84,7 +92,11 @@ export function Table<T>({ columns, rows, rowKey, onRowClick, rowClickable, sele
                     style={{ width: col.width }}
                     onClick={() => toggleSort(col)}
                     className={clsx(
-                      'font-bold uppercase tracking-[.04em] text-muted bg-surface-3 sticky top-0 text-left z-[1]',
+                      // White like the body, separated by a rule rather than a fill. The grey
+                      // `--surface-3` bar was the heaviest thing on a list screen while carrying
+                      // the least information. It must stay OPAQUE — a sticky header with a
+                      // transparent background lets rows scroll visibly underneath it.
+                      'font-bold uppercase tracking-[.04em] text-muted bg-surface border-b border-line sticky top-0 text-left z-[1]',
                       dense ? 'text-2xs px-2.5 py-1.5' : 'text-2xs px-3.5 py-2.5',
                       col.numeric && 'text-right',
                       col.frozen && 'sticky right-0 shadow-frozenCol',

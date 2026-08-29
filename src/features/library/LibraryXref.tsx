@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Button } from '../../components/Button';
-import { Settings } from 'lucide-react';
+import { Archive, Settings } from 'lucide-react';
 import { PageHeader } from '../../components/PageHeader';
 import { ListEmptyState } from '../../components/ListEmptyState';
 import { Table, type Column } from '../../components/Table';
 import { MultiSelectFilter } from '../../components/MultiSelectFilter';
 import { Toolbar } from '../../components/Toolbar';
+import { Menu } from '../../components/Menu';
+import { ArchiveDialog, type ArchiveTarget } from '../../components/ArchiveDialog';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useLibraryXrefTables, type LibraryXrefRow } from '../../lib/queries/rules';
 import { useLibraryPath } from '../../lib/libraryNav';
@@ -17,6 +19,7 @@ const TYPE_OPTIONS = ['Standard', 'Golden'];
 export function LibraryXref() {
   const { data: tables = [], isLoading } = useLibraryXrefTables();
   const [query, setQuery] = useState('');
+  const [archiving, setArchiving] = useState<ArchiveTarget | null>(null);
   const [klass, setKlass] = useState<string[]>([]);
   const [type, setType] = useState<string[]>([]);
   const navigate = useNavigate();
@@ -48,6 +51,32 @@ export function LibraryXref() {
     { key: 'reference', header: 'Reference', render: (t) => <span className="font-mono text-sm2">{t.reference}</span>, sortValue: (t) => t.reference },
     { key: 'latestVersion', header: 'Version', render: (t) => t.latestVersion ?? '—', sortValue: (t) => t.latestVersion },
     { key: 'purpose', header: 'Purpose', render: (t) => t.purpose ?? '—', sortValue: (t) => t.purpose },
+    {
+      key: 'actions', width: 44, header: '',
+      render: (t) => {
+        const blocked = t.type === 'Golden'
+          ? 'The Golden XREF is the template every other XREF is generated from.'
+          : t.programId ? undefined : 'This XREF is not scoped to a program, so it cannot be archived.';
+        return (
+          <div onClick={(e) => e.stopPropagation()}>
+            <Menu
+              label={`Manage ${t.name}`}
+              actions={[{
+                key: 'archive',
+                label: 'Archive XREF table',
+                icon: <Archive size={14} />,
+                danger: true,
+                disabled: !!blocked,
+                title: blocked,
+                onSelect: () => t.programId && setArchiving({
+                  entityType: 'xref', entityId: t.id, entityLabel: t.name, programId: t.programId,
+                }),
+              }]}
+            />
+          </div>
+        );
+      },
+    },
   ];
 
   return (
@@ -77,6 +106,7 @@ export function LibraryXref() {
         )}
       <Outlet />
       <GoldenXrefDesignerDialog target={goldenTarget} onClose={() => setGoldenTarget(null)} />
+      <ArchiveDialog target={archiving} onClose={() => setArchiving(null)} />
     </div>
   );
 }

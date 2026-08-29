@@ -12,6 +12,7 @@ import { Field, Input } from '../../components/Field';
 import { useToast } from '../../components/Toast';
 import { isoToDmy, dmyToIso } from '../../lib/format';
 import { TimelinesSettingsTab } from './TimelinesSettingsTab';
+import { ArchiveApproversTab } from './ArchiveApproversTab';
 import { InternalDataDictionary } from './InternalDataDictionary';
 import type { Cycle, Program, Project, Subproject } from '../../types/entities';
 
@@ -19,6 +20,7 @@ import type { Cycle, Program, Project, Subproject } from '../../types/entities';
 // nested under the current project (doesn't drop project context) or standalone, like Library.
 const TABS = [
   { key: 'configure', label: 'Configure' },
+  { key: 'approvers', label: 'Archive Approvers' },
   { key: 'internal', label: 'Internal' },
   { key: 'timelines', label: 'Timelines' },
 ] as const;
@@ -54,6 +56,7 @@ export function ProgramSettingsPage() {
         ))}
       </div>
       {tab === 'configure' && <ConfigureTab programId={programId!} />}
+      {tab === 'approvers' && <ArchiveApproversTab programId={programId!} />}
       {tab === 'internal' && <InternalDataDictionary />}
       {tab === 'timelines' && <TimelinesSettingsTab programId={programId!} />}
     </div>
@@ -73,9 +76,6 @@ function ConfigureTab({ programId }: { programId: string }) {
   const [editing, setEditing] = useState(false);
   const [draftProgram, setDraftProgram] = useState<DProgram | null>(null);
   const [draftProjects, setDraftProjects] = useState<DProject[]>([]);
-  const [deleted, setDeleted] = useState<{ projects: Set<string>; subprojects: Set<string>; cycles: Set<string> }>({
-    projects: new Set(), subprojects: new Set(), cycles: new Set(),
-  });
   const [saving, setSaving] = useState(false);
 
   const startEdit = () => {
@@ -87,7 +87,6 @@ function ConfigureTab({ programId }: { programId: string }) {
         subprojects: subprojects.filter((s) => s.projectId === r.id).map((s) => ({ ...s, cycles: cycles.filter((c) => c.subprojectId === s.id) })),
       })),
     );
-    setDeleted({ projects: new Set(), subprojects: new Set(), cycles: new Set() });
     setEditing(true);
   };
 
@@ -102,9 +101,9 @@ function ConfigureTab({ programId }: { programId: string }) {
         start_date: dmyToIso(isoToDmy(draftProgram.startDate)) ?? draftProgram.startDate ?? null,
       }).eq('id', programId);
 
-      for (const id of deleted.projects) await supabase.from('projects').delete().eq('id', id);
-      for (const id of deleted.subprojects) await supabase.from('subprojects').delete().eq('id', id);
-      for (const id of deleted.cycles) await supabase.from('cycles').delete().eq('id', id);
+      // No deletes. A saved record is archived from Migration Project, behind approval — see
+      // migrations 0040/0041, where the database rejects DELETE on these tables outright. This
+      // page can still discard rows you added but have not saved; that is the only removal left.
 
       for (const [ri, project] of draftProjects.entries()) {
         let projectId = project.id;
@@ -181,17 +180,19 @@ function ConfigureTab({ programId }: { programId: string }) {
   const addProject = () => setDraftProjects((rs) => [...rs, {
     id: newId(), programId, code: '', name: 'New Project', description: '', seq: rs.length + 1, subprojects: [], _new: true,
   }]);
+  /** Only ever discards an UNSAVED row. Removing a saved one is an archive, which needs
+   * approval and happens in Migration Project — the button is hidden for those. */
   const removeProject = (id: string) => {
+    if (!isNew(id)) return;
     setDraftProjects((rs) => rs.filter((r) => r.id !== id));
-    if (!isNew(id)) setDeleted((d) => ({ ...d, projects: new Set(d.projects).add(id) }));
   };
   const addSubproject = (projectId: string) => updateProject(projectId, {
     subprojects: [...(draftProjects.find((r) => r.id === projectId)?.subprojects ?? []),
       { id: newId(), projectId, code: '', name: 'New Subproject', description: '', scopeFinalized: false, seq: 0, cycles: [], _new: true }],
   });
   const removeSubproject = (projectId: string, subprojectId: string) => {
+    if (!isNew(subprojectId)) return;
     updateProject(projectId, { subprojects: draftProjects.find((r) => r.id === projectId)?.subprojects.filter((s) => s.id !== subprojectId) ?? [] });
-    if (!isNew(subprojectId)) setDeleted((d) => ({ ...d, subprojects: new Set(d.subprojects).add(subprojectId) }));
   };
   const addCycle = (projectId: string, subprojectId: string) => {
     const project = draftProjects.find((r) => r.id === projectId);
@@ -200,10 +201,10 @@ function ConfigureTab({ programId }: { programId: string }) {
     updateSubproject(projectId, subprojectId, { cycles: [...subproject.cycles, { id: newId(), subprojectId, name: 'New Cycle', seq: 0, _new: true }] });
   };
   const removeCycle = (projectId: string, subprojectId: string, cycleId: string) => {
+    if (!isNew(cycleId)) return;
     const project = draftProjects.find((r) => r.id === projectId);
     const subproject = project?.subprojects.find((s) => s.id === subprojectId);
     if (subproject) updateSubproject(projectId, subprojectId, { cycles: subproject.cycles.filter((c) => c.id !== cycleId) });
-    if (!isNew(cycleId)) setDeleted((d) => ({ ...d, cycles: new Set(d.cycles).add(cycleId) }));
   };
 
   if (!program) return <p className="text-sm2 text-muted py-8 text-center">Loading…</p>;
@@ -271,8 +272,8 @@ function ConfigureTab({ programId }: { programId: string }) {
                 <span className="font-mono text-sm2 text-muted">{project.code}</span>
               </div>
             )}
-            {editing && (
-              <button onClick={() => removeProject(project.id)} className="text-red hover:bg-red-light p-1.5 rounded" aria-label="Delete project">
+            {editing && project._new && (
+              <button onClick={() => removeProject(project.id)} className="text-red hover:bg-red-light p-1.5 rounded" aria-label="Discard unsaved project" title="Discard this unsaved project. Saved ones are archived from Migration Project.">
                 <Trash2 size={14} />
               </button>
             )}
@@ -280,7 +281,7 @@ function ConfigureTab({ programId }: { programId: string }) {
 
           <div className="pl-4 border-l-2 border-line flex flex-col gap-2.5">
             {project.subprojects.map((subproject: any) => (
-              <div key={subproject.id} className="bg-surface-2 rounded-[8px] p-3">
+              <div key={subproject.id} className="bg-surface-2 rounded p-3">
                 <div className="flex items-start gap-2 mb-2">
                   {editing ? (
                     <div className="grid grid-cols-3 gap-2 flex-1">
@@ -298,8 +299,8 @@ function ConfigureTab({ programId }: { programId: string }) {
                       {subproject.scopeFinalized && <span className="text-2xs font-bold text-blue">FINALIZED</span>}
                     </div>
                   )}
-                  {editing && (
-                    <button onClick={() => removeSubproject(project.id, subproject.id)} className="text-red hover:bg-red-light p-1 rounded" aria-label="Delete subproject">
+                  {editing && subproject._new && (
+                    <button onClick={() => removeSubproject(project.id, subproject.id)} className="text-red hover:bg-red-light p-1 rounded" aria-label="Discard unsaved subproject">
                       <Trash2 size={13} />
                     </button>
                   )}
@@ -315,8 +316,8 @@ function ConfigureTab({ programId }: { programId: string }) {
                       ) : (
                         <span className="text-sm2 text-text">{cycle.name}</span>
                       )}
-                      {editing && (
-                        <button onClick={() => removeCycle(project.id, subproject.id, cycle.id)} className="text-red hover:bg-red-light p-1 rounded" aria-label="Delete cycle">
+                      {editing && cycle._new && (
+                        <button onClick={() => removeCycle(project.id, subproject.id, cycle.id)} className="text-red hover:bg-red-light p-1 rounded" aria-label="Discard unsaved cycle">
                           <Trash2 size={12} />
                         </button>
                       )}

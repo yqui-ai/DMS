@@ -53,13 +53,18 @@ export function useLibraryRules(enabled = true) {
     queryFn: async (): Promise<LibraryRuleRow[]> => {
       const { data, error } = await supabase
         .from('rules')
-        .select('*, subprojects(projects(code, programs(code)))')
+        .select('*, subprojects(projects(code, program_id, programs(code)))')
+        .is('archived_at', null)
         .order('code');
       if (error) throw error;
       return (data ?? []).map((r: any) => {
         const programCode = r.subprojects?.projects?.programs?.code as string | undefined;
         const projectCode = r.subprojects?.projects?.code as string | undefined;
-        return { ...toRule(r), reference: formatLibraryReference(r.class, programCode, projectCode) };
+        return {
+          ...toRule(r),
+          programId: r.subprojects?.projects?.program_id as string | undefined,
+          reference: formatLibraryReference(r.class, programCode, projectCode),
+        };
       });
     },
   });
@@ -119,7 +124,8 @@ export function useLibraryXrefTables(enabled = true) {
     queryFn: async (): Promise<LibraryXrefRow[]> => {
       const { data, error } = await supabase
         .from('xref_tables')
-        .select('*, subprojects(projects(code, programs(code))), xref_versions!xref_table_id(id, version, created_at)')
+        .select('*, subprojects(projects(code, program_id, programs(code))), xref_versions!xref_table_id(id, version, created_at)')
+        .is('archived_at', null)
         .order('name');
       if (error) throw error;
       return (data ?? []).map((x: any) => {
@@ -127,7 +133,9 @@ export function useLibraryXrefTables(enabled = true) {
         const projectCode = x.subprojects?.projects?.code as string | undefined;
         const versions = [...(x.xref_versions ?? [])].sort((a: any, b: any) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
         return {
-          ...toXrefTable(x), reference: formatLibraryReference(x.class, programCode, projectCode),
+          ...toXrefTable(x),
+          programId: x.subprojects?.projects?.program_id as string | undefined,
+          reference: formatLibraryReference(x.class, programCode, projectCode),
           latestVersion: versions[0]?.version as string | undefined, latestVersionId: versions[0]?.id as string | undefined,
         };
       });

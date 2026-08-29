@@ -9,8 +9,11 @@ const queryClient = new QueryClient({
 
 function ThemeInit() {
   useEffect(() => {
-    const stored = localStorage.getItem('dms-theme');
-    if (stored === 'dark') document.documentElement.classList.add('dark');
+    if (localStorage.getItem('dms-theme') === 'dark') document.documentElement.classList.add('dark');
+    // Restored the same way and independently — a brand choice survives a reload whether or not
+    // dark mode is on. `default` writes no attribute, so `:root` applies unmodified.
+    const brand = localStorage.getItem('dms-brand');
+    if (brand && brand !== 'default') document.documentElement.dataset.brand = brand;
   }, []);
   return null;
 }

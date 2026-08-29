@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import clsx from 'clsx';
 import { MIN_QUERY, useSearchResults } from '../../lib/search';
+import { useDismiss } from '../../components/useDismiss';
 
 /** Search across everything the user can reach, grouped by what kind of record each hit is.
  *
@@ -21,7 +22,6 @@ export function GlobalSearch() {
    * on every page to power a box most visits never touch. Once warm they stay warm. */
   const [loaded, setLoaded] = useState(false);
   const [cursor, setCursor] = useState(0);
-  const boxRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const groups = useSearchResults(query, { limit: 5, enabled: loaded });
@@ -35,10 +35,11 @@ export function GlobalSearch() {
   const go = (to: string) => { navigate(to); dismiss(); };
   const seeAll = () => go(`/search?q=${encodeURIComponent(query.trim())}`);
 
+  // Outside-click and Escape come from the shared hook; `dismiss` also clears the query and blurs,
+  // which is what makes Escape leave the search properly closed rather than closed-but-focused.
+  const boxRef = useDismiss<HTMLDivElement>(open, dismiss);
+
   useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
-    };
     // The shortcut is what makes a header search worth reaching for at all.
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -47,9 +48,8 @@ export function GlobalSearch() {
         inputRef.current?.focus();
       }
     };
-    document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+    return () => document.removeEventListener('keydown', onKey);
   }, []);
 
   const showPanel = open && query.trim().length >= MIN_QUERY;
@@ -79,12 +79,12 @@ export function GlobalSearch() {
         // Quiet until focused or filled, like ToolbarSearch — the header is chrome, and a permanent
         // border here would make the whole strip read as a form.
         className={clsx(
-          'text-sm2 pl-8 pr-3 py-1.5 rounded-[8px] border bg-transparent w-56 focus:w-72 transition-[width]',
+          'text-sm2 pl-8 pr-3 py-1.5 rounded border bg-transparent w-56 focus:w-72 transition-[width]',
           query ? 'border-line-strong bg-surface' : 'border-transparent hover:bg-surface-2 focus:bg-surface focus:border-line-strong',
         )}
       />
       {showPanel && (
-        <div className="absolute right-0 mt-1 w-[420px] max-h-[70vh] overflow-auto bg-surface rounded-[8px] shadow-cardHover py-1.5 z-30">
+        <div className="absolute right-0 mt-1 w-[420px] max-h-[70vh] overflow-auto bg-surface text-text rounded shadow-cardHover py-1.5 z-30">
           {flat.length === 0 ? (
             <p className="px-3.5 py-6 text-sm2 text-muted text-center">Nothing matches “{query.trim()}”.</p>
           ) : (

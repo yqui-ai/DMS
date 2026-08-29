@@ -81,9 +81,9 @@ export function RolesTab() {
           <table className="w-full border-collapse text-sm2">
             <thead>
               <tr>
-                <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-3.5 py-2.5 sticky top-0 text-left z-[1]">Screen</th>
+                <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface border-b border-line px-3.5 py-2.5 sticky top-0 text-left z-[1]">Screen</th>
                 {roles.map((r) => (
-                  <th key={r.id} className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2 py-2.5 sticky top-0 text-center z-[1]">
+                  <th key={r.id} className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface border-b border-line px-2 py-2.5 sticky top-0 text-center z-[1]">
                     {r.name}
                   </th>
                 ))}

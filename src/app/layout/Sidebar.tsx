@@ -1,4 +1,4 @@
-import { NavLink, useParams } from 'react-router-dom';
+import { Link, NavLink, useParams } from 'react-router-dom';
 import * as icons from 'lucide-react';
 const { ChevronsLeft, ChevronsRight } = icons;
 import clsx from 'clsx';
@@ -14,8 +14,10 @@ const toPascal = (s: string) => s.split('-').map((p) => p[0].toUpperCase() + p.s
  * `standalone` fallback (Library, Program Admin) never kick the user out of their current
  * project — the fallback is only used when the nested path can't be resolved. */
 function resolveHref(item: NavItem, programId?: string, subprojectId?: string): string {
+  // No item uses `../../` any more. It used to, and it was exactly the bug: a nav item that walks
+  // UP the URL drops the subproject, so opening Program Settings from inside a project threw you
+  // out of it. Every item is now relative-and-nested with a `standalone` fallback instead.
   if (item.to.startsWith('/')) return item.to;
-  if (item.to.startsWith('../../')) return `/pg/${programId}/${item.to.replace('../../', '')}`;
   if (programId && subprojectId) return `/pg/${programId}/sp/${subprojectId}/${item.to}`;
   return item.standalone?.(programId) ?? `/pg/${programId}/sp/${subprojectId}/${item.to}`;
 }
@@ -36,15 +38,21 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   return (
     <aside
       className={clsx(
-        'flex flex-col shrink-0 bg-surface border-r border-line transition-[width] duration-150',
+        'flex flex-col shrink-0 bg-nav text-nav-text border-r border-nav-line transition-[width] duration-150',
         collapsed ? 'w-[60px]' : 'w-[228px]',
       )}
     >
-      <div className="flex items-center h-14 px-3.5 border-b border-line shrink-0">
-        {!collapsed && <span className="font-bold text-xl text-text truncate">DMS</span>}
+      <div className="flex items-center h-14 px-3.5 border-b border-nav-line shrink-0">
+        {/* The wordmark IS the way home. It was dead text while three other controls competed to be
+            the home button — this is the one every application already trains people to click. */}
+        {!collapsed && (
+          <Link to="/" className="font-bold text-xl text-nav-text truncate hover:opacity-80 transition-opacity" title="Home">
+            DMS
+          </Link>
+        )}
         <button
           onClick={onToggle}
-          className={clsx('ml-auto text-muted hover:text-text p-1.5 rounded hover:bg-blue-pale', collapsed && 'mx-auto')}
+          className={clsx('ml-auto text-nav-muted hover:text-nav-text p-1.5 rounded hover:bg-nav-hover', collapsed && 'mx-auto')}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
@@ -69,7 +77,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           return (
             <div key={group.title} className="mb-3.5">
               {!collapsed && (
-                <div className="px-3.5 mb-1 text-2xs font-bold uppercase tracking-[.05em] text-muted">{group.title}</div>
+                <div className="px-3.5 mb-1 text-2xs font-bold uppercase tracking-[.05em] text-nav-muted">{group.title}</div>
               )}
               {visibleItems.map((item) => {
                 const Icon = (icons as any)[toPascal(item.icon)] ?? icons.Circle;
@@ -80,8 +88,8 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                     title={collapsed ? item.label : undefined}
                     className={({ isActive }) =>
                       clsx(
-                        'flex items-center gap-2.5 mx-2 px-2 py-2 rounded-[8px] text-sm2 font-semibold truncate',
-                        isActive ? 'bg-blue text-white' : 'text-text hover:bg-blue-pale',
+                        'flex items-center gap-2.5 mx-2 px-2 py-2 rounded text-sm2 font-semibold truncate',
+                        isActive ? 'bg-blue text-white' : 'text-nav-text hover:bg-nav-hover',
                       )
                     }
                   >

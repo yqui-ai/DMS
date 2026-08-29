@@ -11,7 +11,7 @@ const PX_PER_DAY = 3;
 const parseD = (iso?: string) => (iso ? new Date(iso + 'T00:00:00') : null);
 const daysBetween = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / DAY_MS);
 const ICON = { star: Star, snowflake: Snowflake } as const;
-const ICON_COLOR: Record<string, string> = { 'freeze-yellow': '#e2a900', 'freeze-blue': '#1e6bb8', 'freeze-red': '#da291c', 'star-yellow': '#e2a900' };
+const ICON_COLOR: Record<string, string> = { 'freeze-yellow': 'var(--amber)', 'freeze-blue': 'var(--blue-mid)', 'freeze-red': 'var(--red)', 'star-yellow': 'var(--amber)' };
 
 /** Read-only programme milestone gantt, admin-edited from Program Settings → Timelines. */
 export function TimelineGantt() {
@@ -60,7 +60,7 @@ export function TimelineGantt() {
                           return (
                             <div
                               key={e.id} title={e.name}
-                              className="absolute h-4 top-0.5 rounded-[4px] bg-blue text-white text-2xs px-1.5 flex items-center truncate"
+                              className="absolute h-4 top-0.5 rounded-xs bg-blue text-white text-2xs px-1.5 flex items-center truncate"
                               style={{ left: xOf(start), width: Math.max(6, xOf(end) - xOf(start)) }}
                             >
                               {e.name}
@@ -69,7 +69,7 @@ export function TimelineGantt() {
                         }
                         return (
                           <div key={e.id} title={e.name} className="absolute top-0" style={{ left: xOf(start) }}>
-                            {Icon ? <Icon size={13} color={ICON_COLOR[e.icon!] ?? '#e2a900'} /> : <span className={clsx('w-2 h-2 rounded-full bg-amber-ink block')} />}
+                            {Icon ? <Icon size={13} color={ICON_COLOR[e.icon!] ?? 'var(--amber)'} /> : <span className={clsx('w-2 h-2 rounded-full bg-amber-ink block')} />}
                           </div>
                         );
                       })}

@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
+import { useDismiss } from './useDismiss';
 
 export interface MultiSelectFilterProps {
   label: string;
@@ -16,17 +17,9 @@ export interface MultiSelectFilterProps {
  * being clicked again. */
 export function MultiSelectFilter({ label, options, selected, onChange, formatOption }: MultiSelectFilterProps) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = useDismiss(open, () => setOpen(false));
   const display = formatOption ?? ((opt: string) => opt);
 
-  useEffect(() => {
-    if (!open) return;
-    const onClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, [open]);
 
   const sorted = [...options].sort((a, b) => display(a).localeCompare(display(b)));
   const toggle = (opt: string) => onChange(selected.includes(opt) ? selected.filter((o) => o !== opt) : [...selected, opt]);
@@ -42,7 +35,7 @@ export function MultiSelectFilter({ label, options, selected, onChange, formatOp
           // row of six of them recedes behind the data instead of competing with it. An ACTIVE
           // filter earns the border and blue fill, which makes "something is filtering this list"
           // visible at a glance rather than something you have to read the row to discover.
-          'flex items-center gap-1.5 text-sm2 px-2.5 py-1.5 rounded-[8px] border max-w-[220px]',
+          'flex items-center gap-1.5 text-sm2 px-2.5 py-1.5 rounded border max-w-[220px]',
           selected.length > 0
             ? 'border-blue text-blue bg-blue-pale font-semibold'
             : 'border-transparent bg-transparent text-muted hover:text-text hover:bg-surface-2',
@@ -52,7 +45,7 @@ export function MultiSelectFilter({ label, options, selected, onChange, formatOp
         <ChevronDown size={13} className="shrink-0" />
       </button>
       {open && (
-        <div className="absolute left-0 mt-1 min-w-[220px] max-h-72 overflow-auto bg-surface rounded-[8px] shadow-cardHover py-1.5 z-20">
+        <div className="absolute left-0 mt-1 min-w-[220px] max-h-72 overflow-auto bg-surface rounded shadow-cardHover py-1.5 z-20">
           {selected.length > 0 && (
             <button onClick={() => onChange([])} className="w-full text-left px-3 py-1.5 text-2xs font-semibold text-blue hover:bg-blue-pale">
               Clear selection

@@ -24,7 +24,7 @@ export function CheckTablesPage() {
         {tables.map((t) => (
           <button
             key={t.id} onClick={() => setSelectedId(t.id)}
-            className={`text-left px-3 py-2.5 rounded-[8px] border ${selected?.id === t.id ? 'bg-blue-light border-blue-mid' : 'bg-surface border-line hover:bg-blue-pale'}`}
+            className={`text-left px-3 py-2.5 rounded border ${selected?.id === t.id ? 'bg-blue-light border-blue-mid' : 'bg-surface border-line hover:bg-blue-pale'}`}
           >
             <div className="flex items-center gap-2">
               <Tag variant="table">{t.tableName}</Tag>

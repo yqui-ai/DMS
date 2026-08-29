@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Button } from '../../components/Button';
-import { Wand2 } from 'lucide-react';
+import { Archive, Wand2 } from 'lucide-react';
 import { PageHeader } from '../../components/PageHeader';
 import { ListEmptyState } from '../../components/ListEmptyState';
 import { Table, type Column } from '../../components/Table';
 import { Tag } from '../../components/Tag';
 import { MultiSelectFilter } from '../../components/MultiSelectFilter';
 import { Toolbar } from '../../components/Toolbar';
+import { Menu } from '../../components/Menu';
+import { ArchiveDialog, type ArchiveTarget } from '../../components/ArchiveDialog';
 import { useLibraryRules, type LibraryRuleRow } from '../../lib/queries/rules';
 import { RuleGeneratorDialog } from './RuleGeneratorDialog';
 
@@ -17,6 +19,7 @@ const CLASS_OPTIONS = ['Global', 'Local'];
 export function LibraryRules() {
   const { data: rules = [], isLoading } = useLibraryRules();
   const [generatorOpen, setGeneratorOpen] = useState(false);
+  const [archiving, setArchiving] = useState<ArchiveTarget | null>(null);
   // Rule is the one Library screen with no detail view, so a search hit can't open a record —
   // it opens the catalogue already narrowed to it instead, which `?q=` is for.
   const [params] = useSearchParams();
@@ -50,6 +53,30 @@ export function LibraryRules() {
     { key: 'severity', header: 'Severity', render: (r) => <Tag variant={SEVERITY_VARIANT[r.severity]} size="sm">{r.severity}</Tag>, sortValue: (r) => r.severity },
     { key: 'status', header: 'Status', render: (r) => r.status, sortValue: (r) => r.status },
     { key: 'owner', header: 'Owner', render: (r) => r.owner ?? '—', sortValue: (r) => r.owner },
+    {
+      key: 'actions', width: 44, header: '',
+      render: (r) => {
+        const blocked = r.programId ? undefined : 'This rule is not scoped to a program, so it cannot be archived.';
+        return (
+          <div onClick={(e) => e.stopPropagation()}>
+            <Menu
+              label={`Manage ${r.name}`}
+              actions={[{
+                key: 'archive',
+                label: 'Archive rule',
+                icon: <Archive size={14} />,
+                danger: true,
+                disabled: !!blocked,
+                title: blocked,
+                onSelect: () => r.programId && setArchiving({
+                  entityType: 'rule', entityId: r.id, entityLabel: r.name, programId: r.programId,
+                }),
+              }]}
+            />
+          </div>
+        );
+      },
+    },
   ];
 
   return (
@@ -68,6 +95,7 @@ export function LibraryRules() {
         ? <ListEmptyState noun="rules" filtered={hasActiveFilters} onClearFilters={clearFilters} />
         : <Table columns={columns} rows={filtered} rowKey={(r) => r.id} pageSize={30} emptyMessage="Loading…" />}
       <RuleGeneratorDialog open={generatorOpen} onClose={() => setGeneratorOpen(false)} />
+      <ArchiveDialog target={archiving} onClose={() => setArchiving(null)} />
     </div>
   );
 }

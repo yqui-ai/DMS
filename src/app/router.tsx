@@ -1,18 +1,22 @@
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-dom';
-import { AppShell } from './layout/AppShell';
+import { AppShell, LaunchpadShell } from './layout/AppShell';
+import { LaunchpadPage } from '../features/launchpad/LaunchpadPage';
+import { AdministrationPage } from '../features/launchpad/AdministrationPage';
+import { MigrationStatusPage } from '../features/launchpad/MigrationStatusPage';
+import { ArchiveApprovalsPage } from '../features/launchpad/ArchiveApprovalsPage';
+import { ChangeLogPage } from '../features/launchpad/ChangeLogPage';
+import { ArchivePage } from '../features/launchpad/ArchivePage';
 import { TabbedSection } from './layout/TabbedSection';
 import { ScreenGate } from './layout/ScreenGate';
 import { Placeholder } from '../components/Placeholder';
 import { MIGRATION_TABS } from './nav';
 import type { TabStripItem } from './layout/TabStrip';
-import { SubprojectPicker } from '../features/programme/SubprojectPicker';
+import { HierarchyPage } from '../features/programme/HierarchyPage';
 import { ProgramSettingsPage } from '../features/programme/ProgramSettingsPage';
 import { ProgramAdminPage } from '../features/programme/ProgramAdminPage';
-import { MigrationObjectCatalogue } from '../features/scope/MigrationObjectCatalogue';
-import { ScopeOverview } from '../features/scope/ScopeOverview';
-import { ScopeCriteria } from '../features/scope/ScopeCriteria';
-import { ScopeSequence } from '../features/scope/ScopeSequence';
-import { FmdMapping } from '../features/scope/FmdMapping';
+import { ScopeErd } from '../features/scope/ScopeErd';
+import { ScopeRegister } from '../features/scope/ScopeRegister';
+import { ScopeWizard } from '../features/scope/ScopeWizard';
 import { RulesOverview } from '../features/rules/RulesOverview';
 import { RulesRegister } from '../features/rules/RulesRegister';
 import { ValueMapping } from '../features/rules/ValueMapping';
@@ -27,6 +31,7 @@ import { ProfilingPage } from '../features/staging/ProfilingPage';
 import { PipelineStages } from '../features/staging/PipelineStages';
 import { PromotionsPage } from '../features/governance/PromotionsPage';
 import { JobMonitorPage } from '../features/governance/JobMonitorPage';
+import { LibraryHome } from '../features/library/LibraryHome';
 import { LibraryObjects } from '../features/library/LibraryObjects';
 import { LibraryRules } from '../features/library/LibraryRules';
 import { LibraryFmds } from '../features/library/LibraryFmds';
@@ -44,12 +49,21 @@ import { FalloutPage } from '../features/quality/FalloutPage';
 import { ReferenceDataOverview } from '../features/referenceData/ReferenceDataOverview';
 import { CheckTablesPage } from '../features/referenceData/CheckTablesPage';
 
+/** Design > Scope's tabs. Starred appear only after the scope is finalized.
+ *
+ * Overview and Migration Object were removed — they were the old design and are being rebuilt from
+ * scratch. Note this is Design > Scope's object list, NOT Library > Migration Object
+ * (`LibraryObjects`), which is a different, program-wide screen and stays exactly as it is. */
+// Scope Register is NOT gated on `scopeFinalized`. The other two tabs describe a scope that has
+// been agreed, but "which objects are we migrating, and who owns each" is a question people ask
+// from the first day of scoping — and it is where the consultant and ETL developer get assigned,
+// which has to be possible before finalizing rather than after.
 const SCOPE_TABS: TabStripItem[] = [
-  { key: 'overview', label: 'Overview', icon: 'layout-dashboard', to: '' },
-  { key: 'objects', label: 'Migration Object', icon: 'database', to: 'objects' },
-  { key: 'criteria', label: 'Criteria', icon: 'filter', to: 'criteria' },
-  { key: 'fmd', label: 'FMD', icon: 'files', to: 'fmd' },
-  { key: 'sequence', label: 'Sequence', icon: 'list-ordered', to: 'sequence' },
+  { key: 'register', label: 'Scope Register', icon: 'list-checks', to: 'register' },
+  { key: 'erd', label: 'ERD Diagram', icon: 'workflow', to: 'erd', requires: 'scopeFinalized' },
+  // FMD Mapping was merged INTO Scope Register. The two tabs listed the same objects with two
+  // different subsets of their columns, so "who owns this and does it have a mapping" meant
+  // switching tabs and re-finding the row. One list, one row per object.
 ];
 
 const RULES_TABS: TabStripItem[] = [
@@ -82,9 +96,9 @@ const QUALITY_TABS: TabStripItem[] = [
  * Back closes it and returns to the list, and a single FMD can be linked to. Rule has no detail
  * view (see the `library-section-design` skill) so it has no child. */
 const LIBRARY_ROUTES: RouteObject[] = [
-  // Bare /library is a section, not a screen. Without this it matches the parent, finds no
-  // child, and renders an empty page instead of falling through to Not Found.
-  { index: true, element: <Navigate to="objects" replace /> },
+  // Bare /library is the Library's front door — four tiles, one per catalogue. It used to
+  // redirect straight to Migration Object, which meant 'Library' as a place did not exist.
+  { index: true, element: <LibraryHome /> },
   {
     path: 'objects',
     element: <ScreenGate screen="catalogObjects"><LibraryObjects /></ScreenGate>,
@@ -104,12 +118,34 @@ const LIBRARY_ROUTES: RouteObject[] = [
 ];
 
 export const router = createBrowserRouter([
+  // Above the program level: the launchpad and the three areas it opens onto. A pathless layout
+  // route, so these share the launchpad chrome (header only) without nesting under a path segment.
+  {
+    element: <LaunchpadShell />,
+    children: [
+      { path: '/', element: <LaunchpadPage /> },
+      { path: '/admin', element: <AdministrationPage /> },
+      { path: '/projects', element: <HierarchyPage /> },
+      { path: '/status', element: <MigrationStatusPage /> },
+      // Not a tile: approvals are a queue you are sent to, not an area you choose to work in.
+      // Reached from the app switcher and from the banner on Migration Project.
+      { path: '/approvals', element: <ArchiveApprovalsPage /> },
+      { path: '/archive', element: <ArchivePage /> },
+      { path: '/changes', element: <ChangeLogPage /> },
+      // The Library and Connections OUTSIDE a subproject live here, not in AppShell. The sidebar
+      // navigates within a subproject; with none open it could only show the two groups that have
+      // standalone fallbacks, so it rendered as a half-empty rail of unrelated links. Their nested
+      // mounts under sp/:subprojectId keep the sidebar, which is correct — you are inside a
+      // subproject there.
+      { path: '/library', children: LIBRARY_ROUTES },
+      { path: '/systems/connections', element: <ScreenGate screen="connections"><ConnectionsPage /></ScreenGate> },
+      { path: '/me', element: <MyProfilePage /> },
+    ],
+  },
   {
     path: '/',
     element: <AppShell />,
     children: [
-      { index: true, element: <SubprojectPicker /> },
-      { path: 'me', element: <MyProfilePage /> },
       // Program-wide like the Library routes: results span every subproject the user can reach,
       // so the page is not nested under one.
       { path: 'search', element: <SearchPage /> },
@@ -125,15 +161,32 @@ export const router = createBrowserRouter([
               { path: 'dashboard', element: <ScreenGate screen="dashboard"><DashboardPage /></ScreenGate> },
               {
                 path: 'scope',
-                element: <TabbedSection screen="preparation" title="Scope" tabs={SCOPE_TABS} segment="scope" />,
+                element: (
+                  <TabbedSection
+                    screen="preparation" title="Scope" segment="scope" tabs={SCOPE_TABS}
+                    description="Choose what this subproject migrates, map it to SAP standard objects, then work through dependencies and load order."
+                  />
+                ),
                 children: [
-                  { index: true, element: <ScopeOverview /> },
-                  { path: 'objects', element: <MigrationObjectCatalogue /> },
-                  { path: 'criteria', element: <ScopeCriteria /> },
-                  { path: 'fmd', element: <FmdMapping /> },
-                  { path: 'sequence', element: <ScopeSequence /> },
+                  // The section lands on the ANSWER — what is in scope — not on the tool that
+                  // produces it. An empty register carries the button that starts the builder, so
+                  // a fresh subproject still has one obvious next action.
+                  { index: true, element: <Navigate to="register" replace /> },
+                  { path: 'register', element: <ScopeRegister /> },
+                  { path: 'erd', element: <ScopeErd /> },
                 ],
               },
+              // The builder is a SIBLING of the tabbed section, not a child of it.
+              //
+              // Nested, it rendered the page header and the tab strip above its own six-step strip:
+              // two navigation systems stacked, the tab strip showing nothing selected because the
+              // builder is not one of its tabs. That is what made Scope read as messy — not the
+              // number of steps, but two competing answers to "where am I".
+              //
+              // As a focused flow it owns the whole area, shows one navigation, and has an explicit
+              // way out back to the register.
+              { path: 'scope/build', element: <Navigate to="objects" replace /> },
+              { path: 'scope/build/:step', element: <ScreenGate screen="preparation"><ScopeWizard /></ScreenGate> },
               {
                 path: 'rules',
                 element: <TabbedSection screen="rules" title="Rules & XREF" tabs={RULES_TABS} segment="rules" />,
@@ -189,15 +242,21 @@ export const router = createBrowserRouter([
                 // current project's URL/breadcrumb/nav context.
                 children: LIBRARY_ROUTES,
               },
-              // Same page as the standalone /pg/:programId/admin route — program-wide
-              // administration, reachable without leaving the current project's context.
+              // The same pages as their standalone routes, mounted again under the open project so
+              // reaching them does not throw you out of it. Program Admin already worked this way;
+              // Settings walked up the URL (`../../settings`) and Connections was absolute
+              // (`/systems/connections`), and both dropped the subproject on the way.
+              //
+              // They are still PROGRAM-scoped screens — a program's settings, a program's
+              // connections. What is preserved here is the URL context: the sidebar, breadcrumb and
+              // subproject switcher all keep working, and Back returns to where you were.
               { path: 'admin', element: <ScreenGate screen="programAdmin"><ProgramAdminPage /></ScreenGate> },
+              { path: 'settings', element: <ScreenGate screen="programSettings"><ProgramSettingsPage /></ScreenGate> },
+              { path: 'connections', element: <ScreenGate screen="connections"><ConnectionsPage /></ScreenGate> },
             ],
           },
         ],
       },
-      { path: 'library', children: LIBRARY_ROUTES },
-      { path: 'systems/connections', element: <ScreenGate screen="connections"><ConnectionsPage /></ScreenGate> },
       { path: '*', element: <Placeholder title="Page not found" description="Nothing lives at this address." /> },
     ],
   },

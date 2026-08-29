@@ -38,7 +38,7 @@ export function DashboardPage() {
             <svg viewBox="0 0 36 36" className="w-24 h-24 -rotate-90">
               <circle cx="18" cy="18" r="16" fill="none" stroke="var(--line)" strokeWidth="3.5" />
               <circle
-                cx="18" cy="18" r="16" fill="none" stroke={healthScore >= 70 ? '#15803d' : healthScore >= 40 ? '#e2a900' : '#da291c'}
+                cx="18" cy="18" r="16" fill="none" stroke={healthScore >= 70 ? 'var(--green)' : healthScore >= 40 ? 'var(--amber)' : 'var(--red)'}
                 strokeWidth="3.5" strokeDasharray={`${(healthScore / 100) * 100.5} 100.5`} strokeLinecap="round"
               />
             </svg>
@@ -74,7 +74,7 @@ export function DashboardPage() {
       <TimelineGantt />
 
       {env === 'DEV' && (
-        <p className="text-sm2 text-muted bg-blue-pale rounded-[8px] px-3.5 py-2.5">
+        <p className="text-sm2 text-muted bg-blue-pale rounded px-3.5 py-2.5">
           Execution summary appears once this SubProgram is running in QSA or Prod — DEV is design-only.
         </p>
       )}

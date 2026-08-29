@@ -59,7 +59,7 @@ export function TimelinesSettingsTab({ programId }: { programId: string }) {
             </div>
             <div className="flex flex-col gap-1.5 mb-3">
               {catEntries.map((e) => (
-                <div key={e.id} className="flex items-center gap-2 text-sm2 bg-surface-2 rounded-[8px] px-2.5 py-1.5">
+                <div key={e.id} className="flex items-center gap-2 text-sm2 bg-surface-2 rounded px-2.5 py-1.5">
                   <span className="font-semibold flex-1">{e.rowLabel} — {e.name}</span>
                   <span className="text-2xs text-muted">{e.startDate}{e.endDate ? ` → ${e.endDate}` : ''}</span>
                   <button onClick={() => mutations.removeEntry(e.id)} className="text-red hover:bg-red-light p-1 rounded"><Trash2 size={12} /></button>

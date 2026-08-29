@@ -414,8 +414,8 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
     >
       {step === 'upload' && (
         <div className="flex flex-col gap-3.5 min-h-[420px]">
-          <div className="flex items-start gap-2.5 p-3 rounded-[8px] bg-gradient-to-r from-[#eff6ff] to-[#faf5ff]">
-            <Sparkles size={16} className="text-[#7c3aed] shrink-0 mt-0.5" />
+          <div className="flex items-start gap-2.5 p-3 rounded bg-gradient-to-r from-[#eff6ff] to-[#faf5ff]">
+            <Sparkles size={16} className="text-violet shrink-0 mt-0.5" />
             <p className="text-sm2 text-text">
               Bring an old Excel-based FMD in — nothing is saved until the converted result is. One Custom FMD per Plant found in the data, or one overall if no Plant is detected.
             </p>
@@ -428,7 +428,7 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
               </Select>
             </Field>
           )}
-          <label className="flex-1 min-h-[160px] border-[1.5px] border-dashed border-violet-bg rounded-[10px] p-7 text-center cursor-pointer hover:border-violet-deep hover:bg-violet-bg/30 transition-colors flex flex-col items-center justify-center">
+          <label className="flex-1 min-h-[160px] border-[1.5px] border-dashed border-violet-bg rounded-lg p-7 text-center cursor-pointer hover:border-violet-deep hover:bg-violet-bg/30 transition-colors flex flex-col items-center justify-center">
             <FileSpreadsheet size={26} className="text-violet-deep mx-auto mb-2" />
             <p className="text-sm2 text-muted">{file?.name || 'Drag and drop the legacy Excel file, or click to browse'}</p>
             <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
@@ -442,8 +442,8 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
 
       {step === 'match' && matchNotice && (
         <div className="flex flex-col gap-3.5 min-h-[420px]">
-          <div className="flex items-start gap-2.5 p-3 rounded-[8px] bg-gradient-to-r from-[#eff6ff] to-[#faf5ff]">
-            <RefreshCw size={16} className="text-[#7c3aed] shrink-0 mt-0.5" />
+          <div className="flex items-start gap-2.5 p-3 rounded bg-gradient-to-r from-[#eff6ff] to-[#faf5ff]">
+            <RefreshCw size={16} className="text-violet shrink-0 mt-0.5" />
             <p className="text-sm2 text-text">
               {matchNotice.certain
                 ? 'This filename looks like a renamed or updated copy of a source we already track.'
@@ -649,7 +649,7 @@ export function ConvertHistoricalFmdWizard({ open, onClose }: { open: boolean; o
                         </summary>
                         <textarea
                           value={u.summary} onChange={(e) => updateSummary(u.plant, e.target.value)} rows={5}
-                          className="w-full mt-1.5 text-sm2 bg-surface border border-line-strong rounded-[8px] px-[11px] py-2 resize-y font-mono"
+                          className="w-full mt-1.5 text-sm2 bg-surface border border-line-strong rounded px-[11px] py-2 resize-y font-mono"
                         />
                       </details>
                     </div>
@@ -728,7 +728,7 @@ function DiffSummaryPreview({ summary }: { summary: string }) {
           separates the groups just as well and costs no nesting. */}
       {[...byLabel.entries()].map(([label, changes]) => (
         <div key={label} className="mt-2 first:mt-0">
-          <div className="flex items-center gap-2 bg-surface-2 px-2.5 py-1 rounded-[6px]">
+          <div className="flex items-center gap-2 bg-surface-2 px-2.5 py-1 rounded">
             <span className="text-2xs font-mono font-bold text-text">{label}</span>
             <span className="text-2xs text-muted">{changes.length} field{changes.length === 1 ? '' : 's'}</span>
           </div>

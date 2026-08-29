@@ -11,9 +11,9 @@ import { useAuth } from '../../lib/auth';
 import { canPublish } from '../../lib/rbac';
 import { useCurrentRole } from '../../lib/queries/memberships';
 import { useDefaultProgram } from '../../lib/queries/programme';
-import { DRAFT_VERSION, DRAFT_VERSION_ID, draftOverlayVersion, nextPublishedVersion, useEditFmdField, useFmdVersions, useGoldenFmdSummary, useGoldenWhereUsed, useHistoricalSiblings, useLatestFmdVersion, usePublishFmdVersion, type LibraryFmdRow } from '../../lib/queries/fmds';
+import { DRAFT_VERSION, DRAFT_VERSION_ID, draftOverlayVersion, nextPublishedVersion, useEditFmdField, useFmdVersions, useGoldenFmdSummary, useFmdUsage, useGoldenWhereUsed, useHistoricalSiblings, useLatestFmdVersion, usePublishFmdVersion, type LibraryFmdRow } from '../../lib/queries/fmds';
 import { useFmdFieldNotes, useFmdFieldNoteMutations } from '../../lib/queries/fmdFieldNotes';
-import { useMigrationObjects, useScopeObjectOwners, scopeOwnerKey } from '../../lib/queries/scope';
+import { useMigrationObjects, useScopeObjectOwners, scopeOwnerKey, type ScopeAssignment } from '../../lib/queries/scope';
 import { diffTablesByStructure, rowKey, summariseVersionChange } from '../../lib/rowDiff';
 import { useMappingReview, readMappingReviews, findingKey } from '../../lib/queries/mappingReview';
 import { analyseFmd } from '../../lib/fmdHealth';
@@ -24,6 +24,7 @@ import { GoldenFmdStructureView } from './GoldenFmdStructureView';
 import { GeneratedFmdTableView, type ReviewCellFinding } from './GeneratedFmdTableView';
 import { FieldDetailView } from './FieldDetailView';
 import { AddReviewPointDialog, type ReviewPointTarget } from './AddReviewPointDialog';
+import { FmdWhereUsedTab } from './fmd/FmdWhereUsedTab';
 import { FmdDraftTab } from './fmd/FmdDraftTab';
 import { FmdReviewTab } from './fmd/FmdReviewTab';
 import { FmdHealthTab } from './fmd/FmdHealthTab';
@@ -82,8 +83,12 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
   const siblingsMode = !goldenMode;
   const { data: whereUsed = [], isLoading: whereUsedLoading } = useGoldenWhereUsed(goldenMode ? fmd?.id : undefined, goldenMode ? versions[0]?.id : undefined);
   const { data: siblings = [], isLoading: siblingsLoading } = useHistoricalSiblings(siblingsMode ? fmd?.histSourceName : undefined, fmd?.id);
+  const { data: usage } = useFmdUsage(fmd?.id);
   const { data: objects = [] } = useMigrationObjects(!!fmd);
-  const { data: scopeOwners = new Map<string, string>() } = useScopeObjectOwners(!!fmd);
+  const { data: scopeOwners = new Map<string, ScopeAssignment>() } = useScopeObjectOwners(!!fmd);
+  /** The FMD's object, from the catalogue this dialog already loaded — see FmdWhereUsedTab. */
+  const usageObject = objects.find((o) => o.id === fmd?.migrationObjectId);
+
   const { data: goldenSummary } = useGoldenFmdSummary(!!fmd);
   const { data: goldenLatest } = useLatestFmdVersion(fmd?.goldenOutdated ? goldenSummary?.id : undefined);
   const { data: fieldNotes = [] } = useFmdFieldNotes(fmd?.id);
@@ -94,12 +99,20 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
   const canAddNote = !!user?.email;
   /** Owner comes from the scope register (who owns this migration object in this subproject), not
    * from the FMD itself — see useScopeObjectOwners. Publishing is the owner's call. */
-  const owner = scopeOwners.get(scopeOwnerKey(fmd?.subprojectId, fmd?.migrationObjectId));
+  const assignment = scopeOwners.get(scopeOwnerKey(fmd?.subprojectId, fmd?.migrationObjectId));
+  const owner = assignment?.consultant;
+  const etlDeveloper = assignment?.etlDeveloper;
+  /** The consultant only. The ETL developer builds the pipeline; releasing a version of the
+   * mapping document is not theirs to do. */
   const isOwner = !!user?.email && !!owner && user.email === owner;
   const { data: defaultProgram } = useDefaultProgram();
   const { data: role = 'guest' } = useCurrentRole(defaultProgram?.id, fmd?.subprojectId);
-  /** Publishing is the owner's call OR a governance role's — see canPublish. Gating on ownership
-   * alone meant an object with no owner assigned in scope could never be published by anyone. */
+  /** The CONSULTANT's call, or a governance role's — see canPublish.
+   *
+   * Not the ETL developer's: they are responsible for building the pipeline, not for what the
+   * mapping says, so releasing a version of the mapping document isn't theirs to do. Gating on the
+   * assignment alone would leave an unassigned object publishable by nobody, which is why the
+   * governance roles are an OR. */
   const mayPublish = canPublish(role, isOwner);
   /** Publishing and the AI mapping review both WRITE `sheets` on the same version row — a review
    * finishing after a publish would either be lost or land on a version that is now frozen. They're
@@ -200,6 +213,17 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
   // shown automatically without having to re-pick it.
   const reviews = useMemo(() => readMappingReviews(selected?.sheets), [selected]);
   const activeReview = reviews.find((r) => r.id && r.id === selectedReviewId) ?? reviews[reviews.length - 1];
+  /** The real `fmd_versions` row that owns `activeReview` — where a "fixed" mark gets written.
+   *
+   * Normally that is the selected version. On the draft it is the published version the review was
+   * inherited from, because the draft is a derived overlay with no row of its own. Undefined when
+   * there is nothing to write to, which is what disables the control. */
+  const reviewTarget = useMemo(() => {
+    if (!selected) return undefined;
+    if (!showingDraft) return selected;
+    const fromId = activeReview?.inheritedFrom?.versionId;
+    return fromId ? versions.find((v) => v.id === fromId) : undefined;
+  }, [selected, showingDraft, activeReview, versions]);
   // `versions` is newest-first, so the version right after the selected one in that array is the
   // one immediately before it in time — what the selected version's changes are diffed against.
   const selectedIndex = versions.findIndex((v) => v.id === selected?.id);
@@ -598,7 +622,7 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
                           <thead>
                             <tr>
                               {SHEET_COLUMNS[rawTab].map((c) => (
-                                <th key={c} className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-2.5 py-2 sticky top-0 text-left">{c}</th>
+                                <th key={c} className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface border-b border-line px-2.5 py-2 sticky top-0 text-left">{c}</th>
                               ))}
                             </tr>
                           </thead>
@@ -636,7 +660,8 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
               />
             ) : tab === 'versions' ? (
               <FmdReviewTab
-                fmd={fmd} selected={selected} owner={owner}
+                fmd={fmd} selected={selected} owner={owner} etlDeveloper={etlDeveloper}
+                objectIdent={usageObject?.objectId}
                 isCustomFmd={isCustomFmd} isGenerated={isGenerated} reviewing={reviewing}
                 reviews={reviews} activeReview={activeReview} onSelectReview={setSelectedReviewId}
                 fieldNotes={fieldNotes}
@@ -644,8 +669,12 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
                 onGoToFinding={goToFinding} onGoToNote={goToNote}
                 // Withheld while a review or publish is running: both rewrite the same `sheets`,
                 // so a mark saved mid-run would be overwritten by whichever finished last.
-                // …and not on the draft overlay, which has no row of its own to write to.
-                onToggleAddressed={selected && !showingDraft && !versionBusy
+                //
+                // It DOES work on the draft. The draft has no row of its own, but an inherited
+                // review belongs to the published version it ran against, and that row is where the
+                // mark goes — see `reviewTarget`. Marking findings off while looking at the draft is
+                // the actual workflow: you fix a cell, then tick the finding it came from.
+                onToggleAddressed={selected && reviewTarget && !versionBusy
                   ? async (key, addressed) => {
                       try {
                         // Verify before accepting the claim. Checked against the DRAFT when there
@@ -660,7 +689,7 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
                             return;
                           }
                         }
-                        await setAddressed(selected.id, selected.sheets, activeReview?.id, key, addressed);
+                        await setAddressed(reviewTarget.id, reviewTarget.sheets, activeReview?.id, key, addressed);
                       } catch (err: any) {
                         toast.error(err.message ?? 'Could not update that finding.');
                       }
@@ -668,73 +697,19 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
                   : undefined}
               />
             ) : (
-              <div className="h-full overflow-auto rounded-lg shadow-[inset_0_0_0_1px_var(--line)]">
-                {goldenMode ? (
-                  whereUsedLoading ? (
-                    <p className="text-sm2 text-muted p-4">Loading…</p>
-                  ) : whereUsed.length === 0 ? (
-                    <p className="text-sm2 text-muted p-8 text-center">
-                      No FMDs reference this template yet. Use "Apply Golden Template" in a Standard FMD's editor (Scope &gt; FMD) to link one.
-                    </p>
-                  ) : (
-                    <table className="w-full border-collapse text-sm2">
-                      <thead>
-                        <tr>
-                          <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-3 py-2 text-left sticky top-0">ID</th>
-                          <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-3 py-2 text-left sticky top-0">Name</th>
-                          <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-3 py-2 text-left sticky top-0">Object</th>
-                          <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-3 py-2 text-left sticky top-0">Reference</th>
-                          <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-3 py-2 text-left sticky top-0">Based on</th>
-                          <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-3 py-2 text-left sticky top-0">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {whereUsed.map((r) => (
-                          <tr key={r.fmdId} className="border-t border-line">
-                            <td className="px-3 py-2 font-mono">{r.displayId ?? '—'}</td>
-                            <td className="px-3 py-2">{r.name}</td>
-                            <td className="px-3 py-2 font-mono">{r.objectId ?? '—'}</td>
-                            <td className="px-3 py-2 font-mono">{r.reference}</td>
-                            <td className="px-3 py-2 font-mono">{r.basedOnVersion ?? '—'}</td>
-                            <td className="px-3 py-2">
-                              <Tag variant={r.isOutdated ? 'warn' : 'accent'}>{r.isOutdated ? 'Outdated' : 'Up to date'}</Tag>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )
-                ) : siblingsLoading ? (
-                  <p className="text-sm2 text-muted p-4">Loading…</p>
-                ) : !fmd.histSourceName ? (
-                  <p className="text-sm2 text-muted p-8 text-center">This FMD wasn't produced by the AI historical converter, so there's no tracked source to find siblings from.</p>
-                ) : siblings.length === 0 ? (
-                  <p className="text-sm2 text-muted p-8 text-center">No other plants from the same source (<span className="font-mono">{fmd.histSourceName}</span>) yet.</p>
-                ) : (
-                  <table className="w-full border-collapse text-sm2">
-                    <thead>
-                      <tr>
-                        <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-3 py-2 text-left sticky top-0">ID</th>
-                        <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-3 py-2 text-left sticky top-0">Name</th>
-                        <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-3 py-2 text-left sticky top-0">Plant</th>
-                        <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-3 py-2 text-left sticky top-0">Reference</th>
-                        <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3 px-3 py-2 text-left sticky top-0">Version</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {siblings.map((r) => (
-                        <tr key={r.fmdId} className="border-t border-line">
-                          <td className="px-3 py-2 font-mono">{r.displayId ?? '—'}</td>
-                          <td className="px-3 py-2">{r.name}</td>
-                          <td className="px-3 py-2 font-mono">{r.plant ?? '—'}</td>
-                          <td className="px-3 py-2 font-mono">{r.reference}</td>
-                          <td className="px-3 py-2 font-mono">{r.version ?? '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+              <FmdWhereUsedTab
+                usage={usage}
+                fmdId={fmd.id}
+                fmdType={fmd.type}
+                fmdSubprojectId={fmd.subprojectId}
+                object={usageObject}
+                ownNames={{ programName: fmd.programName, projectName: fmd.projectName, subprojectName: fmd.subprojectName }}
+                whereUsed={whereUsed}
+                whereUsedLoading={whereUsedLoading}
+                siblings={siblings}
+                siblingsLoading={siblingsLoading}
+                histSourceName={fmd.histSourceName}
+              />
             )}
           </div>
         )}

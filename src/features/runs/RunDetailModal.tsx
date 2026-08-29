@@ -49,7 +49,7 @@ export function RunDetailModal() {
           {log.length > 0 && (
             <div>
               <div className="text-sm2 font-semibold text-muted mb-1.5">Log</div>
-              <pre className="font-mono text-2xs bg-surface-2 rounded-[8px] p-3 max-h-64 overflow-auto whitespace-pre-wrap">
+              <pre className="font-mono text-2xs bg-surface-2 rounded p-3 max-h-64 overflow-auto whitespace-pre-wrap">
                 {log.map((l) => l.line).filter(Boolean).join('\n') || 'No trace captured.'}
               </pre>
             </div>

@@ -1,12 +1,20 @@
 ---
 name: design-system
-description: DMS visual language — colour tokens (and the dark-mode rule that literals break), the type scale, control sizing, toolbar composition, density grading, dialogs, focus and icons. Load this before writing ANY UI in this repo, and update it whenever a shared visual decision changes.
+description: DMS visual language — colour tokens (and the dark-mode rule that literals break), the type scale, control sizing, toolbar composition, density grading, dialogs, focus, icons, accessibility, motion, z-index, form feedback, loading states and data display. Load this before writing ANY UI in this repo, and update it whenever a shared visual decision changes.
 ---
 
 # DMS design system
 
 The rules here exist because each one was broken at least once and produced a visible defect. Where
 a rule says "never", it's recording a bug that shipped, not a preference.
+
+**Before delivering any UI, run `references/ui-review-checklist.md`.** It is the pass that catches
+what compiles and looks fine on your machine but fails for someone using a keyboard, a screen
+reader, dark mode, reduced motion or a 1366px laptop.
+
+Sections 1–19 are the visual language. Sections 20–26 are the quality floor beneath it — mostly
+accessibility, motion and state handling, which are what separate an interface that was designed
+from one that was merely assembled.
 
 ## 1. Colour — never write a hex in a component
 
@@ -125,6 +133,16 @@ rather than DOM insertion order. Previously one Escape closed every open dialog 
 leaves the screen instead of closing the dialog. Deep, linkable views (an FMD, a field) belong on
 routes; keep dialogs for a short confirm or a single-purpose composer.
 
+### A panel on a dark ground must reset its text colour
+
+`<header>` sets `bg-chrome text-chrome-text`, and **every dropdown inside it inherits that colour**.
+A `bg-surface` menu panel therefore renders near-white text on white unless it says otherwise — which
+is exactly what happened to the account menu's Profile and Dark mode items, the two entries that
+carried no colour class of their own.
+
+Every popover panel opened from the chrome sets **`bg-surface text-text`** on the panel itself, not
+on each item. Fixing it per item leaves the next item someone adds broken.
+
 ## 7. Focus and keyboard
 
 A global `:focus-visible` rule in `tokens.css` gives every element a 2px `--blue-mid` outline.
@@ -141,6 +159,19 @@ for two — collapsed to the 60px icon rail, the sidebar became ambiguous. Befor
 grep `src/app/nav.ts` to confirm it's unused.
 
 ## 9. Tables
+
+**A list is white.** `Table` sets `bg-surface` on its container and `bg-surface` on the header row,
+separated from the body by `border-b border-line` rather than a fill. It previously set **no
+background at all**, so every list showed the page's grey `--bg` between its rows, and the header
+was a `--surface-3` bar — the heaviest thing on the screen while carrying the least information.
+A list is a document that sits *on* the page; it is not part of the page.
+
+Two constraints if you touch this:
+- The sticky header must stay **opaque**. A transparent sticky header lets rows scroll visibly
+  underneath it.
+- `--surface-3` is still correct for **chrome strips** (a pane's header bar, a section label). It is
+  no longer used for table header rows anywhere, including the six hand-rolled tables in the FMD and
+  Golden dialogs, which were converted in the same change so lists match wherever they appear.
 
 Use the shared `Table` (`src/components/Table.tsx`). It owns sort, pagination, empty state, sticky
 headers and `text-sm2` sizing. Ten hand-rolled `<table>` blocks still exist; they miss all of that
@@ -199,6 +230,19 @@ reverse) is worse than no search.
 - A record with no subproject is programme-wide: it passes a **program** filter and fails project
   and subproject ones. The Golden FMD is genuinely in scope for the programme, but "what's in Wave
   1A" must not return something that is in no wave.
+
+### Toolbar controls are quiet until they are doing something
+
+A toolbar row recedes behind the data. `ToolbarSearch` and an inactive `MultiSelectFilter` are
+transparent — no border, no fill, muted text — and take a border and fill only once they hold a
+value. **A `Select` in that row must match**: pass `quiet` while it sits at its default.
+
+The Field Mapping grouping select had a permanent border and white fill, which made the quietest
+control in the row the loudest thing on screen while doing the same job as the filters beside it.
+
+Label it the way the filters are labelled too — `Group: None`, matching `Class: All`. The old
+labels repeated "grouping" in every option and the longest ran to 37 characters, which is what
+made the control twice the width of its neighbours.
 
 ## Letter case
 
@@ -274,12 +318,6 @@ filters button left no way out of an over-narrowed list.
 - `spacing="none"` when the parent is a flex column with its own `gap`; otherwise the toolbar
   carries its own `mb-3`.
 
-## Maintaining this skill
-
-Update this file in the same change whenever a shared visual decision changes — a new token, a
-retired component, a resolved defect. Delete entries that stop being true; a stale system doc is
-worse than none. Companion: `library-section-design` for Library-specific layout rules.
-
 ## 10. Navigation
 
 `Breadcrumb` (in `src/app/layout/`) renders `Home › Project › Subproject › Section › Sub-tab` in the
@@ -293,6 +331,28 @@ controls.
 Non-functional chrome is not allowed. A global search box and a notifications bell shipped with no
 `onChange` and no `onClick`; both were deleted rather than left as decoration, because a control
 that ignores you teaches people the working ones can't be trusted either. Ship the behaviour first.
+
+### A sidebar item must never leave the open project
+
+Every `NAV_GROUPS` entry's `to` is **relative and resolves under
+`/pg/:programId/sp/:subprojectId/`**, with an optional `standalone(programId)` fallback used only
+when no project is open. Never write an absolute `to`, and never walk up with `../`.
+
+Both mistakes shipped and produced the same bug — clicking the item threw you out of the project,
+losing the sidebar, the breadcrumb, the subproject switcher and Back:
+
+| Item | Was | Now |
+|---|---|---|
+| Program Settings | `'../../settings'` — walks up, drops the subproject | `'settings'` + standalone |
+| Connections | `'/systems/connections'` — absolute, leaves everything | `'connections'` + standalone |
+
+The fix pattern is the one Library and Program Admin already used: **mount the same screen twice**,
+once standalone and once under `sp/:subprojectId`, in `router.tsx`. These stay program-scoped
+screens; what the nested mount preserves is the URL context around them.
+
+A page mounted both ways must read its scope from the **URL first**, falling back to
+`useDefaultProgram()`. `ConnectionsPage` only ever existed standalone, so it always used the default
+program — nested inside program B it would have shown program A's connections.
 
 ## 11. Editing FMD content
 
@@ -377,6 +437,39 @@ next to it. Don't override padding, height or text size at a call site.
 Note `size` shadows the native HTML attribute (a visible-row count) on purpose — the interface
 `Omit`s it.
 
+### Every custom dropdown dismisses itself
+
+A native `<select>` is closed by the browser. **Anything you build yourself — a menu, a popover, a
+filter, a switcher — must use `useDismiss` (`src/components/useDismiss.ts`),** which closes it on
+outside click and on Escape.
+
+```tsx
+const ref = useDismiss<HTMLDivElement>(open, () => setOpen(false));
+return <div ref={ref} className="relative">…trigger…{open && <div>…panel…</div>}</div>;
+```
+
+This is not optional and not a nicety. Before the hook existed, the four header dropdowns (app
+switcher, subproject switcher, environment, avatar) never closed at all — two could sit open at
+once, overlapping — while three others each hand-rolled the same listener, only one of which handled
+Escape.
+
+Three ways to get it wrong:
+
+- **The ref goes on the wrapper containing BOTH trigger and panel.** On the panel alone, clicking
+  the trigger to close reads as an outside click, so it closes and instantly reopens.
+- **It listens on `mousedown`, not `click`.** A click fires after mouseup, so a menu closing on click
+  is still open while the press lands on whatever is underneath it.
+- **Dismiss must fully close.** `GlobalSearch` also clears its query and blurs the input; Escape
+  leaving it closed-but-focused is not closed.
+
+**For row and card actions, reach for `Menu` (`src/components/Menu.tsx`) rather than building a
+popover.** It is a `⋯` button plus a list of actions, dismissal already built in, `danger` for
+destructive entries, and it closes before running an action so a dialog never opens behind an open
+menu. Three or four naked icon buttons on a row compete with the data; one `⋯` does not.
+
+Always-visible overlays (a diagram legend, a floating toolbar) are not popovers and need none of
+this.
+
 ## 15. Confirmations and unsaved work
 
 `ConfirmDialog` is for **irreversible** steps only — publishing, discarding, deleting. Do **not**
@@ -445,3 +538,258 @@ selected treatments (one pill-radius, one square, one filled blue). Same shape e
 makes them read as the same control rather than three coincidentally similar ones.
 
 An icon-only button is still a `Button` — pass `aria-label` and let the size scale handle the box.
+
+
+## 19a. Tab strips: two traps, both shipped
+
+**`overflow-x-auto` on a tab strip creates a vertical scrollbar.** CSS promotes the other axis from
+`visible` to `auto` as soon as one axis is not `visible`, so the 1px that each tab's `-mb-px` hangs
+below the content box is enough to raise a scrollbar on a 40px-tall row. Tab strips **wrap**; they do
+not scroll. If a strip genuinely needs horizontal scrolling, the overhang has to move off the tabs
+first.
+
+**The `-mb-px` must live on whatever the bordered row actually is.** In the FMD grid the tabs sat in
+an `items-center` wrapper with `overflow-hidden`, so they were centred against a row made taller by
+the 32px icon buttons beside them, and their own overhang was clipped by the wrapper before it could
+reach the row's border — the tabs looked lifted, with a hairline gap beneath. The fix is
+`self-stretch items-end -mb-px` on the wrapper and a plain `border-b-2` on the tabs: the overhang
+belongs to the element nothing clips.
+
+## 19a2. An edit toggle changes its icon: pencil in, check out
+
+Anywhere a control puts a row, section or grid **into** edit mode, the same control takes it out —
+and it must not still look like a pencil while it does. A pencil that stays a pencil gives the reader
+no way back: the exit looks identical to the entrance, and the only signal the thing is editable at
+all is the inputs themselves.
+
+`EditToggle` (`src/components/EditToggle.tsx`) is the shared control. Pencil → **Check**, and while
+editing it takes `text-blue bg-blue-pale` so the active row is visible without reading it.
+
+**Check, not a floppy disk.** Every editable surface in DMS persists as you go — `PersonSelect`
+writes on change, grid cells write on blur, the section editor writes on change — so a save icon
+would promise an action that does not exist and imply the edit is unsaved until clicked. The check
+says what the button does: finish. The tooltip carries the rest ("changes are already saved").
+
+If a surface ever genuinely defers its writes, it needs a real Save **button** with a label and a
+disabled state, not this icon wearing a different glyph.
+
+The FMD grid used an eye here, meaning "view" rather than "done"; it was the one exit icon that
+differed and is now aligned.
+
+## 19b. Radius — three steps, three jobs
+
+| Token | px | Use for |
+|---|---|---|
+| `rounded-xs` | 4 | Micro chips and inline markers inside a dense grid, where 8px reads as a pill |
+| `rounded` | 8 | **Controls** — buttons, inputs, selects, icon buttons, non-pill tags |
+| `rounded-lg` | 12 | **Containers** — cards, panes, dialogs, table shells, diagram nodes and bands |
+| `rounded-pill` / `rounded-full` | — | Status pills; avatars and dots |
+
+**Thirteen distinct radii shipped** before this: the theme defined six steps between 6px and 12px
+(`sm 6 / DEFAULT 8 / md 9 / lg 10 / xl 11 / 2xl 12`), most of them 1px apart, and call sites invented
+`rounded-[3px]`, `[5px]`, `[7px]` and `[11px]` on top. A 1px difference is invisible as hierarchy and
+very visible as inconsistency — the same defect the type scale had before it collapsed to four sizes,
+and the same fix.
+
+`sm`, `md`, `xl` and `2xl` still resolve, **aliased to the nearest survivor** so old markup renders
+correctly. They must not appear in new code, exactly like the retired type sizes.
+
+**Never write an arbitrary radius.** `rounded-[Npx]` in a component is how the last scale rotted.
+
+## 19c. One label per intent
+
+Two controls that do the same thing must not carry different words. "Generate FMD" and "Generate a
+new one" are one intent and are allowed to differ only because they sit in different sentences —
+"Create FMD" as a third variant would not be. Before adding an action, grep for the verb.
+
+Buttons are **sentence case after the first word** (§ Letter case). `Add Section`, `Generate Rule`
+and similar Title Case labels are the common breach, because a button written as inline JSX has no
+sibling list to look inconsistent against.
+
+## 20. Accessibility is part of the visual spec, not a later pass
+
+Audited 2026-08-28 against the shipped tokens and components. These are measurements, not opinions.
+
+### Contrast
+
+Text pairs **pass** and must stay passing — check any new token pair before adding it:
+
+| Pair | Ratio | Needs |
+|---|---|---|
+| `--text` on `--surface` | 16.1 : 1 | 4.5 |
+| `--muted` on `--surface` | 4.99 : 1 | 4.5 |
+| `--muted` on `--surface-2` | 4.61 : 1 | 4.5 |
+| `--blue` on `--surface` | 8.37 : 1 | 4.5 |
+| dark `--muted` on dark `--surface` | 6.47 : 1 | 4.5 |
+
+`--muted` on `--surface-2` has only 0.11 of headroom. **Do not darken `--surface-2` or lighten
+`--muted`** without recomputing — that pair is one nudge from failing, and it is the single most
+common combination in the app (every count, timestamp and helper line sits on a hover fill).
+
+**Known failure, not yet fixed:** `--line-strong` is the form-control boundary and measures
+**1.39 : 1** light / **1.66 : 1** dark against a 3:1 requirement for UI component boundaries
+(WCAG 1.4.11). Input and select edges are effectively invisible to a low-vision user. Reaching 3:1
+needs roughly `#8a92a1` light / `#6f7787` dark, which visibly darkens every control in the app — a
+deliberate design decision, so it is recorded here rather than changed quietly. Raise it before
+adding more controls that depend on that border to read as editable.
+
+### The rest
+
+- **Every icon-only control needs an `aria-label`.** The visual is a glyph; the accessible name is
+  the only thing that says what it does. `Button` takes it through; a bare `<button>` must set it.
+- **Colour is never the only signal.** DMS already enforces this visually (§1 — colour means state),
+  and it is the same rule: a status that reads as red must also carry a word or an icon.
+- **Anything clickable is a `<button>` or `<a>`** (§7). A `<div>` with `onClick` has no role, no
+  focus ring and no keyboard activation.
+- **Tab order follows visual order.** Portalled panels (`Menu`, `ObjectPicker`) are the usual place
+  this breaks.
+- **Live regions**: `Toast` announces through `role="status"` / `aria-live="polite"` and must not
+  steal focus. Form errors that appear after submit need the same treatment — see §23.
+
+## 21. Motion
+
+DMS had **38 transition/animation usages and zero `prefers-reduced-motion` handling** until a global
+block was added to `tokens.css`. That block is the floor, not a licence to skip thinking:
+
+- **Respect reduced motion.** The global rule collapses durations to near-zero. Never re-enable an
+  animation with `!important` or an inline style that outruns it.
+- **Animate `transform` and `opacity` only.** Animating `width`, `height`, `top` or `left` forces
+  layout on every frame and causes the jank that reads as a cheap interface.
+- **Motion must mean something** — a cause and its effect, a spatial relationship. Decorative
+  movement on an enterprise data screen reads as unserious, which is precisely the "vibe-coded"
+  impression to avoid.
+- **Exit is faster than enter** (~60–70%). A dialog that takes as long to leave as to arrive feels
+  unresponsive.
+- **One or two moving elements per view.** Everything animating at once is the single loudest
+  AI-generated tell.
+- **No animation may shift layout.** If it reflows, it is a bug, not a transition.
+
+## 22. Z-index — use the scale, not a bigger number
+
+Eight ad-hoc values shipped (`z-[1]`, `z-[2]`, `z-10`, `z-20`, `z-30`, `z-[60]`, `z-[1000]`)
+alongside `Dialog`'s computed `900 + depth*10`. **`z-[1000]` outranks every dialog**, so anything
+carrying it renders over a modal it should sit under. Stacking bugs of this kind are found by a
+user, never by the compiler.
+
+| Layer | Range |
+|---|---|
+| In-flow lift (sticky header, raised cell) | `z-10` |
+| Popover / dropdown / menu inside a page | `z-20`–`z-30` |
+| Dialogs and their scrims | `900 + depth*10` — owned by `Dialog`, never hand-set |
+| Toasts | above dialogs, owned by `Toast` |
+
+Never reach past `z-30` in a feature component. If something is covered, the fix is where it sits in
+the tree, not a larger number.
+
+## 23. Forms, validation and feedback
+
+`app-guards` owns unsaved-work and destructive confirmation. This is the rest:
+
+- **Validate on blur, not on keystroke.** Marking a field invalid while someone is still typing it
+  is the most common way a form feels hostile.
+- **The error goes below its field**, tied with `aria-describedby`. An error only at the top of a
+  long form leaves people hunting.
+- **After a failed submit with several errors**, focus a summary at the top that links to each
+  invalid field, and keep the inline errors as well. With one error, focus that field.
+- **A visible label per input** — never placeholder-only. Placeholders vanish exactly when someone
+  needs to check what they typed.
+- **Read-only is not disabled.** Read-only content is selectable and reachable; disabled means
+  "not available now" and is skipped. Rendering an un-editable value as disabled hides it from
+  screen readers entirely.
+- **Bulk and destructive actions offer undo** where the write is reversible — an undo toast beats a
+  confirm dialog for anything that can be put back.
+- **Async submits show progress, then an outcome.** `Button` disabled + a verb in the label
+  (`Saving…`) is the house pattern.
+
+## 24. Loading, empty and error are three different states
+
+A screen that only handles "has data" is not finished. Every data surface needs all four:
+
+| State | Treatment |
+|---|---|
+| Loading | Reserve the space the content will take. Skeletons over spinners for waits above ~1s |
+| Empty — nothing exists | `EmptyState` with the action that creates the first one |
+| Empty — filters excluded it | `ListEmptyState` with `filtered` + Clear filters (§ Library skill) |
+| Failed | The reason plus a retry — `QueryErrorNotice`, never a silent blank |
+
+**Reserve space before content arrives.** A list that renders at zero height and then jumps to full
+height moves everything under it; that shift is what makes an interface feel unbuilt. DMS has one
+skeleton in the entire app — new async surfaces should not copy that.
+
+## 25. Data display
+
+DMS is a data product, so these carry more weight here than the visual rules above.
+
+- **Tabular figures for anything in a column** — `tabular-nums` on counts, versions, dates, KPIs.
+  Proportional digits make a column of numbers visibly ragged.
+- **Prefer wrapping to truncation.** When you must truncate, use ellipsis **and** expose the full
+  value through `title` — a truncated ident nobody can read is worse than a wrapped one.
+- **Long identifiers reflow, they don't break mid-token.** Use `overflow-wrap: anywhere` on URLs,
+  GUIDs and source idents; never `word-break: break-all` on prose.
+- **Sortable columns announce their state** with `aria-sort`. `Table` owns sorting, so fix it there
+  once rather than per screen.
+- **Lists are paginated, not virtualized.** `Table` pages at 25 by default, which is why a 331-row
+  catalogue stays responsive with no virtualization anywhere in the app. If you ever render an
+  unpaginated list past ~50 rows, that decision needs a reason.
+
+## 26. Charts and diagrams
+
+- **A legend is required** and sits with the chart, not below a scroll fold.
+- **Never encode meaning in colour alone** — pair it with a shape, a pattern or a label. The
+  dependency diagram's `layerTheme` is the documented exception to §1's colour rule, and it still
+  prints `L{n}` on every node precisely because the colour alone is not the message.
+- **Grid lines stay quiet** (`--line`), so they never compete with the data.
+- Charts need the same **empty, loading and error** states as any other data surface (§24) — a bare
+  axis frame with no series is an error state pretending to be a result.
+- **Exact values are reachable** on hover *and* by keyboard, not hover only.
+- Respect reduced motion: entrance animation is optional, the data is not.
+
+## Maintaining this skill
+
+Update this file in the same change whenever a shared visual decision changes — a new token, a
+retired component, a resolved defect. Delete entries that stop being true; a stale system doc is
+worse than none.
+
+Companions: `library-section-design` and `scope-section-design` for section layout rules,
+`app-guards` for guards and validation behaviour, `brand-themes` for the theme layer, and
+`references/ui-review-checklist.md` for the pre-delivery pass.
+
+## 27. Demo and seed data is real-looking, or it is a tell
+
+Placeholder content is the fastest way to make a serious product look unserious:
+
+- **No generic people.** "John Doe", "Jane Doe", "Test User" — use plausible, locale-appropriate
+  names. DMS is clean today; keep it that way when adding fixtures.
+- **No round fake numbers.** `99.99%`, exactly `50%`, `1234567`. Real data is untidy.
+- **No placeholder brands.** "Acme", "Nexus", "SmartFlow".
+- **No filler verbs in copy.** "Elevate", "Seamless", "Unleash", "Next-Gen", "Revolutionize",
+  "Empower". Every label says what actually happens (§ Writing the copy in the checklist).
+- **No lorem ipsum**, ever, including in a screen you think nobody will look at.
+
+### On importing external design skills
+
+Rules from an outside source are merged **into this file, rewritten against what DMS actually
+does** — never installed alongside it as a second authority. Two design skills disagreeing is worse
+than one, and a generic rule ("use a 4/8pt spacing scale", "pick a palette for your industry") is
+noise next to a committed token set and a client brand theme.
+
+The `ui-ux-pro-max` skill (nextlevelbuilder) was folded in this way on 2026-08-28: §20–26 above and
+the checklist come from its stack-agnostic rule set. Its palette/style/font **generator** was
+deliberately not adopted — DMS has `tokens.css`, `tailwind.theme.ts` and Theme 1 already, and
+generating a visual direction over them would fight the system rather than serve it. Its
+`pro-rules.md` is explicitly scoped to native iOS/Android UI (safe areas, haptics, 44pt touch
+targets, ripples) and does not apply to a desktop web app.
+
+`taste-skill` (Leonxlnx) was folded in on 2026-08-29 — §19b, §19c and §27. **Its own §13 says it is
+not for "dashboards / dense product UI / admin panels", data tables, or multi-step wizards**, which
+is the entirety of DMS, so the bulk of it was correctly left out: hero composition, eyebrow limits,
+bento rhythm, zigzag caps, the three aesthetic dials, the design-system chooser (Fluent / Carbon /
+Polaris), and the font pools. What survived is the part that is about craft rather than about
+landing pages: shape consistency, one-label-per-intent, and honest demo data.
+
+**Its em-dash ban was deliberately NOT adopted.** The rule exists because unbroken em-dash use reads
+as machine-written prose. It is a reasonable heuristic for marketing copy and a bad fit here: this
+codebase's comments and UI copy use the em-dash as ordinary punctuation throughout, a blanket
+find-and-replace would damage hundreds of sentences, and consistency of voice is worth more than
+conformance to someone else's tell-list. Judge new copy on whether it reads as written by a person,
+not on a character ban.

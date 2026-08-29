@@ -52,7 +52,7 @@ export function RulesRegister() {
             </div>
             <div>
               <div className="text-sm2 font-semibold text-muted mb-1">Expression</div>
-              <pre className="font-mono text-sm2 bg-surface-2 rounded-[8px] p-3 whitespace-pre-wrap break-words">
+              <pre className="font-mono text-sm2 bg-surface-2 rounded p-3 whitespace-pre-wrap break-words">
                 {selected.expression ?? '— no expression captured —'}
               </pre>
             </div>

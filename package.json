@@ -9,6 +9,7 @@
     "typecheck": "tsc -b && node scripts/check-edge-functions.mjs",
     "check:functions": "node scripts/check-edge-functions.mjs",
     "lint": "oxlint",
+    "test": "tsx src/lib/fmdDraft.test.ts && tsx src/lib/scopeGraph.test.ts",
     "preview": "vite preview",
     "seed:build": "node scripts/build-seed.mjs",
     "seed:load-structures": "node scripts/load-dmc-structures-fields.mjs"
@@ -38,6 +39,7 @@
     "oxlint": "^1.75.0",
     "postcss": "^8.5.26",
     "tailwindcss": "^3.4.19",
+    "tsx": "^4.23.12",
     "typescript": "~6.0.2",
     "vite": "^8.2.0",
     "xlsx": "^0.18.5"

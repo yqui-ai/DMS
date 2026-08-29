@@ -103,8 +103,30 @@ beside it only when there is unreleased work. Active is the resting state and ea
   (`subproject_id is null`), class Global. Holds a `goldenStructure` (sections → fields), edited
   only in `GoldenFmdDesignerDialog`. **Never deletable.**
 - **Standard** — one per migration object, program-wide, generated from Golden. **Never deletable.**
-- **Custom** — one per (object, subproject), generated from Golden and aligned to the object's
-  Standard FMD version. The only type with Mapping Review and field notes.
+- **Custom** — generated from Golden and aligned to the object's Standard FMD version. The only type
+  with Mapping Review and field notes. **Not one per subproject** — see below.
+
+### A Custom FMD is ASSIGNED, not owned
+
+`subproject_objects.fmd_id` (migration **0045**) records which FMD a subproject uses for an object.
+**Many rows may point at one FMD — that sharing is the reuse.**
+
+`fmds.subproject_id` still exists and still records where a document was **authored**; it is what
+`reference` (PRG-PRJ) and the Global/Local class derive from. It must **not** be read as "the only
+place this is used". Reading it that way is what made an FMD written in Wave 1A invisible to Wave 1B
+even after being assigned there.
+
+The old model gave every subproject its own copy of the same mapping for the same object —
+duplicates nobody reconciled. Where-Used, FMD Mapping and `useAssignableFmds` all read the
+assignment; only the Library's reference column reads `subproject_id`.
+
+### Every FMD states its object
+
+`VersionDetailsPane` shows **Object** above Class and Reference, and `useAssignableFmds` carries
+`objectIdent` onto every candidate row. This is not decoration: assignment matches an in-scope
+migration object to the FMDs written for that same object, so the ident is the key the whole flow
+turns on and the Assign list searches by it. A version pane that showed Class and Reference but not
+which object the mapping was for omitted the one field everything else keys on.
 **There is no 'Historical' type.** It was retired in migration 0031: the converter parses an
 uploaded workbook in the browser and writes Custom FMDs directly, so the intermediate record was
 never persisted and the type had no way to exist. Lineage back to the source file lives on the
@@ -140,9 +162,40 @@ header drives every tab** — there is one answer to "which version am I looking
   single version selector, and a second one was redundant.
 - **Draft tab** — present only while an unpublished draft exists: the pending changes with
   checkboxes, and the only place Publish lives.
-- **Where-used tab** — for Golden: which FMDs reference it and whether they're outdated. For
-  everything else: sibling plants from the same AI-converted source file. (Two different
-  relationships under one tab name — flagged in the Library review as worth renaming.)
+- **Where-used tab** — `fmd/FmdWhereUsedTab.tsx`. Three sections, in this order:
+  **Used in** (always), **Generated from** (when built from a Golden version), **Referenced by**
+  (Golden only), and **Same source file** only when `hist_source_name` is set.
+
+### "Used in" means ASSIGNED, never "the object is in scope"
+
+`useFmdAssignments(fmdId)` reads `subproject_objects.fmd_id`. **Do not build this from
+`useObjectScopeUsage`.** That lists subprojects with the OBJECT in scope, which is an opportunity to
+use an FMD, not usage of it — and building the tree from it made Where-Used report "used in 2
+subprojects" for a document one of them had never assigned, while the Assign dialog called the same
+FMD "unassigned". Two screens, two answers; the dialog was right.
+
+The tree shows assignments **plus** the authoring subproject (`fmds.subproject_id`), and labels them
+apart: `Assigned` vs `Written here, not assigned`. A subproject that wrote a document but never
+adopted it is a real and useful state — it must not be counted as a user of it. Subprojects that
+could adopt it are a footnote, never a branch.
+
+### Where-used is a HIERARCHY, and it is built from flat queries
+
+**Used in** renders Programme → Project → Subproject → Object as a tree, not a single chain, because
+one document serves more than one place: a Standard FMD is the programme-wide document for its
+object, and that object can be in scope in several subprojects across several programmes. A single
+chain could only show one and would imply the others didn't exist.
+
+**Never resolve placement with a nested PostgREST embed.** `subprojects(projects(programs(...)))`
+returns null whenever RLS filters any level, silently — the tab shipped showing a correct object
+beside three em-dashes. `hierarchy.ts` already documents the rule ("four requests rather than a
+nested select, because RLS filters each level independently"); the tab reads `useHierarchy()` plus
+`useObjectScopeUsage()` and joins in memory.
+
+Two facts come from the CALLER, never re-fetched: the object (resolved from the catalogue the
+dialog already loaded) and `programName`/`projectName`/`subprojectName`, which `useLibraryFmds`
+already puts on the row. The row's names are the fallback that guarantees the owning branch renders
+even when the hierarchy is loading or filtered.
 
 Do **not** put the version list or comment back beside the mapping data — it was moved out
 deliberately because the grid is wide and an object can have several structures.
@@ -243,7 +296,7 @@ Don't "fix" these silently; they're recorded so the next change is an informed o
 "Review points" are the in-app equivalent of the comments column in an Excel FMD.
 
 - **An FMD has no owner column.** `fmds.owner` was dropped in 0030; ownership is
-  `subproject_objects.owner`, read via `useScopeObjectOwners()`. Publishing is gated by
+  `subproject_objects.consultant`, read via `useScopeObjectOwners()`. Publishing is gated by
   `canPublish(role, isOwner)` — the owner **or** a governance role, because gating on ownership
   alone made an unowned object unpublishable by anyone.
 - `fmd_field_notes` attaches to `(fmd_id, structure_id, row_key)` and **not** to a version, so a
@@ -265,9 +318,16 @@ Don't "fix" these silently; they're recorded so the next change is an informed o
 | Raise a review point, reply to one, resolve one | **Anyone** with access to the FMD |
 | Publish a version (and, later, edit the mapping) | **The object's owner** only |
 
-**An FMD has no owner field of its own.** Ownership is `subproject_objects.owner` — whoever owns
+**An FMD has no owner field of its own.** Ownership is `subproject_objects.consultant` — whoever owns
 that migration object in that subproject, assigned during in-scope selection (Scope > Criteria).
-Read it via `useScopeObjectOwners()` + `scopeOwnerKey(subprojectId, migrationObjectId)`.
+Read it via `useScopeObjectOwners()` + `scopeOwnerKey(subprojectId, migrationObjectId)`, which
+returns BOTH assignments — `{ consultant, etlDeveloper }`.
+
+**Publishing is the CONSULTANT's, never the ETL developer's.** The consultant owns what the data
+means and what it becomes; the ETL developer is responsible for building the pipeline, so releasing
+a version of the mapping document is not theirs to do. Migration 0034 split the two; before it, one
+free-text `owner` column was naming the accountable person, gating publishing, AND standing in for
+whoever built the ETL.
 `fmds.owner` existed briefly and was dropped in migration 0030: two owner fields is the same
 two-sources-of-truth trap as the dead `xref_tables.version` column.
 
@@ -287,6 +347,49 @@ ownership only suppressed the reviews you want. Ownership gates *changing the do
 - Editing a published version collects the change in `fmds.draft` instead — see below. Publishing
   is a one-way door.
 
+### Every version carries the log of what produced it
+
+`sheets.changeLog: FmdPendingChange[]` — the cell edits that made this version, oldest first.
+
+**Not the same thing as `pendingChanges`, even though the shape is identical.** A pending change is
+a publish SELECTOR: which of these do I release? An unreleased version needs none, because
+publishing releases all of it. The change LOG is the audit record, and it is needed either way.
+
+Conflating the two is why editing an unpublished version left **no trace at all** — the version's
+`comment` said why it existed ("Golden FMD updated") and nothing said what anyone changed inside it.
+
+| Situation | `pendingChanges` | `changeLog` |
+|---|---|---|
+| Published base + draft edits | on `fmds.draft`, selectable at publish | written at publish, from what was applied |
+| Unreleased version edited in place | none — nothing to select | appended as each edit lands |
+
+### What a draft inherits from the version under it — and what it must not
+
+`draftOverlayVersion` (`src/lib/fmdDraft.ts`) spreads `base.sheets`, so **every key on the published
+version leaks into the draft unless it is explicitly cleared.** Two did, and both shipped as bugs:
+
+- **`changeLog` must be cleared.** It is the published version's history, not the draft's.
+  Inherited, a fresh draft on top of v1.0.0 opened showing v1.0.0's edits under "Already in this
+  version", and each publish re-inherited them forever. A draft's own history is `pendingChanges`.
+- **`mappingReview`/`mappingReviews` are inherited on purpose**, stamped `inheritedFrom` with edited
+  findings marked — what the AI flagged is what you work from while fixing it. **But an inherited
+  review must never be PUBLISHED.** `usePublishFmdVersion` drops any review carrying
+  `inheritedFrom`: it assessed the previous version, so promoting it claims the new version was
+  reviewed when it never was, and its findings then highlight cells in a version they were never
+  about. Reviews that ran against the content being published have no `inheritedFrom` and are kept.
+
+Covered by `fmdDraft.test.ts`. Before adding a key to `sheets`, decide which of these two it is.
+
+At publish the two combine: `[...draftSheets.changeLog, ...selected]`. A version that was
+generated, then hand-edited, then published carries both halves.
+
+**Surfaced in two places**: the Draft tab ("Already in this version" — deliberately not selectable,
+since publishing an unreleased version releases the whole thing) and the Version details pane
+("Change log" — the complete record, where the `comment` is only a 20-line summary).
+
+The freeze trigger permits all of this: it fires only when `old.published_at is not null`, so the log
+is written while the row is still unreleased, and frozen with the content afterwards.
+
 ### An editing draft is not a version row
 
 **Saving a cell must never add an entry to an FMD's version list.** Uncommitted edits live on
@@ -302,9 +405,36 @@ ownership only suppressed the reviews you want. Ownership gates *changing the do
   data, nothing to keep in sync, and no way for a draft to drift from its base.
 - `draftOverlayVersion(base, draft)` projects it into `FmdVersion` shape (id `DRAFT_VERSION_ID`,
   version `DRAFT_VERSION`) so every view that renders a version renders the draft unchanged.
-  Nothing of that shape is ever stored. It strips `mappingReviews`: a review assessed the published
-  content, and showing it against edited content reports that something was checked when what's on
-  screen isn't what was checked.
+  Nothing of that shape is ever stored. See **The draft inherits the previous review** below.
+
+### The draft inherits the previous review
+
+This derivation lives in `src/lib/fmdDraft.ts` — **pure, no Supabase import**, so it is testable
+(`npm test`, `src/lib/fmdDraft.test.ts`, 13 cases). `queries/fmds.ts` re-exports every name from it,
+so existing imports are unaffected.
+
+`draftOverlayVersion` **carries the base version's Mapping Reviews onto the draft**, stamped:
+
+- `MappingReview.inheritedFrom = { versionId, version }` — which version the run actually assessed.
+- `MappingReviewFinding.editedInDraft` — the exact cell this finding pinned
+  (`structureId + rowIndex + field`) has since been edited. Exact, not fuzzy: a draft only ever
+  changes cell values, never adds or removes rows, so the match is a lookup rather than a guess.
+
+Both are derived on read and **never stored**; `inheritReview` copies rather than mutates, so the
+base version's stored shape stays clean. Anything writing `sheets` must therefore write the *base
+version's* sheets, not the overlay's.
+
+This used to blank `mappingReviews` instead, on the grounds that a review of published content says
+nothing about edited content. True, and useless — the finding list is what you work *from* while
+fixing it, so dropping it the moment editing starts drops it exactly when it matters. Carry it
+across labelled; don't hide it.
+
+**`editedInDraft` is not "fixed".** An edit to a cell is a fact; whether it resolves the finding is a
+judgement, and `addressed` is where a person makes that judgement. Never collapse the two.
+
+**Marking a finding addressed works on the draft**, writing to the *inherited* version's row —
+`reviewTarget` in `FmdVersionHistoryDialog` resolves which real row owns the review, since the draft
+has none. That is the actual workflow: fix a cell, then tick off the finding it came from.
 - **`usePublishFmdVersion` is the only place editing creates a version row.** It INSERTs when
   `draft.id === DRAFT_VERSION_ID`, and UPDATEs in place for a real unpublished row. Held-back
   changes go back to `fmds.draft`, re-based onto what was just published.
@@ -340,7 +470,7 @@ permanently detaches every existing review point, diff and finding from its row.
 | Surface | Behaviour |
 |---|---|
 | Versions & Review tab | Its own pane beside Auto review, with a per-category open/closed insight strip; each point folds to its header (closed ones start folded) |
-| Field-level view | Right panel, combined with that row's AI findings; composer at the bottom |
+| Field-level view | Right panel, combined with that row's AI findings; composer at the bottom. A **Sparkles + count** toggle in the panel header hides/shows the AI findings — the two kinds share one narrow pane, and on a heavily-flagged field the machine findings crowd out the conversation. It is view state, not per-field: paging fields must not bring them back each time. When they're hidden the empty message says so and gives the count, never "no review points yet" |
 | Generated table | Right-click any cell → Add review point; cells with points get a corner marker |
 
 **Opening a field is always a double-click** — from the generated table, from an auto-review
@@ -366,3 +496,45 @@ This file is the Library design contract. **Whenever you change Library design �
 layout, the FMD viewer's tabs, a shared column convention, a new Library table, or you resolve one
 of the inconsistencies above — update this file in the same change.** Keep the tables accurate and
 delete entries that stop being true; a stale contract is worse than none.
+
+## Archiving in the Library
+
+Nothing in DMS is deleted (migrations 0040/0041 — a `BEFORE DELETE` trigger refuses on all eight
+record tables). Library rows are archived instead, from a `Menu` in an `actions` column.
+
+Every library query filters `archived_at is null`, so archived rows leave the catalogue. They are
+found and restored from the Archive screen (`/archive`).
+
+**Archiving needs a program**, because `archive_requests.program_id` is `not null`. Each artefact
+resolves one differently, and that is what decides whether it can be archived at all:
+
+| Artefact | Program via | Archivable |
+|---|---|---|
+| Custom FMD | `subproject_id` → project → program | Yes |
+| Standard FMD | `migration_object_id` → `migration_objects.program_id` | Only with no Custom dependents |
+| **Golden FMD** | neither — it has no subproject and no object | **Never** |
+| Rule / XREF | `subproject_id` → project → program | Yes |
+| **Golden XREF** | — | **Never** |
+| Migration Object | `program_id` | **Not offered** — see below |
+
+**Golden is never archivable**, and the reason is not scoping: every Standard and Custom FMD is
+generated from it and `based_on_golden_version_id` points at its versions. Archiving it orphans the
+lot. Same for the Golden XREF.
+
+**Standard FMD is blocked while Customs still reference it.** They align to it through
+`based_on_standard_fmd_version_id`; archiving the parent would leave them pointing at an archived
+record. `archiveBlockedReason()` in `queries/fmds.ts` counts Customs per migration object.
+
+**Migration Object is deliberately NOT archivable.** It already has `invalid`, surfaced in the list
+as **Deprecated** — a second flag meaning nearly the same thing gives you no rule for which wins.
+It is also the SAP DMC catalogue: reference data loaded from SAP, not authored here. What a
+programme controls is whether an object is in scope, which `subproject_objects.in_scope` covers.
+
+**A blocked action is disabled with its reason, never hidden.** `MenuAction.title` carries the
+sentence, and `Menu` puts it on a wrapper `<span>` because a disabled `<button>` swallows pointer
+events and would never show its own tooltip. `archiveBlockedReason` returns a sentence rather than a
+boolean for exactly this.
+
+FMD, Rule and XREF archives apply **immediately** — `dms_archive_needs_approval` maps them to the
+`Scope`/`Rules` areas of `approval_matrix`, seeded `approval_required = false`. Only the hierarchy
+levels always need the three approvals. Turn an area on in Settings → Approvals to change that.

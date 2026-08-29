@@ -1,7 +1,7 @@
 export type StatDotState = 'idle' | 'running' | 'ok' | 'error';
 
 const COLOR: Record<StatDotState, string> = {
-  idle: '#9aa3af', running: '#e2a900', ok: '#1e6bb8', error: '#da291c',
+  idle: 'var(--muted)', running: 'var(--amber)', ok: 'var(--blue-mid)', error: 'var(--red)',
 };
 
 export function StatDot({ state }: { state: StatDotState }) {

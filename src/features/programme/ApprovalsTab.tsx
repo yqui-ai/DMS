@@ -57,7 +57,7 @@ export function ApprovalsTab({ programId }: { programId: string }) {
                     <Select
                       value={e.approverRoleId ?? ''} disabled={!e.approvalRequired}
                       onChange={(ev) => changeApprover(e.id, ev.target.value as RoleId)}
-                      className="text-sm2 px-2 py-1 rounded-[8px] border border-line-strong bg-surface disabled:opacity-50"
+                      className="text-sm2 px-2 py-1 rounded border border-line-strong bg-surface disabled:opacity-50"
                     >
                       <option value="">—</option>
                       {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}

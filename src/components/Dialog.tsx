@@ -89,7 +89,7 @@ export function Dialog({ open, onClose, title, subtitle, size = 'md', children, 
         )}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="bg-surface rounded-[7px] flex flex-col flex-1 min-h-0 overflow-hidden">
+        <div className="bg-surface rounded flex flex-col flex-1 min-h-0 overflow-hidden">
           <div className="flex items-center gap-2 px-5 py-4 border-b border-line">
             {onBack && (
               <button onClick={onBack} aria-label="Back" className="text-muted hover:text-text p-1 -ml-1 rounded hover:bg-blue-pale shrink-0">
@@ -101,7 +101,7 @@ export function Dialog({ open, onClose, title, subtitle, size = 'md', children, 
               {subtitle && <div className="text-2xs text-muted truncate mt-0.5">{subtitle}</div>}
             </div>
             {isAi && (
-              <span className="hidden sm:inline-flex items-center gap-1 text-2xs font-bold px-2 py-0.5 rounded-pill bg-gradient-to-r from-[#eff6ff] to-[#faf5ff] text-[#7c3aed] shrink-0">
+              <span className="hidden sm:inline-flex items-center gap-1 text-2xs font-bold px-2 py-0.5 rounded-pill bg-gradient-to-r from-[#eff6ff] to-[#faf5ff] text-violet shrink-0">
                 <Sparkles size={11} /> AI-Assisted
               </span>
             )}
@@ -125,10 +125,10 @@ export function Dialog({ open, onClose, title, subtitle, size = 'md', children, 
             <h3 className="text-md font-semibold text-text mb-1.5">Discard unsaved changes?</h3>
             <p className="text-sm2 text-muted mb-4">{unsavedWarning}</p>
             <div className="flex items-center justify-end gap-2.5">
-              <button onClick={() => setConfirmingClose(false)} className="text-sm2 font-semibold px-4 py-[9px] rounded-[8px] bg-surface text-text shadow-[inset_0_0_0_1px_var(--line)] hover:bg-blue-pale">
+              <button onClick={() => setConfirmingClose(false)} className="text-sm2 font-semibold px-4 py-[9px] rounded bg-surface text-text shadow-[inset_0_0_0_1px_var(--line)] hover:bg-blue-pale">
                 Keep editing
               </button>
-              <button onClick={() => { setConfirmingClose(false); onClose(); }} className="text-sm2 font-semibold px-4 py-[9px] rounded-[8px] text-red hover:bg-red-light">
+              <button onClick={() => { setConfirmingClose(false); onClose(); }} className="text-sm2 font-semibold px-4 py-[9px] rounded text-red hover:bg-red-light">
                 Discard
               </button>
             </div>
