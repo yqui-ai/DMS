@@ -173,3 +173,30 @@ See `library-section-design` for the full model. The guards specifically:
   a third one. Take an `onBack` and call `navigate(-1)`.
 - **Whatever opens a view owns the way back**, and the label must name the real destination
   (`backLabel` on `FieldDetailView`).
+
+## 6. Dismissable popovers
+
+**Every dropdown, menu and popover uses `useDismiss` (`src/components/useDismiss.ts`).** No
+exceptions and no hand-rolled effects — that is exactly how the app ended up with four header
+dropdowns that never closed (two could be open at once, overlapping) beside three that each
+implemented the same listener slightly differently, only one of which handled Escape.
+
+```tsx
+const ref = useDismiss<HTMLDivElement>(open, () => setOpen(false));
+return <div ref={ref} className="relative">…trigger…{open && <div>…panel…</div>}</div>;
+```
+
+Rules that are easy to get wrong:
+
+- **The ref goes on the wrapper containing BOTH trigger and panel.** On the panel alone, clicking
+  the trigger to close reads as an outside click, so it closes and instantly reopens.
+- **`mousedown`, not `click`.** A click fires after mouseup, so a menu closing on click is still
+  open while the press lands on whatever is underneath it.
+- **Escape closes too**, and the hook does it for you.
+- Pass a dismiss function that does the *full* close. `GlobalSearch` also clears the query and blurs
+  the input — Escape leaving it closed-but-focused is not closed.
+
+Covered today: `AppSwitcher`, `SubprojectSwitcher`, `EnvPill`, `AvatarMenu`, `GlobalSearch`,
+`MultiSelectFilter`, `GeneratedFmdTableView`'s `IconPopoverButton`. Native `<select>` (the shared
+`Select`) needs nothing — the browser owns it. Always-visible overlays like the dependency diagram's
+legend are not popovers.
