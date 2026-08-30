@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { LayoutGrid, ListOrdered, Maximize2, Network } from 'lucide-react';
+import { ListOrdered, Maximize2, Network } from 'lucide-react';
 import clsx from 'clsx';
 import { Button } from '../../../components/Button';
 import { Dialog } from '../../../components/Dialog';
@@ -13,48 +13,50 @@ import {
 import type { MigrationObject, SubprojectObject } from '../../../types/entities';
 import type { ScopeDependency } from '../../../lib/queries/scope';
 import { GraphView } from './GraphView';
-import { CardsView } from './CardsView';
 import { ExecutionView } from './ExecutionView';
 
-export type DiagramView = 'graph' | 'cards' | 'execution';
+export type DiagramView = 'execution' | 'graph';
 
-/** Three views, not four.
+/** Two views, and Execution is first because it is the one people come for.
  *
- * **Hierarchy was removed.** It rendered the graph as an expandable tree, and a dependency graph is
- * not a tree: every object that several others need got re-drawn under each of them, with its whole
- * subtree, every time. A six-object scope produced twenty-odd rows in which `SIF_BANK_2` appeared
- * five times and `SIF_VENDOR_2` four — the same facts repeating until the screen said nothing.
- * Graph shows the shape, Cards show the contents, Execution shows the schedule; none of them repeat
- * an object. Do not reintroduce a tree view of this data. */
+ * **Cards was removed.** It listed the same objects grouped by layer — which is what Execution
+ * does, only Execution also says what the grouping MEANS (wave 1 loads first, wave 2 waits for it).
+ * A view that shows the same rows with the reason removed is not a second way of reading the data,
+ * it is the same way with less information, and every filter and fix had to be written twice.
+ *
+ * **Hierarchy was removed** before it. It rendered the graph as an expandable tree, and a dependency
+ * graph is not a tree: every object that several others need got re-drawn under each of them, with
+ * its whole subtree, every time. A six-object scope produced twenty-odd rows in which `SIF_BANK_2`
+ * appeared five times and `SIF_VENDOR_2` four — the same facts repeating until the screen said
+ * nothing. Do not reintroduce a tree view of this data, or a flat list beside Execution. */
 const VIEWS = [
-  { value: 'graph' as const, label: <span className="flex items-center gap-1.5"><Network size={13} /> Graph</span>, title: 'The dependency graph, drawn in layers' },
-  { value: 'cards' as const, label: <span className="flex items-center gap-1.5"><LayoutGrid size={13} /> Cards</span>, title: 'The same objects as a readable list, grouped by layer' },
   { value: 'execution' as const, label: <span className="flex items-center gap-1.5"><ListOrdered size={13} /> Execution</span>, title: 'The load sequence the dependencies imply' },
+  { value: 'graph' as const, label: <span className="flex items-center gap-1.5"><Network size={13} /> Graph</span>, title: 'The dependency graph, drawn in layers' },
 ];
 
-/** The dependency diagram: one graph, three ways of reading it.
+/** The dependency diagram: one graph, two ways of reading it.
  *
- * Ported from the sap-dependency-analyzer reference. The views are not decoration — each answers a
- * question the others answer badly. Graph shows shape, Cards show contents, Execution shows the
- * schedule. Filters and the partition tabs apply across all three, so narrowing in one view stays
- * narrowed when you switch.
+ * Ported from the sap-dependency-analyzer reference. Execution answers "what loads when" and Graph
+ * answers "what does this look like"; filters and the partition tabs apply to both, so narrowing in
+ * one stays narrowed when you switch.
  *
- * The standalone ERD Diagram tab renders this. Graph deliberately shares its card style, legend,
- * theme toggle and select-to-highlight behaviour with Library > Migration Object's diagram: they
- * are the same kind of picture, and looking like two unrelated tools made the app feel assembled
- * rather than designed. */
+ * **Nothing here writes.** This is the ERD tab — somewhere you go to read the scope — and it used
+ * to let you drag rows and save a new `load_seq` from the same screen, with no review step between
+ * the drag and the programme's load order. Sequencing lives in the scope build (Scope > Load
+ * Sequence), behind the dependency check and the finalize gate.
+ *
+ * Graph deliberately shares its card style, legend, theme toggle and select-to-highlight behaviour
+ * with Library > Migration Object's diagram: they are the same kind of picture, and looking like two
+ * unrelated tools made the app feel assembled rather than designed. */
 export function DependencyDiagram({
   objects, inScope, dependencies,
-  savedOrder = [], onSaveSequence, busy, canEdit = true,
-  defaultView = 'graph', onOpenObject,
+  savedOrder = [], defaultView = 'execution', onOpenObject,
 }: {
   objects: MigrationObject[];
   inScope: SubprojectObject[];
   dependencies: ScopeDependency[];
+  /** The persisted `load_seq`, which decides order within a wave. Read, never written. */
   savedOrder?: string[];
-  onSaveSequence?: (order: string[]) => void;
-  busy?: boolean;
-  canEdit?: boolean;
   defaultView?: DiagramView;
   /** Opens an object's details from the graph. Omitted where there is nowhere to open them. */
   onOpenObject?: (objectId: string) => void;
@@ -117,23 +119,25 @@ export function DependencyDiagram({
           onOpenObject={onOpenObject}
         />
       )}
-      {view === 'cards' && <CardsView nodes={filtered} />}
       {view === 'execution' && (
-        <ExecutionView
-          nodes={filtered} cycles={cycles} savedOrder={savedOrder} onSave={onSaveSequence} busy={busy} canEdit={canEdit}
-        />
+        <ExecutionView nodes={filtered} cycles={cycles} savedOrder={savedOrder} />
       )}
     </>
   );
 
-  /** Circular prerequisites, said ONCE, underneath.
+  /** Circular prerequisites, said ONCE, underneath — and only where nothing else says it.
    *
    * They used to be marked on every node in every view — a red ring in Graph, an icon in Cards, a
    * "cycle" row wherever Hierarchy re-drew the object. The same two objects were flagged five or six
    * times on one screen, which made a rare condition look like a widespread failure and buried the
-   * one thing worth knowing: which objects, and that their stage is a guess. A cycle is a note about
-   * the graph, not a property to repeat on each member. */
-  const cycleNote = cycles.length > 0 && (
+   * one thing worth knowing: which objects, and that their stage is a guess.
+   *
+   * The Execution view carries its own banner, at the top where it belongs — a cycle is the reason
+   * those waves are a guess, so it has to be read BEFORE the schedule rather than as a footnote
+   * after it. This footnote therefore renders for Graph only. Both were showing at once, saying the
+   * same thing in different words at opposite ends of the page, which is the exact duplication the
+   * paragraph above was written to stop. */
+  const cycleNote = cycles.length > 0 && view === 'graph' && (
     <p className="text-2xs text-amber-ink">
       <span className="font-semibold">
         Circular prerequisite{cycles.length === 1 ? '' : 's'}:

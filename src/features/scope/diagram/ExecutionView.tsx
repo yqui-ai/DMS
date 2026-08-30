@@ -1,7 +1,6 @@
-import { useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, GripVertical } from 'lucide-react';
+import { useMemo } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import clsx from 'clsx';
-import { Button } from '../../../components/Button';
 import { EmptyState } from '../../../components/EmptyState';
 import { getLayerTheme, LAYER_BAND_TEXT } from '../../../lib/layerTheme';
 import { sequenceFromLayers, type GraphNode } from '../../../lib/scopeGraph';
@@ -13,28 +12,23 @@ import { sequenceFromLayers, type GraphNode } from '../../../lib/scopeGraph';
  * people actually want out of a dependency graph, and the reason this view exists instead of a flat
  * numbered list.
  *
- * Rows drag to reorder, but only within their own wave. Free reordering across waves is the one
- * edit that can produce an order which fails on the day: an object placed before something it
- * requires. Constraining the drag means every order this screen can produce is a valid one, so
- * there is no violations warning to write and none to ignore. */
-export function ExecutionView({ nodes, cycles = [], savedOrder, onSave, busy, canEdit = true }: {
+ * **Read-only.** Rows used to drag within their wave and save back to `load_seq`, which meant the
+ * ERD tab — a place you go to LOOK at the scope — was also a place you could quietly change what
+ * the programme loads, with no review step and no record of who moved what. Sequencing belongs to
+ * the scope build, where it sits behind the dependency check and the finalize gate: Scope > Load
+ * Sequence (`scope/build/sequence`). This shows the result of that decision. */
+export function ExecutionView({ nodes, cycles = [], savedOrder }: {
   nodes: GraphNode[];
   /** Each dependency cycle, as the objects that form it — see findCycles. Named rather than
    * counted: 'four objects are in a cycle' could be one tangle or two, and which it is decides
    * whether breaking one link fixes half the problem. */
   cycles?: string[][];
-  /** Object ids in the order currently persisted as `load_seq`. */
+  /** Object ids in the order persisted as `load_seq`. Decides the order WITHIN a wave; the waves
+   * themselves come from the dependencies and no stored order can override them. */
   savedOrder: string[];
-  onSave?: (order: string[]) => void;
-  busy?: boolean;
-  canEdit?: boolean;
 }) {
-  const [draft, setDraft] = useState<string[] | null>(null);
-  const [dragging, setDragging] = useState<string | null>(null);
-
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
-  const derived = useMemo(() => sequenceFromLayers(nodes, draft ?? savedOrder), [nodes, draft, savedOrder]);
-  const order = draft ?? derived;
+  const order = useMemo(() => sequenceFromLayers(nodes, savedOrder), [nodes, savedOrder]);
 
   const waves = useMemo(() => {
     const grouped = new Map<number, string[]>();
@@ -46,21 +40,6 @@ export function ExecutionView({ nodes, cycles = [], savedOrder, onSave, busy, ca
     return [...grouped.entries()].sort((a, b) => a[0] - b[0]);
   }, [order, byId]);
 
-  /** The saved sequence is out of date when it does not list the same objects in the same order —
-   * a new object added to the scope leaves it stale just as surely as a reorder does. */
-  const unsaved = order.join() !== savedOrder.join();
-
-  const drop = (targetId: string) => {
-    if (!dragging || dragging === targetId) return setDragging(null);
-    // Same wave only. A cross-wave drop is silently ignored rather than clamped: moving a row to a
-    // position it cannot legally occupy has no sensible "nearest valid" answer.
-    if (byId.get(dragging)?.layer !== byId.get(targetId)?.layer) return setDragging(null);
-    const next = [...order];
-    next.splice(next.indexOf(targetId), 0, ...next.splice(next.indexOf(dragging), 1));
-    setDraft(next);
-    setDragging(null);
-  };
-
   if (nodes.length === 0) {
     return <EmptyState title="Nothing to sequence" description="Select the objects to migrate and their load order is worked out here." />;
   }
@@ -69,31 +48,12 @@ export function ExecutionView({ nodes, cycles = [], savedOrder, onSave, busy, ca
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-3 flex-wrap">
-        <p className="text-sm2 text-text">
-          <span className="font-bold tabular-nums">{waves.length}</span> wave{waves.length === 1 ? '' : 's'},{' '}
-          <span className="font-bold tabular-nums">{nodes.length}</span> object{nodes.length === 1 ? '' : 's'}.
-          <span className="text-muted"> Everything in one wave can load in parallel.</span>
-        </p>
-        <div className="ml-auto flex items-center gap-2">
-          {draft && (
-            <Button variant="quiet" size="sm" onClick={() => setDraft(null)} disabled={busy}>
-              Reset to derived order
-            </Button>
-          )}
-          {canEdit && onSave && (
-            unsaved ? (
-              <Button variant="primary" size="sm" onClick={() => { onSave(order); setDraft(null); }} disabled={busy}>
-                {busy ? 'Saving…' : 'Save load sequence'}
-              </Button>
-            ) : (
-              <span className="text-2xs text-green flex items-center gap-1.5">
-                <CheckCircle2 size={13} /> Saved sequence matches
-              </span>
-            )
-          )}
-        </div>
-      </div>
+      <p className="text-sm2 text-text">
+        <span className="font-bold tabular-nums">{waves.length}</span> wave{waves.length === 1 ? '' : 's'},{' '}
+        <span className="font-bold tabular-nums">{nodes.length}</span> object{nodes.length === 1 ? '' : 's'}.
+        <span className="text-muted"> Everything in one wave can load in parallel, and the waves are
+        fixed by the dependencies.</span>
+      </p>
 
       {cycles.length > 0 && (
         <div className="flex items-start gap-2.5 rounded-lg bg-amber-bg shadow-[inset_0_0_0_1px_var(--amber-ink)] px-3.5 py-2.5">
@@ -158,26 +118,13 @@ export function ExecutionView({ nodes, cycles = [], savedOrder, onSave, busy, ca
                   const node = byId.get(id)!;
                   running += 1;
                   return (
-                    <div
-                      key={id}
-                      draggable={canEdit}
-                      onDragStart={() => setDragging(id)}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={() => drop(id)}
-                      onDragEnd={() => setDragging(null)}
-                      className={clsx(
-                        'flex items-center gap-2.5 px-3 py-1.5',
-                        canEdit && 'cursor-grab active:cursor-grabbing',
-                        dragging === id && 'opacity-40',
-                      )}
-                    >
-                      {canEdit && <GripVertical size={12} className="text-muted shrink-0" />}
+                    <div key={id} className="flex items-center gap-2.5 px-3 py-1.5">
                       <span className="text-2xs font-bold text-muted w-7 tabular-nums shrink-0">{running}</span>
                       <span className="text-sm2 font-mono font-bold shrink-0" style={{ color: theme.ink }}>{node.ident}</span>
                       <span className="text-sm2 text-text truncate flex-1">{node.name}</span>
                       {node.requires.length > 0 && (
-                        <span className="text-2xs text-muted shrink-0" title="Prerequisites in scope">
-                          needs {node.requires.length}
+                        <span className="text-2xs text-muted shrink-0 tabular-nums" title="Objects in scope that must load before this one">
+                          {node.requires.length} prerequisite{node.requires.length === 1 ? '' : 's'}
                         </span>
                       )}
                       {/* No per-row cycle flag. Cycles are named once in the banner above — badging
@@ -191,8 +138,6 @@ export function ExecutionView({ nodes, cycles = [], savedOrder, onSave, busy, ca
           );
         })}
       </div>
-
-      {canEdit && <p className="text-2xs text-muted">Drag a row to reorder it within its wave. Waves themselves are fixed by the dependencies.</p>}
     </div>
   );
 }
