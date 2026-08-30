@@ -11,6 +11,7 @@ import { ListEmptyState } from '../../components/ListEmptyState';
 import { EmptyState } from '../../components/EmptyState';
 import { useToast } from '../../components/Toast';
 import { fmtDateTime } from '../../lib/format';
+import { useHierarchy } from '../../lib/queries/hierarchy';
 import {
   describeChange, entityLabel, fieldLabel, formatValue, isDocumentField, summariseChanges,
   useChangeLog, useEntityHistory,
@@ -43,26 +44,80 @@ export function ChangeLogPage() {
 
   const [query, setQuery] = useState('');
   const [kinds, setKinds] = useState<string[]>([]);
+  const [programIds, setProgramIds] = useState<string[]>([]);
+  const [projectIds, setProjectIds] = useState<string[]>([]);
+  const [subprojectIds, setSubprojectIds] = useState<string[]>([]);
+  const [ops, setOps] = useState<string[]>([]);
+  const [actors, setActors] = useState<string[]>([]);
   const [open, setOpen] = useState<ChangeEntry | null>(null);
   const [aiSummaries, setAiSummaries] = useState<Record<string, string>>({});
   const [summarising, setSummarising] = useState(false);
+
+  /* The hierarchy, so the scope filters read as names rather than uuids — and so a PROJECT filter
+     is possible at all. `change_log` carries `program_id` and `subproject_id` but no project: the
+     trigger resolves the programme through the subproject and stops there. The level in between is
+     derived here, from the subproject the entry already names. */
+  const { data: programs = [] } = useHierarchy(true);
+
+  const scope = useMemo(() => {
+    const programName = new Map<string, string>();
+    const projectName = new Map<string, string>();
+    const subprojectName = new Map<string, string>();
+    /** subproject id → its project id. The join `change_log` cannot make for itself. */
+    const projectOfSubproject = new Map<string, string>();
+    for (const pg of programs) {
+      programName.set(pg.id, `${pg.code} · ${pg.name}`);
+      for (const pj of pg.projects) {
+        projectName.set(pj.id, `${pj.code} · ${pj.name}`);
+        for (const sp of pj.subprojects) {
+          subprojectName.set(sp.id, `${sp.code} · ${sp.name}`);
+          projectOfSubproject.set(sp.id, pj.id);
+        }
+      }
+    }
+    return { programName, projectName, subprojectName, projectOfSubproject };
+  }, [programs]);
 
   const kindOptions = useMemo(
     () => [...new Set(entries.map((e) => entityLabel(e.entity)))].sort(),
     [entries],
   );
+  /** Only what the log actually contains — a filter listing programmes with no entries is a list of
+   * dead ends. Derived from the entries, then named through the hierarchy. */
+  const optionsFrom = (ids: (string | undefined)[]) => [...new Set(ids.filter(Boolean) as string[])];
+  const programOptions = useMemo(() => optionsFrom(entries.map((e) => e.programId)), [entries]);
+  const subprojectOptions = useMemo(() => optionsFrom(entries.map((e) => e.subprojectId)), [entries]);
+  const projectOptions = useMemo(
+    () => optionsFrom(entries.map((e) => (e.subprojectId ? scope.projectOfSubproject.get(e.subprojectId) : undefined))),
+    [entries, scope],
+  );
+  const actorOptions = useMemo(() => [...new Set(entries.map((e) => e.actor))].sort(), [entries]);
+
+  /** The sentinel for entries that belong to no subproject — programme settings, roles, users,
+   * plants, the Golden FMD. Without it the only way to see them is to clear every filter, which is
+   * exactly the "where did the settings changes go" question this filter exists to answer. */
+  const PROGRAM_WIDE = '__program_wide__';
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return entries.filter((e) => (
-      (kinds.length === 0 || kinds.includes(entityLabel(e.entity)))
-      && (!q
-        || (e.summary ?? '').toLowerCase().includes(q)
-        || (aiSummaries[e.id] ?? '').toLowerCase().includes(q)
-        || e.actor.toLowerCase().includes(q)
-        || entityLabel(e.entity).toLowerCase().includes(q))
-    ));
-  }, [entries, query, kinds, aiSummaries]);
+    return entries.filter((e) => {
+      const projectId = e.subprojectId ? scope.projectOfSubproject.get(e.subprojectId) : undefined;
+      const subprojectKey = e.subprojectId ?? PROGRAM_WIDE;
+      return (
+        (kinds.length === 0 || kinds.includes(entityLabel(e.entity)))
+        && (programIds.length === 0 || (!!e.programId && programIds.includes(e.programId)))
+        && (projectIds.length === 0 || (!!projectId && projectIds.includes(projectId)))
+        && (subprojectIds.length === 0 || subprojectIds.includes(subprojectKey))
+        && (ops.length === 0 || ops.includes(OP_META[e.op].label))
+        && (actors.length === 0 || actors.includes(e.actor))
+        && (!q
+          || (e.summary ?? '').toLowerCase().includes(q)
+          || (aiSummaries[e.id] ?? '').toLowerCase().includes(q)
+          || e.actor.toLowerCase().includes(q)
+          || entityLabel(e.entity).toLowerCase().includes(q))
+      );
+    });
+  }, [entries, query, kinds, programIds, projectIds, subprojectIds, ops, actors, aiSummaries, scope]);
 
   /** Grouped by day. A flat list of 300 timestamps gives the eye nothing to hold on to, and "when"
    * is half of what anyone comes here for. */
@@ -91,8 +146,12 @@ export function ChangeLogPage() {
     }
   };
 
-  const hasFilters = !!query || kinds.length > 0;
-  const clear = () => { setQuery(''); setKinds([]); };
+  const hasFilters = !!query || kinds.length > 0 || programIds.length > 0
+    || projectIds.length > 0 || subprojectIds.length > 0 || ops.length > 0 || actors.length > 0;
+  const clear = () => {
+    setQuery(''); setKinds([]); setProgramIds([]); setProjectIds([]);
+    setSubprojectIds([]); setOps([]); setActors([]);
+  };
 
   return (
     <div className="max-w-[1120px] mx-auto w-full">
@@ -114,8 +173,46 @@ export function ChangeLogPage() {
         onClearFilters={hasFilters ? clear : undefined}
         count={shown.length} noun="changes"
       >
+        {/* Scope filters first and in hierarchy order, so the row reads the way the tree does.
+            Each appears only when there is more than one thing to choose between — a filter with a
+            single option is a control that cannot change anything. */}
+        {programOptions.length > 1 && (
+          <MultiSelectFilter
+            label="Program" options={programOptions} selected={programIds} onChange={setProgramIds}
+            formatOption={(id) => scope.programName.get(id) ?? 'Unknown program'}
+          />
+        )}
+        {projectOptions.length > 1 && (
+          <MultiSelectFilter
+            label="Project" options={projectOptions} selected={projectIds} onChange={setProjectIds}
+            formatOption={(id) => scope.projectName.get(id) ?? 'Unknown project'}
+          />
+        )}
+        {subprojectOptions.length > 0 && (
+          <MultiSelectFilter
+            label="Subproject"
+            /* PROGRAM_WIDE is offered alongside the real subprojects rather than as a separate
+               control: "which subproject" and "the ones belonging to none" are the same question,
+               and settings, roles, users, plants and the Golden FMD all live in that answer. */
+            options={[...subprojectOptions, PROGRAM_WIDE]}
+            selected={subprojectIds} onChange={setSubprojectIds}
+            formatOption={(id) => (id === PROGRAM_WIDE
+              ? 'Program-wide (settings, users, plants)'
+              : scope.subprojectName.get(id) ?? 'Unknown subproject')}
+          />
+        )}
         {kindOptions.length > 1 && (
           <MultiSelectFilter label="Record" options={kindOptions} selected={kinds} onChange={setKinds} />
+        )}
+        <MultiSelectFilter
+          label="Action" options={['Created', 'Changed', 'Deleted']} selected={ops} onChange={setOps}
+        />
+        {actorOptions.length > 1 && (
+          <MultiSelectFilter
+            label="Person" options={actorOptions} selected={actors} onChange={setActors}
+            // The local part only. A column of identical @client.com is noise in a dropdown.
+            formatOption={(a) => a.split('@')[0]}
+          />
         )}
       </Toolbar>
 
