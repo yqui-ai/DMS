@@ -14,16 +14,20 @@ import {
 
 /** Hierarchy rows first, because they are the bigger thing being removed, and shown only in the
  * mode that removes them. */
-const ROWS: { key: keyof ResetCounts; label: string; hierarchyOnly?: boolean }[] = [
-  { key: 'projects', label: 'Projects', hierarchyOnly: true },
-  { key: 'subprojects', label: 'Subprojects', hierarchyOnly: true },
-  { key: 'cycles', label: 'Cycles', hierarchyOnly: true },
+const ROWS: { key: keyof ResetCounts; label: string; from?: ResetMode }[] = [
+  { key: 'programs', label: 'Programs', from: 'everything' },
+  { key: 'projects', label: 'Projects', from: 'hierarchy' },
+  { key: 'subprojects', label: 'Subprojects', from: 'hierarchy' },
+  { key: 'cycles', label: 'Cycles', from: 'hierarchy' },
   { key: 'fmds', label: 'Field Mappings' },
   { key: 'rules', label: 'Rules' },
   { key: 'xrefs', label: 'Cross Reference tables' },
   { key: 'scopeObjects', label: 'Scope objects' },
   { key: 'candidates', label: 'Scope candidates' },
   { key: 'waivers', label: 'Dependency waivers' },
+  { key: 'plants', label: 'Plants', from: 'everything' },
+  { key: 'archiveRequests', label: 'Archive requests', from: 'everything' },
+  { key: 'changeLog', label: 'Change log entries', from: 'everything' },
 ];
 
 const MODES: { value: ResetMode; label: string; detail: string }[] = [
@@ -36,6 +40,11 @@ const MODES: { value: ResetMode; label: string; detail: string }[] = [
     value: 'hierarchy',
     label: 'Projects and subprojects too',
     detail: 'Everything above, plus the projects, subprojects and cycles themselves. Only the program survives.',
+  },
+  {
+    value: 'everything',
+    label: 'Everything, every program',
+    detail: 'The whole system: all programs, plants, archive requests, the change log, and every Field Mapping including Golden and Standard. Only the SAP object catalogue and your sign-in survive.',
   },
 ];
 
@@ -51,7 +60,7 @@ export function ResetTestDataDialog({ open, programs, onClose }: {
   onClose: () => void;
 }) {
   const toast = useToast();
-  const { previewReset, resetProgram } = useTestDataReset();
+  const { previewReset, previewResetEverything, resetProgram } = useTestDataReset();
 
   const [programId, setProgramId] = useState('');
   const [mode, setMode] = useState<ResetMode>('data');
@@ -76,16 +85,15 @@ export function ResetTestDataDialog({ open, programs, onClose }: {
     setMode('data');
   }, [open, programs]);
 
-  // Recounted whenever the chosen programme changes, so the numbers on screen always belong to the
-  // programme named in the confirm field rather than to the one selected a moment ago. Mode is NOT
-  // a dependency — both modes are counted in one pass, so switching is instant.
+  // Recounted on programme AND mode: 'everything' counts the whole system rather than one
+  // programme, so the numbers on screen always describe the button directly below them.
   useEffect(() => {
     if (!open || !programId) { setCounts(null); setCountError(null); return; }
     let cancelled = false;
     setLoading(true);
     setCounts(null);
     setCountError(null);
-    previewReset(programId)
+    (mode === 'everything' ? previewResetEverything() : previewReset(programId))
       .then((c) => { if (!cancelled) setCounts(c); })
       .catch((err: any) => {
         if (cancelled) return;
@@ -97,11 +105,21 @@ export function ResetTestDataDialog({ open, programs, onClose }: {
     return () => { cancelled = true; };
     // previewReset and toast are stable; re-running on their identity would refetch every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, programId]);
+  }, [open, programId, mode]);
 
   const total = counts ? resetTotal(counts, mode) : 0;
-  const rows = ROWS.filter((r) => (mode === 'hierarchy' || !r.hierarchyOnly) && (counts?.[r.key] ?? 0) > 0);
-  const confirmed = !!program && typed.trim().toUpperCase() === program.code.toUpperCase();
+  /* A row appears in the mode that introduces it and every larger mode: data < hierarchy <
+     everything. Keeps the panel showing exactly what the chosen mode removes, so switching mode
+     visibly changes the list rather than only the total. */
+  const RANK: Record<ResetMode, number> = { data: 0, hierarchy: 1, everything: 2 };
+  const rows = ROWS.filter((r) => (
+    RANK[mode] >= RANK[r.from ?? 'data'] && (counts?.[r.key] ?? 0) > 0
+  ));
+  /* What has to be typed. The programme code is the right gate for a programme-scoped reset, but
+     it is far too small a word for one that empties the system — the phrase makes the scale of the
+     action something you have to spell out. */
+  const phrase = mode === 'everything' ? 'DELETE EVERYTHING' : (program?.code ?? '');
+  const confirmed = !!phrase && typed.trim().toUpperCase() === phrase.toUpperCase();
   // Never runnable on a failed count: not knowing what is there is exactly when not to delete it.
   const canRun = confirmed && !busy && !loading && !countError && total > 0;
 
@@ -110,7 +128,9 @@ export function ResetTestDataDialog({ open, programs, onClose }: {
     setBusy(true);
     try {
       const removed = await resetProgram(program.id, mode);
-      toast.success(`${program.code} reset — ${resetTotal(removed, mode)} records removed.`);
+      toast.success(mode === 'everything'
+        ? `System reset — ${resetTotal(removed, mode)} records removed. The SAP object catalogue is untouched.`
+        : `${program.code} reset — ${resetTotal(removed, mode)} records removed.`);
       onClose();
     } catch (err: any) {
       toast.error(err?.message || 'Could not reset the program.');
@@ -158,8 +178,18 @@ export function ResetTestDataDialog({ open, programs, onClose }: {
         <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-5 items-start">
 
           <div className="flex flex-col gap-3.5 min-w-0">
-            <Field label="Program" htmlFor="reset-program">
-              <Select id="reset-program" value={programId} onChange={(e) => setProgramId(e.target.value)}>
+            {/* Disabled rather than hidden in 'everything' mode: a control that vanishes leaves
+                you wondering whether the scope narrowed, where a greyed one with a reason states
+                plainly that the programme no longer decides anything. */}
+            <Field
+              label="Program"
+              htmlFor="reset-program"
+              hint={mode === 'everything' ? 'Not used — this mode reaches every program.' : undefined}
+            >
+              <Select
+                id="reset-program" value={programId} disabled={mode === 'everything'}
+                onChange={(e) => setProgramId(e.target.value)}
+              >
                 {programs.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
               </Select>
             </Field>
@@ -247,12 +277,24 @@ export function ResetTestDataDialog({ open, programs, onClose }: {
                 all FMDs except the ones you spent a day designing" are very different promises. */}
             <div className="flex items-start gap-2.5 rounded-lg border border-line bg-surface-2 px-3.5 py-2.5">
               <ShieldCheck size={15} className="shrink-0 mt-px text-green" />
-              <p className="text-2xs text-muted">
-                <strong className="text-text">Kept either way:</strong> the program itself, the
-                Golden FMD, every Standard FMD, the Golden XREF, your plants and the SAP object
-                catalogue. Those are program-wide or system-wide records, and neither mode can
-                reach them.
-              </p>
+              {mode === 'everything' ? (
+                <p className="text-2xs text-muted">
+                  <strong className="text-text">Kept:</strong> the SAP object catalogue (442
+                  objects and their structures and fields), users and roles. Everything else goes,
+                  including the Golden FMD, every Standard FMD and the Golden XREF.
+                  <br /><br />
+                  The catalogue is <em>owned</em> by a program through a cascading key, so the
+                  programs holding it survive as empty shells rather than being deleted — losing
+                  them would take the catalogue too, and it only comes back from a re-seed.
+                </p>
+              ) : (
+                <p className="text-2xs text-muted">
+                  <strong className="text-text">Kept either way:</strong> the program itself, the
+                  Golden FMD, every Standard FMD, the Golden XREF, your plants and the SAP object
+                  catalogue. Those are program-wide or system-wide records, and neither of these
+                  two modes can reach them.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -263,14 +305,14 @@ export function ResetTestDataDialog({ open, programs, onClose }: {
         {total > 0 && !countError && (
           <div className="flex items-center gap-3 border-t border-line pt-3.5">
             <label htmlFor="reset-confirm" className="text-sm2 shrink-0">
-              Type <span className="font-mono font-bold text-text">{program?.code}</span> to confirm
+              Type <span className="font-mono text-text">{phrase}</span> to confirm
             </label>
             <Input
               id="reset-confirm"
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
-              placeholder={program?.code}
-              className="font-mono uppercase w-[160px] shrink-0"
+              placeholder={phrase}
+              className={clsx('font-mono uppercase shrink-0', mode === 'everything' ? 'w-[240px]' : 'w-[160px]')}
               autoComplete="off"
             />
             {confirmed && (
