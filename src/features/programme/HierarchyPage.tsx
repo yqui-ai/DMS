@@ -413,9 +413,15 @@ function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, on
           </span>
 
           <div className="min-w-0 flex-1">
+            {/* Name only, matching the project row. Three Active chips down one column — programme,
+                project, subproject — said one thing three times and made the tier that actually
+                carries state indistinguishable from the two containers above it. Archived and
+                pending still show, because neither is visible anywhere else on this row. */}
             <div className="flex items-center gap-2.5 flex-wrap">
               <h2 className="text-xl font-bold text-text">{pg.name}</h2>
-              <StatusTag level="PRGM" code={pg.status} statuses={statuses} archiveState={pg.archiveState} />
+              {pg.archiveState !== 'none' && (
+                <StatusTag level="PRGM" code={pg.status} statuses={statuses} archiveState={pg.archiveState} />
+              )}
             </div>
             {/* Identifier and size only. The lead and the date range are planning attributes: you
                 set them once in the dialog and never scan a list for them, and four of them per
@@ -503,14 +509,6 @@ function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDi
 }) {
   const Icon = LEVEL_ICON.PRJT;
 
-  /** A project's plants are the union of its subprojects', DERIVED here rather than stored on the
-   * project. Storing the same fact at two levels is the trap this schema has hit before: the moment
-   * a subproject's plants change, a stored project-level list is wrong and nothing says so. */
-  const projectPlants = useMemo(() => {
-    const all = new Set<string>();
-    for (const sp of pj.subprojects) for (const code of plantsBySubproject.get(sp.id) ?? []) all.add(code);
-    return [...all].sort();
-  }, [pj.subprojects, plantsBySubproject]);
 
   return (
     <div className="py-4 first:pt-1 last:pb-1">
@@ -519,22 +517,17 @@ function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDi
           <Icon size={14} />
         </span>
         <div className="min-w-0 flex-1">
+          {/* Name only.
+              The plant codes were a derived echo of what the subproject tile below already lists
+              under Plants — the same codes twice, a few pixels apart. The status tag went for the
+              same reason: with one Active chip on the project and another on its subproject, the
+              row read as two facts when it carried one.
+              An archived or pending project still says so, because that is NOT visible anywhere
+              else — StatusTag renders those regardless of the lifecycle status. */}
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-md font-bold text-text">{pj.name}</h3>
-            <StatusTag level="PRJT" code={pj.status} statuses={statuses} archiveState={pj.archiveState} />
-            {/* Read-only by design: the codes are here because they say what the project covers,
-                but the place to change them is the subproject that actually carries them. */}
-            {projectPlants.length > 0 && (
-              <span
-                className="flex items-center gap-1 text-2xs text-muted"
-                title={`Covers ${projectPlants.length} plant${projectPlants.length === 1 ? '' : 's'}, across its subprojects`}
-              >
-                <Factory size={11} className="shrink-0" />
-                {projectPlants.slice(0, 4).map((code) => (
-                  <span key={code} className="font-mono text-blue-deep bg-blue-light rounded-xs px-1 py-px">{code}</span>
-                ))}
-                {projectPlants.length > 4 && <span>+{projectPlants.length - 4}</span>}
-              </span>
+            {pj.archiveState !== 'none' && (
+              <StatusTag level="PRJT" code={pj.status} statuses={statuses} archiveState={pj.archiveState} />
             )}
           </div>
           <IdLine code={pj.code} />

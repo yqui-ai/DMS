@@ -12,7 +12,8 @@ export type RoleId =
 export type ScreenKey =
   | 'myWork' | 'programAdmin' | 'preparation' | 'rules' | 'referenceData'
   | 'dashboard' | 'migration' | 'quality' | 'cutover' | 'promotions'
-  | 'jobMonitor' | 'catalogObjects' | 'catalogFmds' | 'catalogRules' | 'catalogXref' | 'connections';
+  | 'jobMonitor' | 'catalogObjects' | 'catalogFmds' | 'catalogRules' | 'catalogXref' | 'connections'
+  | 'modelObjects' | 'modelWorkflow' | 'modelRules' | 'modelXref' | 'modelFmd';
 
 export interface AppUser { id: UUID; name: string; email: string; status: 'Active' | 'Invited' | 'Disabled'; lastLogin?: string }
 export interface Role { id: RoleId; name: string; description?: string; isStandard: boolean }

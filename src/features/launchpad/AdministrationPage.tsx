@@ -8,14 +8,31 @@ import { Tag } from '../../components/Tag';
 import { EmptyState } from '../../components/EmptyState';
 import { ListEmptyState } from '../../components/ListEmptyState';
 import { RolesTab } from '../programme/RolesTab';
+import { ArchiveApproversTab } from '../programme/ArchiveApproversTab';
+import { ApprovalsTab } from '../programme/ApprovalsTab';
+import { AiSettingsTab } from '../programme/AiSettingsTab';
+import { useHierarchy } from '../../lib/queries/hierarchy';
 import { adminProgramIds, useAdminUsers, useMyMemberships, type AdminUser } from '../../lib/queries/launchpad';
 import { ROLE_SCREENS } from '../../lib/rbac';
 
+/* The last three arrived from Program Admin. They are programme CONFIGURATION rather than
+   people-and-permissions, and this screen already spans every programme you administer — so they
+   are reachable here without opening one programme at a time, which was the only way before.
+
+   Users and Roles read across ALL your programmes at once. The three below describe ONE, so they
+   carry a programme selector. Conflating the two would mean either a selector that does nothing on
+   the first two tabs, or three tabs quietly showing only your first programme. */
 const TABS = [
   { key: 'users', label: 'Users' },
   { key: 'roles', label: 'Roles & Permissions' },
+  { key: 'archiveApprovers', label: 'Archive Approvers' },
+  { key: 'workflowApprovals', label: 'Workflow Approvals' },
+  { key: 'ai', label: 'AI Usage & Billing' },
 ] as const;
 type TabKey = typeof TABS[number]['key'];
+
+/** Tabs that describe one programme rather than all of them. */
+const PROGRAM_SCOPED = new Set<TabKey>(['archiveApprovers', 'workflowApprovals', 'ai']);
 
 const GROUPINGS = [
   { value: 'none', label: 'No grouping' },
@@ -38,8 +55,22 @@ const STATUS_VARIANT = { Active: 'success', Invited: 'warn', Disabled: 'neutral'
  * There is no role above program admin in this schema and this screen does not invent one. */
 export function AdministrationPage() {
   const [tab, setTab] = useState<TabKey>('users');
+  const [programId, setProgramId] = useState<string>('');
   const { data: memberships = [], isLoading: loadingMemberships } = useMyMemberships();
   const programIds = useMemo(() => adminProgramIds(memberships), [memberships]);
+
+  /* Named, not just id'd — a selector of uuids is a selector nobody can use. The hierarchy is
+     already cached by every other screen, so this costs nothing. */
+  const { data: allPrograms = [] } = useHierarchy();
+  const programOptions = useMemo(
+    () => allPrograms.filter((p) => programIds.includes(p.id)).map((p) => ({ id: p.id, code: p.code, name: p.name })),
+    [allPrograms, programIds],
+  );
+  // Falls back to the first programme you administer rather than making the tab empty until you
+  // pick one — with a single programme, which is the common case, there is nothing to pick.
+  const activeProgramId = programOptions.some((p) => p.id === programId)
+    ? programId
+    : programOptions[0]?.id ?? '';
 
   if (loadingMemberships) {
     return <div className="py-24 text-center text-muted text-sm2">Loading…</div>;
@@ -62,7 +93,7 @@ export function AdministrationPage() {
     <div>
       <PageHeader
         title="Administration"
-        description={`Users, roles and permissions across the ${programIds.length} program${programIds.length === 1 ? '' : 's'} you administer.`}
+        description={`Users, roles and settings across the ${programIds.length} program${programIds.length === 1 ? '' : 's'} you administer.`}
       />
       <div className="flex items-center gap-1 border-b border-line mb-4">
         {TABS.map((t) => (
@@ -79,7 +110,20 @@ export function AdministrationPage() {
         ))}
       </div>
 
-      {tab === 'users' ? <UsersPane programIds={programIds} /> : <RolesTab />}
+      {PROGRAM_SCOPED.has(tab) && (
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-2xs text-muted">Program</span>
+          <Select value={activeProgramId} onChange={(e) => setProgramId(e.target.value)} className="w-[320px]">
+            {programOptions.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
+          </Select>
+        </div>
+      )}
+
+      {tab === 'users' && <UsersPane programIds={programIds} />}
+      {tab === 'roles' && <RolesTab />}
+      {tab === 'archiveApprovers' && activeProgramId && <ArchiveApproversTab programId={activeProgramId} />}
+      {tab === 'workflowApprovals' && activeProgramId && <ApprovalsTab programId={activeProgramId} />}
+      {tab === 'ai' && activeProgramId && <AiSettingsTab programId={activeProgramId} />}
     </div>
   );
 }

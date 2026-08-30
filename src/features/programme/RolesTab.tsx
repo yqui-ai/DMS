@@ -20,6 +20,16 @@ const SCREEN_GROUPS: { title: string; screens: { key: ScreenKey; label: string }
     ],
   },
   {
+    // Authoring the reusable definitions, as opposed to Scope & Design, where a subproject picks
+    // which of them it uses. Both appear here because they are genuinely different permissions.
+    title: 'Modeler',
+    screens: [
+      { key: 'modelObjects', label: 'Object Modeler' }, { key: 'modelWorkflow', label: 'Workflow' },
+      { key: 'modelRules', label: 'Rules' }, { key: 'modelXref', label: 'XREF' },
+      { key: 'modelFmd', label: 'FMD' },
+    ],
+  },
+  {
     title: 'Execution',
     screens: [
       { key: 'migration', label: 'Data Migration' }, { key: 'quality', label: 'Data Quality' },

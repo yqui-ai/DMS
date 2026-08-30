@@ -213,6 +213,14 @@ export const router = createBrowserRouter([
               // way out back to the register.
               { path: 'scope/build', element: <Navigate to="objects" replace /> },
               { path: 'scope/build/:step', element: <ScreenGate screen="preparation"><ScopeWizard /></ScreenGate> },
+              /* MODELER — authoring the reusable definitions, as opposed to Design, which picks
+                 which of them a subproject uses. Routed and gated now, screens to follow; see the
+                 deferred-scope skill for how a section moves from placeholder to built. */
+              { path: 'modeler/objects', element: <ScreenGate screen="modelObjects"><Placeholder title="Object Modeler" description="Design the migration objects and their structures before a scope is built from them." /></ScreenGate> },
+              { path: 'modeler/workflow', element: <ScreenGate screen="modelWorkflow"><Placeholder title="Workflow" description="The steps a migration object moves through, and who signs off each one." /></ScreenGate> },
+              { path: 'modeler/rules', element: <ScreenGate screen="modelRules"><Placeholder title="Rule Modeler" description="Author validation, transformation and enrichment rules for reuse across subprojects." /></ScreenGate> },
+              { path: 'modeler/xref', element: <ScreenGate screen="modelXref"><Placeholder title="XREF Modeler" description="Define cross-reference tables and their value mappings." /></ScreenGate> },
+              { path: 'modeler/fmd', element: <ScreenGate screen="modelFmd"><Placeholder title="FMD Modeler" description="Shape the Field Mapping template the generated documents are built from." /></ScreenGate> },
               {
                 path: 'rules',
                 element: <TabbedSection screen="rules" title="Rules & XREF" tabs={RULES_TABS} segment="rules" />,
