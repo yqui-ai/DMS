@@ -29,7 +29,11 @@ export function DashboardPage() {
      jumps because a date moved somewhere else in the programme. Held here rather than persisted:
      it is how you are reading the chart right now, not a property of the programme. */
   const [span, setSpan] = useState<Span | null>(null);
-  const [showWeekBands, setShowWeekBands] = useState(false);
+  /* On by default. Weeks are the unit migration work is actually planned in — a load window is
+     "the week of the 12th", not "sometime in March" — so the chart should arrive ruled in them.
+     Off by default meant the stripes only existed for someone who went looking in Calendar for a
+     setting they had no reason to expect. */
+  const [showWeekBands, setShowWeekBands] = useState(true);
 
   // Same hook the chart uses, so the Calendar dialog opens on exactly the window that is on screen.
   const { autoSpan } = useProgramTimeline(programId, subprojectId);

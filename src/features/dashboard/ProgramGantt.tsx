@@ -82,11 +82,15 @@ export function ProgramGantt({ programId, highlightSubprojectId, span, showWeekB
     return { months, years };
   }, [window, pct]);
 
-  /** Faint weekly stripes. Off by default: over three years they are 150-odd bands and become
-   * texture rather than a scale. On a single quarter they are what lets you read a bar to the week. */
+  /** Weekly stripes: alternate weeks are tinted, so a month reads as its four-or-five weeks rather
+   * than as one undivided block and a bar can be measured by eye to the week.
+   *
+   * Every week is returned, tinted or not — the untinted ones still carry the boundary line that
+   * starts them, and generating only the tinted half meant the stripe edges were the only thing
+   * marking a week, which is half a scale. */
   const weeks = useMemo(() => {
     if (!window || !showWeekBands) return [];
-    const out: { key: number; left: number; width: number }[] = [];
+    const out: { key: number; left: number; width: number; tinted: boolean }[] = [];
     const cursor = new Date(window.from);
     // Start from the Monday on or before the window, so bands line up with real weeks rather than
     // with whichever weekday the window happens to open on.
@@ -97,7 +101,7 @@ export function ProgramGantt({ programId, highlightSubprojectId, span, showWeekB
       end.setDate(end.getDate() + 7);
       const left = pct(cursor < window.from ? window.from : cursor);
       const right = pct(end > window.to ? window.to : end);
-      if (i % 2 === 0 && right > left) out.push({ key: i, left, width: right - left });
+      if (right > left) out.push({ key: i, left, width: right - left, tinted: i % 2 === 0 });
       cursor.setDate(cursor.getDate() + 7);
       i += 1;
     }
@@ -126,20 +130,33 @@ export function ProgramGantt({ programId, highlightSubprojectId, span, showWeekB
 
   const programStart = parseDate(program?.startDate);
   const programEnd = parseDate(program?.endDate);
+  /** The programme's own span, said only when the chart is not already showing exactly it —
+     otherwise it is the same two months printed twice. `endDate` set but unparseable means the
+     open-ended sentinel, which is a real answer rather than a missing one. */
+  const programOpenEnded = !!program?.endDate && !programEnd;
+  const programLabel = programStart || programEnd || programOpenEnded
+    ? `${programStart ? formatMonthYear(programStart) : '?'} – ${programOpenEnded ? 'open-ended' : programEnd ? formatMonthYear(programEnd) : '?'}`
+    : undefined;
+  const windowLabel = `${formatMonthYear(window.from)} – ${formatMonthYear(window.to)}`;
+  const programSpanNote = programLabel && programLabel !== windowLabel ? `programme runs ${programLabel}` : undefined;
 
   return (
     <div className="border border-line rounded-[var(--r)] bg-surface overflow-hidden">
       {/* What the chart is, and what its symbols mean — one strip, so neither is hunted for. */}
       <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2 px-3.5 py-2.5 border-b border-line">
-        <div className="flex items-baseline gap-2.5 min-w-0">
+        {/* The range here labels the COLUMNS below it, so it has to be the window actually drawn.
+            It used to print the programme's own start and end, which agreed with the scale only
+            until someone narrowed the span in Calendar — after that the heading named months the
+            chart was no longer showing. The programme's own span is still worth knowing, so it is
+            said second, and only when the two differ. */}
+        <div className="flex items-baseline gap-2.5 min-w-0 flex-wrap">
           <span className="text-sm2 font-bold text-text truncate">{program?.name ?? 'Programme'}</span>
           <span className="text-2xs text-muted whitespace-nowrap">
-            {programStart ? formatMonthYear(programStart) : formatMonthYear(window.from)}
-            {' – '}
-            {program?.endDate && !programEnd
-              ? 'open-ended'
-              : formatMonthYear(programEnd ?? window.to)}
+            {formatMonthYear(window.from)} – {formatMonthYear(window.to)}
           </span>
+          {programSpanNote && (
+            <span className="text-2xs text-muted whitespace-nowrap">· {programSpanNote}</span>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs text-muted">
@@ -190,15 +207,22 @@ export function ProgramGantt({ programId, highlightSubprojectId, span, showWeekB
         {/* Grid and the today line are drawn ONCE behind every row, not per row — a gridline
             reassembled out of 30 row-height segments never quite lines up. */}
         <div className="absolute inset-y-0 right-0 pointer-events-none" style={{ left: RAIL }}>
+          {/* Alternating weeks get a fill, every week gets its opening line.
+              The fill was `bg-surface-2/70` — #f4f6f9 at 70% over a white card, a three-in-255
+              difference that rendered but could not be seen, so the feature read as broken rather
+              than as subtle. `surface-3` is the tint this app already uses for chrome strips behind
+              content, and it separates from `surface` in both themes. */}
           {weeks.map((w) => (
             <div
               key={w.key}
-              className="absolute inset-y-0 bg-surface-2/70"
+              className={clsx('absolute inset-y-0 border-l border-line-soft', w.tinted && 'bg-surface-3')}
               style={{ left: `${w.left}%`, width: `${w.width}%` }}
             />
           ))}
+          {/* Month rules sit above the week fills and are drawn stronger, so the two scales stay
+              distinguishable instead of reading as one row of identical lines. */}
           {months.map((m) => (
-            <div key={m.key} className="absolute inset-y-0 border-l border-line" style={{ left: `${m.left}%` }} />
+            <div key={m.key} className="absolute inset-y-0 border-l border-line-strong" style={{ left: `${m.left}%` }} />
           ))}
           {todayPct !== null && (
             <div
