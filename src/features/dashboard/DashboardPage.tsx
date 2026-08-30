@@ -1,10 +1,12 @@
-import { useNavigate, useParams } from 'react-router-dom';
+import { useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { SlidersHorizontal } from 'lucide-react';
 import { PageHeader } from '../../components/PageHeader';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { useSubproject } from '../../lib/queries/programme';
 import { ProgramGantt } from './ProgramGantt';
+import { ConfigureTimelineDialog } from './ConfigureTimelineDialog';
 
 /** The programme's shape over time, and nothing else yet.
  *
@@ -17,7 +19,7 @@ import { ProgramGantt } from './ProgramGantt';
  * dates the hierarchy already carries rather than from work that has not happened. */
 export function DashboardPage() {
   const { programId, subprojectId } = useParams();
-  const navigate = useNavigate();
+  const [configuring, setConfiguring] = useState(false);
   const { data: subproject } = useSubproject(subprojectId);
 
   return (
@@ -28,10 +30,10 @@ export function DashboardPage() {
           ? `${subproject.name} — where this subproject sits in the programme.`
           : undefined}
         actions={
-          /* Straight to the tab that edits them. Milestones are programme configuration, so they
-             live with the rest of it in Program Admin rather than getting a second editor here —
-             two places to add a milestone is how two lists of milestones start. */
-          <Button variant="secondary" onClick={() => navigate(`/pg/${programId}/admin?tab=timelines`)}>
+          /* Opens here rather than navigating to a settings tab. The timeline is edited while
+             looking at it — you move a freeze date because of where it sits on the chart, and a
+             round trip to another screen and back loses exactly that context. */
+          <Button variant="secondary" onClick={() => setConfiguring(true)}>
             <SlidersHorizontal size={14} /> Configure timeline
           </Button>
         }
@@ -46,6 +48,12 @@ export function DashboardPage() {
         </div>
         <ProgramGantt programId={programId} highlightSubprojectId={subprojectId} />
       </Card>
+
+      <ConfigureTimelineDialog
+        open={configuring}
+        programId={programId}
+        onClose={() => setConfiguring(false)}
+      />
     </div>
   );
 }

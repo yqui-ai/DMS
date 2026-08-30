@@ -212,6 +212,25 @@ export function useHierarchyMutations() {
     onSuccess: invalidate,
   });
 
+  /** Patches only the DATE columns of one record.
+   *
+   * Separate from `update` on purpose. That one sends the whole form, so using it to move a freeze
+   * date would also rewrite the record's code, name and status from whatever the caller happened to
+   * have loaded — fine in the edit dialog, where the user is looking at all of it, and a good way
+   * to lose a rename in a timeline editor, where they are not.
+   *
+   * Keys are already snake-cased and null-normalised by the caller: this hook has no idea which
+   * dates a given level has, and inventing that knowledge in two places is how they drift. */
+  const setDates = useMutation({
+    mutationFn: async ({ level, id, dates }: {
+      level: HierarchyLevel; id: string; dates: Record<string, string | null>;
+    }) => {
+      const { error } = await supabase.from(LEVELS[level].table).update(dates).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: invalidate,
+  });
+
   /** Deletes a record that has nothing beneath it. Everything else is archived.
    *
    * The old `remove` was removed for good reason: it hard-deleted a subproject and its cycles,
@@ -233,5 +252,5 @@ export function useHierarchyMutations() {
     onSuccess: invalidate,
   });
 
-  return { create, update, deleteEmpty };
+  return { create, update, setDates, deleteEmpty };
 }
