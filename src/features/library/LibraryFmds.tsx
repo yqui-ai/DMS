@@ -170,19 +170,24 @@ export function LibraryFmds() {
     },
     { key: 'type', header: 'Type', width: 90, render: (f) => f.type, sortValue: (f) => f.type },
     {
-      // Where it lives, by NAME. `reference` said the same thing in codes (PRG-PRJ), which nobody
-      // reads at a glance — and the catalogue spans every subproject, so which one a row belongs to
-      // is exactly the sort of thing you scan a list for.
+      /* Where it lives, by CODE. The names were two wrapped lines per row — "Wave 1A – Material
+         Master Core" over "S/4HANA Migration – NA Rollout › Wave 1 – Finance & MM Foundation" — to
+         say what `PROJX › W1 › W1A` says in one, and the codes are what people cite anyway. The
+         full path stays on the title attribute for the rare time the names are what you need. */
       key: 'scope', header: 'Scope', width: 190,
-      render: (f) => (f.subprojectName ? (
-        <div className="text-2xs leading-tight">
-          <div className="text-sm2 text-text truncate">{f.subprojectName}</div>
-          <div className="text-muted truncate">{[f.programName, f.projectName].filter(Boolean).join(' › ') || '—'}</div>
-        </div>
-      ) : (
-        <span className="text-muted">Program-wide</span>
-      )),
-      sortValue: (f) => f.subprojectName ?? '',
+      render: (f) => {
+        const codes = [f.programCode, f.projectCode, f.subprojectCode].filter(Boolean);
+        if (codes.length === 0) return <span className="text-muted">Program-wide</span>;
+        return (
+          <span
+            className="font-mono text-2xs truncate inline-block max-w-full"
+            title={[f.programName, f.projectName, f.subprojectName].filter(Boolean).join(' › ')}
+          >
+            {codes.join(' › ')}
+          </span>
+        );
+      },
+      sortValue: (f) => [f.programCode, f.projectCode, f.subprojectCode].filter(Boolean).join(' '),
     },
     {
       // Version and status were two columns saying one thing. The number is the live (published)
@@ -217,7 +222,7 @@ export function LibraryFmds() {
         return (
           <span className="inline-flex flex-col leading-tight">
             <span className="text-sm2">
-              <span className="font-semibold tabular-nums">{u.subprojects}</span>
+              <span className="tabular-nums">{u.subprojects}</span>
               {' '}subproject{u.subprojects === 1 ? '' : 's'}
             </span>
             <span className="text-2xs text-muted tabular-nums">
@@ -236,7 +241,7 @@ export function LibraryFmds() {
         const at = f.changedAt ?? f.createdAt;
         return by ? (
           <div className="text-2xs leading-tight">
-            <div className="font-semibold text-text truncate">{by}</div>
+            <div className="text-text truncate">{by}</div>
             <div className="text-muted">{fmtDateTime(at)}</div>
           </div>
         ) : '—';
@@ -308,7 +313,7 @@ export function LibraryFmds() {
               <div key={g.label ?? i}>
                 {g.label !== null && (
                   <div className="flex items-center gap-2 mb-1.5 px-1">
-                    <button onClick={() => toggleGroupCollapsed(g.label!)} className="flex items-center gap-1.5 text-sm2 font-bold text-text">
+                    <button onClick={() => toggleGroupCollapsed(g.label!)} className="flex items-center gap-1.5 text-sm2 text-text">
                       {collapsed ? <ChevronRight size={14} className="text-muted" /> : <ChevronDown size={14} className="text-muted" />}
                       {g.label}
                     </button>

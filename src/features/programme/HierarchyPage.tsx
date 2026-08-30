@@ -125,48 +125,9 @@ export function HierarchyPage() {
         description="Every program, project and subproject you can reach. Open a subproject to start working in it."
         actions={
           <>
-            {/* Everything program-wide hangs off this screen rather than the area switcher, which
-                is now just the three launchpad areas. These are things you do WITH the hierarchy,
-                so they belong beside it. */}
-            <Button variant="secondary" onClick={() => navigate('/library')}>
-              <LibraryIcon size={14} /> Library
-            </Button>
-            {/* Plants are programme master data, shared by every subproject that covers the site,
-                so they belong beside the hierarchy rather than inside any one wave. Assigning a
-                plant to a subproject happens on the subproject itself — this is where the list of
-                sites is maintained. */}
-            <Button variant="secondary" onClick={() => navigate('/plants')}>
-              <Factory size={14} /> Plant Maintenance
-            </Button>
-            <Button variant="secondary" onClick={() => navigate('/archive')}>
-              <Archive size={14} /> Archive
-            </Button>
-            {/* Reads the whole system, so it belongs with the other programme-wide entry points
-                rather than inside any one subproject. */}
-            <Button variant="secondary" onClick={() => navigate('/changes')}>
-              <History size={14} /> Change Log
-            </Button>
-            {/* Only for people who can actually decide one, and it carries the count — a button
-                that silently hides the fact that three approvals are waiting is a button nobody
-                presses. This replaces the separate banner: one place, not two. */}
-            {canApprove && (
-              <Button variant="secondary" onClick={() => navigate('/approvals')}>
-                <ShieldCheck size={14} /> Approvals
-                {waitingOnMe > 0 && (
-                  <span className="ml-1 rounded-pill bg-amber-bg text-amber-ink text-2xs font-bold px-1.5 tabular-nums">
-                    {waitingOnMe}
-                  </span>
-                )}
-              </Button>
-            )}
-            {/* TEMPORARY — remove with src/lib/queries/testReset.ts before this is used for real.
-                Only offered to someone who administers a program, and it still asks for the
-                program code typed out before it deletes anything. */}
-            {adminOf.size > 0 && (
-              <Button variant="dangerGhost" onClick={() => setResetting(true)}>
-                <Eraser size={14} /> Reset test data
-              </Button>
-            )}
+            {/* Only the action stays in the header. The five destinations moved to tiles below —
+                six controls crowded into this slot pushed the description into three narrow lines
+                and gave a place you GO the same weight as a thing you DO. */}
             {/* Anyone signed in may start a program and becomes its Program Admin by doing so —
                 there is no role above a program on which to gate it. */}
             <Button variant="primary" onClick={() => setDialog({ level: 'PRGM' })}>
@@ -175,6 +136,44 @@ export function HierarchyPage() {
           </>
         }
       />
+
+      {/* Everything programme-wide hangs off this screen rather than the area switcher, which is
+          now just the three launchpad areas. These are things you do WITH the hierarchy, so they
+          belong beside it — as tiles, because each one is a place you go rather than a command.
+          Above the search, because they are about the programme rather than about the list. */}
+      <div className="flex flex-wrap gap-2 mb-5">
+        <ShortcutTile icon={LibraryIcon} label="Library" onClick={() => navigate('/library')} />
+        {/* Plants are programme master data, shared by every subproject covering the site, so they
+            belong here rather than inside any one wave. Assigning one to a subproject happens on
+            the subproject itself; this is where the list of sites is maintained. */}
+        <ShortcutTile icon={Factory} label="Plant Maintenance" onClick={() => navigate('/plants')} />
+        <ShortcutTile icon={Archive} label="Archive" onClick={() => navigate('/archive')} />
+        {/* Reads the whole system, so it sits with the other programme-wide entry points rather
+            than inside any one subproject. */}
+        <ShortcutTile icon={History} label="Change Log" onClick={() => navigate('/changes')} />
+        {/* Only for people who can actually decide one, and it carries the count — a tile that
+            hides the fact that three approvals are waiting is a tile nobody presses. This replaces
+            the separate banner: one place, not two. */}
+        {canApprove && (
+          <ShortcutTile
+            icon={ShieldCheck} label="Approvals" count={waitingOnMe}
+            onClick={() => navigate('/approvals')}
+          />
+        )}
+        {/* TEMPORARY — remove with src/lib/queries/testReset.ts before this is used for real.
+            Deliberately NOT a tile: it is not a place you go, and giving a destructive action the
+            same shape as four navigation targets is how it gets clicked by reflex. Quiet, last,
+            and separated. */}
+        {adminOf.size > 0 && (
+          <button
+            type="button"
+            onClick={() => setResetting(true)}
+            className="ml-auto self-center inline-flex items-center gap-1.5 text-2xs text-red hover:underline px-1"
+          >
+            <Eraser size={13} /> Reset test data
+          </button>
+        )}
+      </div>
 
       <div className="flex items-center gap-3 mb-5">
         <ToolbarSearch value={query} onChange={setQuery} placeholder="Search any level by ID, name or GUID…" />
@@ -235,6 +234,43 @@ export function HierarchyPage() {
       />
 
     </div>
+  );
+}
+
+/** One programme-wide destination.
+ *
+ * Tile rather than button because each is a place you go, not a command — the same distinction the
+ * launchpad makes, at the smaller scale this row needs. The icon sits in a tinted square that picks
+ * up the accent on hover, so the whole tile reads as one target rather than an icon beside a label.
+ *
+ * `count` is for a destination with something waiting in it. Amber rather than the accent: it is
+ * telling you to go somewhere, which is a different thing from being the thing you clicked. */
+function ShortcutTile({ icon: Icon, label, count, onClick }: {
+  icon: typeof Archive;
+  label: string;
+  count?: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx(
+        'group inline-flex items-center gap-2.5 rounded-lg bg-surface pl-2.5 pr-3.5 py-2',
+        'shadow-[inset_0_0_0_1px_var(--line)] hover:shadow-[inset_0_0_0_1px_var(--blue-mid)]',
+        'hover:bg-blue-pale transition-colors',
+      )}
+    >
+      <span className="w-7 h-7 rounded bg-surface-2 text-muted grid place-items-center shrink-0 group-hover:bg-blue-light group-hover:text-blue-deep transition-colors">
+        <Icon size={14} />
+      </span>
+      <span className="text-sm2 text-text">{label}</span>
+      {!!count && count > 0 && (
+        <span className="rounded-pill bg-amber-bg text-amber-ink text-2xs px-1.5 tabular-nums">
+          {count}
+        </span>
+      )}
+    </button>
   );
 }
 
