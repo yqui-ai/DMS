@@ -307,14 +307,20 @@ export function ResetTestDataDialog({ open, programs, onClose }: {
             <label htmlFor="reset-confirm" className="text-sm2 shrink-0">
               Type <span className="font-mono text-text">{phrase}</span> to confirm
             </label>
-            <Input
-              id="reset-confirm"
-              value={typed}
-              onChange={(e) => setTyped(e.target.value)}
-              placeholder={phrase}
-              className={clsx('font-mono uppercase shrink-0', mode === 'everything' ? 'w-[240px]' : 'w-[160px]')}
-              autoComplete="off"
-            />
+            {/* Width lives on a wrapper, not on the Input. `Input` bakes in `w-full`, and two
+                width utilities on one element are settled by stylesheet order rather than by the
+                order they are written — which is how this ended up full-bleed and pushed a
+                horizontal scrollbar across the whole dialog. */}
+            <div className={clsx('shrink-0', mode === 'everything' ? 'w-[220px]' : 'w-[150px]')}>
+              <Input
+                id="reset-confirm"
+                value={typed}
+                onChange={(e) => setTyped(e.target.value)}
+                placeholder={phrase}
+                className="font-mono uppercase"
+                autoComplete="off"
+              />
+            </div>
             {confirmed && (
               <span className="text-2xs text-green font-semibold">Confirmed</span>
             )}

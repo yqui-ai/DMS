@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Archive, ArrowRight, Eraser, Factory, History, CheckCircle2, Clock, Library as LibraryIcon, Package, Pencil, Plus, ShieldCheck, Undo2 } from 'lucide-react';
+import { Archive, ArrowRight, Eraser, Factory, History, CheckCircle2, Clock, Library as LibraryIcon, Package, Pencil, Plus, ShieldCheck, Trash2, Undo2 } from 'lucide-react';
 import clsx from 'clsx';
 import { PageHeader } from '../../components/PageHeader';
 import { Button } from '../../components/Button';
@@ -9,11 +9,12 @@ import { Menu, type MenuAction } from '../../components/Menu';
 import { ToolbarSearch } from '../../components/ToolbarSearch';
 import { EmptyState } from '../../components/EmptyState';
 import { ArchiveDialog, type ArchiveTarget } from '../../components/ArchiveDialog';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { APPROVER_ROLES, useArchiveMutations, useArchiveRequests } from '../../lib/queries/archive';
 import { useToast } from '../../components/Toast';
 import { fmtDate } from '../../lib/format';
 import {
-  statusName, useAllRefStatus, useHierarchy, type ArchiveState, type ProgramNode,
+  statusName, useAllRefStatus, useHierarchy, useHierarchyMutations, type ArchiveState, type ProgramNode,
 } from '../../lib/queries/hierarchy';
 import { adminProgramIds, useMyMemberships } from '../../lib/queries/launchpad';
 import { HierarchyDialog, type HierarchyTarget } from './HierarchyDialog';
@@ -25,6 +26,10 @@ import type { HierarchyLevel, RefStatus } from '../../types/entities';
 // Both carry the derived archive state from useHierarchy, not just their own columns.
 type SubprojectNode = ProgramNode['projects'][number]['subprojects'][number];
 type ProjectNode = ProgramNode['projects'][number];
+
+/** A record offered for deletion because it has nothing beneath it. `kind` is the word the confirm
+ * uses; `level` is what `dms_delete_empty` keys on. */
+interface DeleteTarget { level: HierarchyLevel; id: string; label: string; kind: string }
 
 /** Program → Project → Subproject.
  *
@@ -46,8 +51,10 @@ export function HierarchyPage() {
   const [dialog, setDialog] = useState<HierarchyTarget | null>(null);
   const [archiving, setArchiving] = useState<ArchiveTarget | null>(null);
   const [resetting, setResetting] = useState(false);
+  const [deleting, setDeleting] = useState<DeleteTarget | null>(null);
   const toast = useToast();
   const { cancel } = useArchiveMutations();
+  const { deleteEmpty } = useHierarchyMutations();
 
   /** Withdrawing an open request leaves no trace on the record — the request itself is marked
    * Cancelled and stays in the history, which is where that fact belongs. */
@@ -220,6 +227,7 @@ export function HierarchyPage() {
               onArchive={setArchiving}
               onCancelRequest={withdraw}
               onOpen={(subprojectId) => navigate(`/pg/${pg.id}/sp/${subprojectId}/dashboard`)}
+              onDelete={setDeleting}
             />
           ))}
         </div>
@@ -233,6 +241,38 @@ export function HierarchyPage() {
         open={resetting}
         programs={programs.filter((p) => adminOf.has(p.id)).map((p) => ({ id: p.id, code: p.code, name: p.name }))}
         onClose={() => setResetting(false)}
+      />
+
+      {/* Deleting an EMPTY record, in place of archiving it. `dms_delete_empty` re-checks emptiness
+          server-side and refuses by name — the tree here cannot see scope rows or FMDs, so the
+          message it returns is the real answer and goes straight to the toast. */}
+      <ConfirmDialog
+        open={!!deleting}
+        title={`Delete ${deleting?.kind ?? ''}?`}
+        destructive
+        busy={deleteEmpty.isPending}
+        confirmLabel="Delete"
+        message={
+          <>
+            <strong>{deleting?.label}</strong> has nothing in it, so it can be removed outright
+            rather than archived. This cannot be undone — but there is nothing underneath it to
+            lose.
+          </>
+        }
+        onConfirm={async () => {
+          if (!deleting) return;
+          try {
+            await deleteEmpty.mutateAsync({ level: deleting.level, id: deleting.id });
+            toast.success(`${deleting.label} deleted.`);
+            setDeleting(null);
+          } catch (err: any) {
+            // The function names what is in the way ("This still has scope objects — archive it
+            // instead"), which is more useful than anything this screen could work out.
+            toast.error(err?.message ?? 'Could not delete that record.');
+            setDeleting(null);
+          }
+        }}
+        onCancel={() => setDeleting(null)}
       />
 
     </div>
@@ -288,6 +328,12 @@ function nodeActions(opts: {
   /** What this node can contain — 'project' on a program, 'subproject' on a project. */
   childLabel?: string;
   onAdd?: () => void;
+  /** Offered INSTEAD of Archive when the record has nothing beneath it.
+   *
+   * Archiving an empty project someone created by mistake just moves the mistake into the archive,
+   * which then stops being a record of things that mattered. The two are mutually exclusive on
+   * purpose — one menu, one right answer, rather than asking the reader to know which applies. */
+  onDelete?: () => void;
 }): MenuAction[] {
   // Adding lives in the menu with everything else rather than as its own `+` button. One control
   // per row, not two, and a menu can say "Add project" where a bare icon could only say "add".
@@ -317,13 +363,15 @@ function nodeActions(opts: {
   return [
     ...add,
     edit,
-    { key: 'archive', label: `Archive ${opts.label}`, icon: <Archive size={14} />, danger: true, onSelect: opts.onArchive },
+    opts.onDelete
+      ? { key: 'delete', label: `Delete ${opts.label}`, icon: <Trash2 size={14} />, danger: true, onSelect: opts.onDelete }
+      : { key: 'archive', label: `Archive ${opts.label}`, icon: <Archive size={14} />, danger: true, onSelect: opts.onArchive },
   ];
 }
 
 /* ────────────────────────────────────────────────────────────────────────────── program */
 
-function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, onDialog, onArchive, onCancelRequest, onOpen }: {
+function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, onDialog, onArchive, onCancelRequest, onOpen, onDelete }: {
   program: ProgramNode;
   canEdit: boolean;
   statuses: RefStatus[];
@@ -332,6 +380,7 @@ function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, on
   onDialog: (t: HierarchyTarget) => void;
   onArchive: (t: ArchiveTarget) => void;
   onCancelRequest: (requestId: string) => void;
+  onDelete: (t: DeleteTarget) => void;
   onOpen: (subprojectId: string) => void;
 }) {
   const Icon = LEVEL_ICON.PRGM;
@@ -375,6 +424,13 @@ function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, on
                   onEdit: () => onDialog({ level: 'PRGM', record: pg }),
                   onCancelRequest,
                   onArchive: () => onArchive({ entityType: 'program', entityId: pg.id, entityLabel: pg.name, programId: pg.id, cascadeNote: 'projects, subprojects, cycles, scope, FMDs, rules and runs' }),
+                  /* The tree can only see projects. A program also owns the SAP catalogue and its
+                     plants, which are not on screen — dms_delete_empty checks those and refuses by
+                     name, so offering Delete here is a reasonable guess that cannot be wrong in a
+                     way that loses anything. */
+                  onDelete: pg.projects.length === 0
+                    ? () => onDelete({ level: 'PRGM', id: pg.id, label: pg.name, kind: 'program' })
+                    : undefined,
                 })}
               />
             </div>
@@ -404,6 +460,7 @@ function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, on
               onArchive={onArchive}
               onCancelRequest={onCancelRequest}
               onOpen={onOpen}
+              onDelete={onDelete}
             />
           ))}
         </div>
@@ -415,7 +472,7 @@ function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, on
 /* ────────────────────────────────────────────────────────────────────────────── project */
 
 /** A grouping, not a card — projects organise subprojects, they are not something you open. */
-function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDialog, onArchive, onCancelRequest, onOpen }: {
+function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDialog, onArchive, onCancelRequest, onOpen, onDelete }: {
   project: ProjectNode;
   canEdit: boolean;
   statuses: RefStatus[];
@@ -423,6 +480,7 @@ function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDi
   onDialog: (t: HierarchyTarget) => void;
   onArchive: (t: ArchiveTarget) => void;
   onCancelRequest: (requestId: string) => void;
+  onDelete: (t: DeleteTarget) => void;
   onOpen: (subprojectId: string) => void;
 }) {
   const Icon = LEVEL_ICON.PRJT;
@@ -475,6 +533,9 @@ function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDi
                 onEdit: () => onDialog({ level: 'PRJT', record: pj }),
                 onCancelRequest,
                 onArchive: () => onArchive({ entityType: 'project', entityId: pj.id, entityLabel: pj.name, programId: pj.programId, cascadeNote: 'its subprojects, their cycles, and all their scope and mapping work' }),
+                onDelete: pj.subprojects.length === 0
+                  ? () => onDelete({ level: 'PRJT', id: pj.id, label: pj.name, kind: 'project' })
+                  : undefined,
               })}
             />
           </div>
@@ -507,6 +568,7 @@ function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDi
                 onDialog={onDialog}
                 onArchive={onArchive}
                 onCancelRequest={onCancelRequest}
+                onDelete={onDelete}
               />
             ))}
           </div>
@@ -520,7 +582,7 @@ function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDi
 
 /** The only level you can work inside, so the only one rendered as a destination. The whole tile is
  * the click target; the overflow menu stops propagation so administering never navigates. */
-function SubprojectTile({ subproject: sp, programId, canEdit, statuses, plantCodes, onOpen, onDialog, onArchive, onCancelRequest }: {
+function SubprojectTile({ subproject: sp, programId, canEdit, statuses, plantCodes, onOpen, onDialog, onArchive, onCancelRequest, onDelete }: {
   subproject: SubprojectNode;
   /** The program the subproject sits in — an archive request is scoped by program. */
   programId: string;
@@ -533,6 +595,7 @@ function SubprojectTile({ subproject: sp, programId, canEdit, statuses, plantCod
   onDialog: (t: HierarchyTarget) => void;
   onArchive: (t: ArchiveTarget) => void;
   onCancelRequest: (requestId: string) => void;
+  onDelete: (t: DeleteTarget) => void;
 }) {
   const Icon = LEVEL_ICON.SPRJ;
 
@@ -572,6 +635,12 @@ function SubprojectTile({ subproject: sp, programId, canEdit, statuses, plantCod
                     onEdit: () => onDialog({ level: 'SPRJ', record: sp, programId }),
                     onCancelRequest,
                     onArchive: () => onArchive({ entityType: 'subproject', entityId: sp.id, entityLabel: sp.name, programId, cascadeNote: 'its cycles, scope, FMDs, rules and runs' }),
+                    /* Cycles are the only child the tree carries. Scope rows, FMDs and rules are
+                       not loaded here, so this is the cheap half of the test and the function is
+                       the authoritative half. */
+                    onDelete: sp.cycles.length === 0
+                      ? () => onDelete({ level: 'SPRJ', id: sp.id, label: sp.name, kind: 'subproject' })
+                      : undefined,
                   }),
                 ]}
               />

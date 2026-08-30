@@ -259,9 +259,26 @@ export function useHierarchyMutations() {
     onSuccess: invalidate,
   });
 
-  // There is no `remove`. Nothing in this hierarchy is deleted — see `useArchiveMutations` and
-  // migrations 0040/0041, where a BEFORE DELETE trigger rejects it outright. The mutation that used
-  // to live here is what hard-deleted a subproject, and its cycles, scope, FMDs, rules and runs
-  // went with it through the cascades.
-  return { create, update };
+  /** Deletes a record that has nothing beneath it. Everything else is archived.
+   *
+   * The old `remove` was removed for good reason: it hard-deleted a subproject and its cycles,
+   * scope, FMDs, rules and runs went with it through the cascades, which is why 0041 added a
+   * BEFORE DELETE trigger to make "nothing is deleted" true rather than merely intended.
+   *
+   * That rule protects what is BELOW a record, so it has nothing to say about a record with nothing
+   * below it. Archiving an empty project created by a typo just moves the typo into the archive,
+   * which then stops being a record of things that mattered.
+   *
+   * Emptiness is decided by `dms_delete_empty` (0055), never here. The client cannot see scope rows
+   * or FMDs from the tree it has loaded, so a check on this side would be a guess — the function
+   * refuses and names what is in the way, and that message is what the caller shows. */
+  const deleteEmpty = useMutation({
+    mutationFn: async ({ level, id }: { level: HierarchyLevel; id: string }) => {
+      const { error } = await supabase.rpc('dms_delete_empty', { p_level: level, p_id: id });
+      if (error) throw new Error(error.message || 'Could not delete that record.');
+    },
+    onSuccess: invalidate,
+  });
+
+  return { create, update, deleteEmpty };
 }

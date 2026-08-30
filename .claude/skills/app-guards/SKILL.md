@@ -132,6 +132,14 @@ same version for no benefit the user could see.
   discarding a section's edits, deleting a field that carries data.
 - **Say what is lost, in numbers.** "Discards 12 populated rows", not "are you sure?".
 - **Golden and Standard FMDs can never be deleted.** No delete action may be added for either.
+- **Archive, unless it is empty.** 0041 blocks DELETE on the hierarchy because a hard delete once
+  cascaded away a subproject entire. That rule protects what is BELOW a record, so it has nothing
+  to say about a record with nothing below it — archiving an empty project made by a typo only
+  moves the typo into the archive. `dms_delete_empty` (0055) decides emptiness server-side and
+  refuses by NAME ("This still has scope objects — archive it instead"); the row menu offers Delete
+  **or** Archive, never both. Never decide emptiness on the client: the hierarchy tree carries
+  children but not scope rows, FMDs or rules, so a check there is a guess. A program owning
+  catalogue rows is never deletable — `migration_objects` cascades from it.
 - **Baseline Golden fields can't be removed OR renamed** (`goldenFmdRequiredFields.ts`). A rename is
   a removal by another route, so the name input is `readOnly` in place rather than rejected on save
   — finding out at save time costs every edit made after it.
