@@ -1,34 +1,80 @@
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { LayoutDashboard } from 'lucide-react';
+import { CalendarDays, SlidersHorizontal } from 'lucide-react';
 import { PageHeader } from '../../components/PageHeader';
-import { EmptyState } from '../../components/EmptyState';
+import { Button } from '../../components/Button';
 import { useSubproject } from '../../lib/queries/programme';
+import { ProgramGantt } from './ProgramGantt';
+import { ConfigureTimelineDialog } from './ConfigureTimelineDialog';
+import { TimelineSpanDialog } from './TimelineSpanDialog';
+import { useProgramTimeline, type Span } from './programTimeline';
 
-/** Deliberately empty, pending a rebuild.
+/** The programme's shape over time, and nothing else yet.
  *
- * What was here reported on sections that are not built yet — execution runs, cutover readiness,
- * data-quality blockers — so most of it read as zero regardless of what the subproject was doing.
- * A dashboard whose numbers are structurally zero is worse than no dashboard: it invites people to
+ * What used to be here reported on sections that are not built — execution runs, cutover readiness,
+ * data-quality blockers — so most of it read as zero regardless of what the subproject was doing. A
+ * dashboard whose numbers are structurally zero is worse than no dashboard: it invites people to
  * trust a health score assembled from features that do not exist.
  *
- * The pieces it used are not deleted. `TimelineGantt` still lives beside this file, and the queries
- * it read (useSubprojectObjects, useRules, useRuns, useCutoverTasks) are all still exported and
- * used elsewhere — so rebuilding is a matter of choosing what to show, not re-deriving it. Timeline
- * categories and entries are still maintained in Program Admin › Timelines. */
+ * The timeline is the one thing this screen can say truthfully today, because it is drawn from
+ * dates the hierarchy already carries rather than from work that has not happened. */
 export function DashboardPage() {
-  const { subprojectId } = useParams();
+  const { programId, subprojectId } = useParams();
+  const [configuring, setConfiguring] = useState(false);
+  const [pickingSpan, setPickingSpan] = useState(false);
   const { data: subproject } = useSubproject(subprojectId);
+
+  /* Null means "fit to the data", which is the right thing to open on and the wrong thing to be
+     stuck with. Once someone picks a span it is theirs until they change it — the chart no longer
+     jumps because a date moved somewhere else in the programme. Held here rather than persisted:
+     it is how you are reading the chart right now, not a property of the programme. */
+  const [span, setSpan] = useState<Span | null>(null);
+  const [showWeekBands, setShowWeekBands] = useState(false);
+
+  // Same hook the chart uses, so the Calendar dialog opens on exactly the window that is on screen.
+  const { autoSpan } = useProgramTimeline(programId, subprojectId);
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        title="Dashboard"
-        description={subproject ? `${subproject.name} — programme health and open items.` : undefined}
+        title="Timeline"
+        description={subproject
+          ? `${subproject.name} — where this subproject sits in the programme.`
+          : 'Program-level plan, drawn from the dates on each project, subproject and cycle.'}
+        actions={
+          <div className="flex items-center gap-2">
+            {/* Two different jobs, deliberately not one dialog: Calendar changes what you are
+                LOOKING at, Configure changes what the programme IS. Folding a view control into
+                the editor would make every re-scale look like an edit. */}
+            <Button variant="secondary" onClick={() => setPickingSpan(true)}>
+              <CalendarDays size={14} /> Calendar
+            </Button>
+            <Button variant="secondary" onClick={() => setConfiguring(true)}>
+              <SlidersHorizontal size={14} /> Configure
+            </Button>
+          </div>
+        }
       />
-      <EmptyState
-        icon={<LayoutDashboard size={22} />}
-        title="Dashboard is being rebuilt"
-        description="It will report on this subproject once the sections it draws from are built. Scope, Field Mapping and the Library are all working in the meantime."
+
+      <ProgramGantt
+        programId={programId}
+        highlightSubprojectId={subprojectId}
+        span={span}
+        showWeekBands={showWeekBands}
+      />
+
+      <TimelineSpanDialog
+        open={pickingSpan}
+        span={span ?? autoSpan}
+        showWeekBands={showWeekBands}
+        onApply={(next, bands) => { setSpan(next); setShowWeekBands(bands); }}
+        onClose={() => setPickingSpan(false)}
+      />
+
+      <ConfigureTimelineDialog
+        open={configuring}
+        programId={programId}
+        onClose={() => setConfiguring(false)}
       />
     </div>
   );

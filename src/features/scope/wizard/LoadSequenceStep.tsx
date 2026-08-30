@@ -200,11 +200,17 @@ export function LoadSequenceStep({
           id: e.id,
           source: e.source,
           target: e.target,
+          /* Hidden rather than faded, matching the other two diagrams. A ghost line at 0.12 is
+             still a line, and a load-sequence graph has enough of them that the lineage had to be
+             found among its own shadows. Nodes stay put so the shape survives; only the edges that
+             are not part of the answer go. */
+          hidden: dimmed,
           style: {
             stroke: colour,
-            strokeWidth: circular ? 1 : e.mandatory ? 1.4 : 1.1,
+            // Heavier on the traced path — it is the only thing drawn, so it carries the emphasis.
+            strokeWidth: lineage ? (circular ? 1.4 : 2.2) : (circular ? 1 : e.mandatory ? 1.4 : 1.1),
             strokeDasharray: circular ? '2 4' : e.mandatory ? undefined : '5 4',
-            opacity: dimmed ? 0.12 : 1,
+            opacity: 1,
           },
           markerEnd: circular ? undefined : { type: MarkerType.ArrowClosed, width: 12, height: 12, color: colour },
         };

@@ -5,6 +5,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { ListEmptyState } from '../../components/ListEmptyState';
 import { Table, type Column } from '../../components/Table';
 import { MultiSelectFilter } from '../../components/MultiSelectFilter';
+import { Tag } from '../../components/Tag';
 import { Toolbar } from '../../components/Toolbar';
 import { Menu } from '../../components/Menu';
 import { ArchiveDialog, type ArchiveTarget } from '../../components/ArchiveDialog';
@@ -49,7 +50,20 @@ export function LibraryXref() {
     { key: 'class', header: 'Class', width: 90, render: (t) => t.class, sortValue: (t) => t.class },
     { key: 'type', header: 'Type', width: 90, render: (t) => t.type, sortValue: (t) => t.type },
     { key: 'reference', header: 'Reference', render: (t) => <span className="font-mono text-sm2">{t.reference}</span>, sortValue: (t) => t.reference },
-    { key: 'latestVersion', header: 'Version', render: (t) => t.latestVersion ?? '—', sortValue: (t) => t.latestVersion },
+    {
+      /* The live version, plus a Draft tag when unreleased edits are sitting on top of it — the
+         same two derived fields the Field Mapping list shows, because since 0059 the newest XREF
+         version row can be a draft and naming it here would tell the programme that unfinished
+         work is the current template. */
+      key: 'latestVersion', header: 'Version', width: 130,
+      render: (t) => (
+        <span className="inline-flex items-center gap-1.5">
+          <span className="font-mono">{t.activeVersion ?? '—'}</span>
+          {t.hasDraft && <Tag variant="danger" size="sm">Draft</Tag>}
+        </span>
+      ),
+      sortValue: (t) => t.activeVersion,
+    },
     { key: 'purpose', header: 'Purpose', render: (t) => t.purpose ?? '—', sortValue: (t) => t.purpose },
     {
       key: 'actions', width: 44, header: '',

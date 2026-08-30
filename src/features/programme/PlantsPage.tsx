@@ -8,7 +8,6 @@ import { Dialog } from '../../components/Dialog';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Field, Input } from '../../components/Field';
 import { ToolbarSearch } from '../../components/ToolbarSearch';
-import { MultiSelectFilter } from '../../components/MultiSelectFilter';
 import { ListEmptyState } from '../../components/ListEmptyState';
 import { useToast } from '../../components/Toast';
 import { useHierarchy } from '../../lib/queries/hierarchy';
@@ -29,19 +28,13 @@ const EMPTY_FORM: PlantForm = { code: '', name: '', country: '', city: '' };
 export function PlantsPage() {
   const toast = useToast();
   const [showArchived, setShowArchived] = useState(false);
-  const { data: plants = [], isLoading } = usePlants(undefined, showArchived);
+  const { data: plants = [], isLoading } = usePlants(showArchived);
   const { data: programs = [] } = useHierarchy();
 
   const [query, setQuery] = useState('');
-  const [programFilter, setProgramFilter] = useState<string[]>([]);
   const [editing, setEditing] = useState<PlantRow | 'new' | null>(null);
   const [retiring, setRetiring] = useState<PlantRow | null>(null);
   const [busy, setBusy] = useState(false);
-
-  const programName = useMemo(
-    () => new Map(programs.map((p) => [p.id, `${p.code} · ${p.name}`])),
-    [programs],
-  );
 
   /** Subproject id → its readable path, so "used by" names the wave rather than a uuid. */
   const subprojectPath = useMemo(() => {
@@ -54,9 +47,7 @@ export function PlantsPage() {
     return out;
   }, [programs]);
 
-  const mutations = usePlantMutations(
-    editing && editing !== 'new' ? editing.programId : undefined,
-  );
+  const mutations = usePlantMutations();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -66,12 +57,11 @@ export function PlantsPage() {
         || p.name.toLowerCase().includes(q)
         || (p.city ?? '').toLowerCase().includes(q)
         || (p.country ?? '').toLowerCase().includes(q))
-      && (programFilter.length === 0 || programFilter.includes(p.programId))
     ));
-  }, [plants, query, programFilter]);
+  }, [plants, query]);
 
-  const hasActiveFilters = query !== '' || programFilter.length > 0;
-  const clearFilters = () => { setQuery(''); setProgramFilter([]); };
+  const hasActiveFilters = query !== '';
+  const clearFilters = () => setQuery('');
 
   const retire = async () => {
     if (!retiring) return;
@@ -119,11 +109,6 @@ export function PlantsPage() {
         [p.city, p.country].filter(Boolean).join(', ')
         || <span className="text-muted">—</span>
       ),
-    },
-    {
-      key: 'program', header: 'Program', width: 200,
-      sortValue: (p) => programName.get(p.programId) ?? '',
-      render: (p) => <span className="truncate">{programName.get(p.programId) ?? '—'}</span>,
     },
     {
       /* The reuse signal, and the reason retiring is gated. A plant covered by three waves is not
@@ -189,7 +174,7 @@ export function PlantsPage() {
     <div className="max-w-[1120px] mx-auto w-full">
       <PageHeader
         title="Plant Maintenance"
-        description="The SAP plants your programmes migrate. A subproject can cover several plants, and a plant can appear in several subprojects."
+        description="Every SAP plant, shared across programmes. A subproject covers several plants, and a plant appears in every subproject that covers it."
         actions={
           <Button variant="primary" onClick={() => setEditing('new')}>
             <Plus size={14} /> New plant
@@ -199,15 +184,6 @@ export function PlantsPage() {
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <ToolbarSearch value={query} onChange={setQuery} placeholder="Search by code, name or location…" />
-        {programs.length > 1 && (
-          <MultiSelectFilter
-            label="Program"
-            options={programs.map((p) => p.id)}
-            selected={programFilter}
-            onChange={setProgramFilter}
-            formatOption={(id) => programName.get(id) ?? id}
-          />
-        )}
         {hasActiveFilters && (
           <button onClick={clearFilters} className="text-2xs text-blue font-semibold">Clear filters</button>
         )}
@@ -233,15 +209,7 @@ export function PlantsPage() {
         <Table columns={columns} rows={filtered} rowKey={(p) => p.id} />
       )}
 
-      <PlantDialog
-        target={editing}
-        /* When the user reaches more than one programme, the filter above decides which one a new
-           plant lands in — the form does not ask. Adding a plant is a four-field job and a select
-           that is a foregone conclusion for almost everyone is three of those fields' worth of
-           friction. Falls back to the only programme they can see. */
-        defaultProgramId={programFilter[0] ?? programs[0]?.id}
-        onClose={() => setEditing(null)}
-      />
+      <PlantDialog target={editing} onClose={() => setEditing(null)} />
 
       <ConfirmDialog
         open={!!retiring}
@@ -273,14 +241,11 @@ export function PlantsPage() {
 
 /** Create or edit one plant. Four fields: code, name, city, country.
  *
- * The programme is not asked for. It is decided by context — the filter, or the only programme the
- * user can reach — because a plant belongs to whichever programme you are looking at and a select
- * whose answer is a foregone conclusion is just another field to tab past. It is also immutable
- * once set: moving a site between programmes would silently detach every subproject assignment
- * pointing at it. */
-function PlantDialog({ target, defaultProgramId, onClose }: {
+ * There is no programme field, because a plant does not belong to one (0057). Plant 1010 is a
+ * physical SAP site — the same site whichever programme is migrating it — and its only relationship
+ * is the subprojects that cover it. */
+function PlantDialog({ target, onClose }: {
   target: PlantRow | 'new' | null;
-  defaultProgramId?: string;
   onClose: () => void;
 }) {
   const toast = useToast();
@@ -300,12 +265,11 @@ function PlantDialog({ target, defaultProgramId, onClose }: {
       : EMPTY_FORM);
   }
 
-  const programId = plant?.programId ?? defaultProgramId;
-  const mutations = usePlantMutations(programId);
+  const mutations = usePlantMutations();
 
   const codeError = form.code.trim() === '' ? 'Required' : undefined;
   const nameError = form.name.trim() === '' ? 'Required' : undefined;
-  const canSave = !codeError && !nameError && !!programId;
+  const canSave = !codeError && !nameError;
 
   const save = async () => {
     if (!canSave) return;

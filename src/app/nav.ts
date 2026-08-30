@@ -25,6 +25,16 @@ export const NAV_GROUPS: NavGroup[] = [
     { key: 'rules', label: 'Rules & XREF', icon: 'scale', to: 'rules' },
     { key: 'referenceData', label: 'Reference Data', icon: 'book-open', to: 'reference-data' },
   ]},
+  /* MODELER — where the reusable definitions are authored, as opposed to Design, where a
+     subproject decides which of them it uses. The distinction is the point: Design > Rules picks
+     and applies rules to a scope, Modeler > Rules is where a rule is written in the first place. */
+  { title: 'MODELER', items: [
+    { key: 'modelObjects', label: 'Object Modeler', icon: 'git-fork', to: 'modeler/objects' },
+    { key: 'modelWorkflow', label: 'Workflow', icon: 'workflow', to: 'modeler/workflow' },
+    { key: 'modelRules', label: 'Rules', icon: 'scale', to: 'modeler/rules' },
+    { key: 'modelXref', label: 'XREF', icon: 'arrow-right-left', to: 'modeler/xref' },
+    { key: 'modelFmd', label: 'FMD', icon: 'files', to: 'modeler/fmd' },
+  ]},
   // EXECUTION and GOVERNANCE are out of the nav while Design > Scope is finished first. Their
   // screens, routes and queries all still exist and are NOT dead code — see the deferred-scope
   // skill for what each section held and how to bring it back.

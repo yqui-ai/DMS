@@ -1,3 +1,4 @@
+import { By, Fact, Group } from './versionFacts';
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { History, Pencil, Sparkles } from 'lucide-react';
@@ -400,43 +401,6 @@ function ReviewPointsList({ notes, allNotes, hasClosed, onReply, onToggleResolve
   );
 }
 
-/** One labelled fact, on one line, with the label in a FIXED column.
- *
- * Two earlier attempts failed in opposite directions. Labels laid out with a flex gap gave every
- * value a different left edge — the "misaligned" complaint. Stacking label above value fixed the
- * alignment but doubled the pane's height, so eight facts became a column you had to scroll.
- *
- * A fixed label column is both: one left edge for the labels, one for the values, and a long value
- * wraps within its own column instead of back under the label. */
-function Fact({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex gap-2.5">
-      <span className="w-[74px] shrink-0 text-2xs text-muted pt-[3px]">{label}</span>
-      <span className="min-w-0 flex-1 text-sm2 break-words">{children}</span>
-    </div>
-  );
-}
-
-/** A group of facts, separated by a rule and nothing else.
- *
- * No heading: every row already carries its own label, so "PEOPLE" above a list that reads Owner /
- * Edited by / Approved by was a caption restating what the rows say. The rule does the grouping.
- * The Comment block below keeps its heading because it is prose, not a labelled row — without one
- * there is nothing to say the paragraph is the version comment. */
-function Group({ children }: { children: React.ReactNode }) {
-  return <div className="border-t border-line pt-2.5 flex flex-col gap-1.5">{children}</div>;
-}
-
-/** Person plus timestamp. The date goes on its own line rather than trailing the name: an email
- * address nearly fills the column, so anything after it wrapped mid-address. */
-function By({ who, at }: { who?: string; at?: string }) {
-  return (
-    <>
-      <span className="font-semibold break-all">{who ?? '—'}</span>
-      {at && <span className="block text-2xs text-muted">{fmtDateTime(at)}</span>}
-    </>
-  );
-}
 
 /** Who/when/state/comment for the selected version, plus which Golden/Reference version it was
  * built from. Lives on the Versions tab, beside the review panes for Custom FMDs and full-width for

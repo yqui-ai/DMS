@@ -3,10 +3,10 @@ import type { RoleId, ScreenKey } from '../types/entities';
 /** Seed matrix — mirrors role_screens in the database. DB is the source of truth at runtime. */
 export const ROLE_SCREENS: Record<RoleId, ScreenKey[] | 'all'> = {
   program_admin: 'all',
-  data_owner: ['myWork', 'dashboard', 'preparation', 'rules', 'referenceData', 'quality', 'cutover', 'catalogObjects', 'catalogFmds', 'catalogRules', 'catalogXref'],
+  data_owner: ['myWork', 'dashboard', 'preparation', 'rules', 'referenceData', 'quality', 'cutover', 'catalogObjects', 'catalogFmds', 'catalogRules', 'catalogXref', 'modelObjects', 'modelWorkflow', 'modelRules', 'modelXref', 'modelFmd'],
   etl_developer: ['myWork', 'dashboard', 'migration', 'quality', 'jobMonitor', 'catalogObjects'],
-  etl_lead: ['myWork', 'dashboard', 'migration', 'quality', 'cutover', 'promotions', 'jobMonitor', 'connections', 'catalogObjects', 'catalogFmds', 'catalogRules', 'catalogXref'],
-  data_governance_lead: ['myWork', 'dashboard', 'preparation', 'rules', 'referenceData', 'quality', 'promotions', 'catalogObjects', 'catalogFmds', 'catalogRules', 'catalogXref'],
+  etl_lead: ['myWork', 'dashboard', 'migration', 'quality', 'cutover', 'promotions', 'jobMonitor', 'connections', 'catalogObjects', 'catalogFmds', 'catalogRules', 'catalogXref', 'modelObjects', 'modelWorkflow'],
+  data_governance_lead: ['myWork', 'dashboard', 'preparation', 'rules', 'referenceData', 'quality', 'promotions', 'catalogObjects', 'catalogFmds', 'catalogRules', 'catalogXref', 'modelObjects', 'modelWorkflow', 'modelRules', 'modelXref', 'modelFmd'],
   cab: ['myWork', 'dashboard', 'promotions', 'cutover'],
   end_user: ['myWork', 'dashboard'],
   guest: [],

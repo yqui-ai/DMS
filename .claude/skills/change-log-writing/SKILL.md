@@ -89,6 +89,26 @@ The AI line may sit above the recorded sentence but **must never replace it** �
 must not be the only version of an audit entry on screen. A log that reads differently depending on
 whether a model was reachable is not an audit trail.
 
+## Filtering
+
+Six filters, in hierarchy order then detail: **Program · Project · Subproject · Record · Action ·
+Person**. Each renders only when it has more than one option, because a filter with a single
+choice is a control that cannot change anything.
+
+Two of them are not simply columns:
+
+- **Project is DERIVED.** `change_log` carries `program_id` and `subproject_id` and nothing in
+  between — `dms_log_change` resolves the programme through the subproject and stops there. The
+  page maps subproject → project from `useHierarchy`, which it already loads.
+- **Subproject offers a `Program-wide` option** for `subproject_id is null`: programme settings,
+  roles, users, plants and the Golden FMD. Without it the only way to see those is to clear every
+  filter, which is exactly the "where did the settings changes go" question the filter exists to
+  answer. It belongs in the subproject list rather than in a control of its own — "which
+  subproject" and "the ones belonging to none" are one question.
+
+Options come from the ENTRIES, then get their names from the hierarchy. Listing every programme
+that exists would offer choices that match nothing.
+
 ## Where each rule lives
 
 | Concern | Where |

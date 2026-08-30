@@ -378,14 +378,21 @@ export function GraphView({ nodes, edges, height = '58vh', onOpenObject }: {
           id: e.id,
           source: e.source,
           target: e.target,
+          /* Hidden, not faded to 0.07. A dense graph kept every other edge on the canvas as a
+             ghost, and on a layered diagram that is dozens of lines the lineage still has to be
+             picked out from. The nodes stay visible and drained of colour, so the shape of the
+             graph is not lost — only the edges that are not the answer go. */
+          hidden: dimmed,
           style: {
             stroke: colour,
-            strokeWidth: onPath ? 3 : 1.5,
+            // Heavier when traced: it is the only line left, and should read as the answer rather
+            // than as whatever survived the filter.
+            strokeWidth: onPath ? 3.5 : 1.5,
             // An optional prerequisite is drawn dashed: the picture should say which arrows are
             // negotiable without anyone having to click one.
             strokeDasharray: e.mandatory ? undefined : '5,4',
-            opacity: dimmed ? 0.07 : 1,
-            ...(futuristic ? { filter: `drop-shadow(0 0 ${onPath ? 5 : 3}px ${colour})` } : {}),
+            opacity: 1,
+            ...(futuristic ? { filter: `drop-shadow(0 0 ${onPath ? 6 : 3}px ${colour})` } : {}),
           },
           markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: colour },
         };

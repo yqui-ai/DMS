@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Archive, ArrowRight, Eraser, Factory, History, CheckCircle2, Clock, Library as LibraryIcon, Package, Pencil, Plus, ShieldCheck, Undo2 } from 'lucide-react';
+import { Archive, ArrowRight, Eraser, Factory, History, CheckCircle2, Clock, Library as LibraryIcon, Package, Pencil, Plus, ShieldCheck, Trash2, Undo2, X } from 'lucide-react';
 import clsx from 'clsx';
 import { PageHeader } from '../../components/PageHeader';
 import { Button } from '../../components/Button';
@@ -9,11 +9,12 @@ import { Menu, type MenuAction } from '../../components/Menu';
 import { ToolbarSearch } from '../../components/ToolbarSearch';
 import { EmptyState } from '../../components/EmptyState';
 import { ArchiveDialog, type ArchiveTarget } from '../../components/ArchiveDialog';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { APPROVER_ROLES, useArchiveMutations, useArchiveRequests } from '../../lib/queries/archive';
 import { useToast } from '../../components/Toast';
 import { fmtDate } from '../../lib/format';
 import {
-  statusName, useAllRefStatus, useHierarchy, type ArchiveState, type ProgramNode,
+  statusName, useAllRefStatus, useHierarchy, useHierarchyMutations, type ArchiveState, type ProgramNode,
 } from '../../lib/queries/hierarchy';
 import { adminProgramIds, useMyMemberships } from '../../lib/queries/launchpad';
 import { HierarchyDialog, type HierarchyTarget } from './HierarchyDialog';
@@ -25,6 +26,19 @@ import type { HierarchyLevel, RefStatus } from '../../types/entities';
 // Both carry the derived archive state from useHierarchy, not just their own columns.
 type SubprojectNode = ProgramNode['projects'][number]['subprojects'][number];
 type ProjectNode = ProgramNode['projects'][number];
+
+/** A record offered for deletion because it has nothing beneath it. `kind` is the word the confirm
+ * uses; `level` is what `dms_delete_empty` keys on. */
+interface DeleteTarget {
+  level: HierarchyLevel;
+  id: string;
+  label: string;
+  kind: string;
+  /** What belongs to the record and will go with it — "2 plants". Not a blocker: these cascade
+   * cleanly and are the record's own master data rather than work done underneath it. Named in the
+   * confirm so it is told rather than discovered. */
+  cascades?: string;
+}
 
 /** Program → Project → Subproject.
  *
@@ -46,8 +60,10 @@ export function HierarchyPage() {
   const [dialog, setDialog] = useState<HierarchyTarget | null>(null);
   const [archiving, setArchiving] = useState<ArchiveTarget | null>(null);
   const [resetting, setResetting] = useState(false);
+  const [deleting, setDeleting] = useState<DeleteTarget | null>(null);
   const toast = useToast();
   const { cancel } = useArchiveMutations();
+  const { deleteEmpty } = useHierarchyMutations();
 
   /** Withdrawing an open request leaves no trace on the record — the request itself is marked
    * Cancelled and stays in the history, which is where that fact belongs. */
@@ -123,58 +139,59 @@ export function HierarchyPage() {
       <PageHeader
         title="Migration Project"
         description="Every program, project and subproject you can reach. Open a subproject to start working in it."
-        actions={
-          <>
-            {/* Everything program-wide hangs off this screen rather than the area switcher, which
-                is now just the three launchpad areas. These are things you do WITH the hierarchy,
-                so they belong beside it. */}
-            <Button variant="secondary" onClick={() => navigate('/library')}>
-              <LibraryIcon size={14} /> Library
-            </Button>
-            {/* Plants are programme master data, shared by every subproject that covers the site,
-                so they belong beside the hierarchy rather than inside any one wave. Assigning a
-                plant to a subproject happens on the subproject itself — this is where the list of
-                sites is maintained. */}
-            <Button variant="secondary" onClick={() => navigate('/plants')}>
-              <Factory size={14} /> Plant Maintenance
-            </Button>
-            <Button variant="secondary" onClick={() => navigate('/archive')}>
-              <Archive size={14} /> Archive
-            </Button>
-            {/* Reads the whole system, so it belongs with the other programme-wide entry points
-                rather than inside any one subproject. */}
-            <Button variant="secondary" onClick={() => navigate('/changes')}>
-              <History size={14} /> Change Log
-            </Button>
-            {/* Only for people who can actually decide one, and it carries the count — a button
-                that silently hides the fact that three approvals are waiting is a button nobody
-                presses. This replaces the separate banner: one place, not two. */}
-            {canApprove && (
-              <Button variant="secondary" onClick={() => navigate('/approvals')}>
-                <ShieldCheck size={14} /> Approvals
-                {waitingOnMe > 0 && (
-                  <span className="ml-1 rounded-pill bg-amber-bg text-amber-ink text-2xs font-bold px-1.5 tabular-nums">
-                    {waitingOnMe}
-                  </span>
-                )}
-              </Button>
-            )}
-            {/* TEMPORARY — remove with src/lib/queries/testReset.ts before this is used for real.
-                Only offered to someone who administers a program, and it still asks for the
-                program code typed out before it deletes anything. */}
-            {adminOf.size > 0 && (
-              <Button variant="dangerGhost" onClick={() => setResetting(true)}>
-                <Eraser size={14} /> Reset test data
-              </Button>
-            )}
-            {/* Anyone signed in may start a program and becomes its Program Admin by doing so —
-                there is no role above a program on which to gate it. */}
-            <Button variant="primary" onClick={() => setDialog({ level: 'PRGM' })}>
-              <Plus size={14} /> New program
-            </Button>
-          </>
-        }
+        /* No actions here at all. Everything moved to the row below, which gives the description
+           its full width back — six controls in this slot had it wrapping to three narrow lines. */
       />
+
+      {/* Everything programme-wide hangs off this screen rather than the area switcher, which is
+          now just the three launchpad areas. These are things you do WITH the hierarchy, so they
+          belong beside it — as tiles, because each one is a place you go rather than a command.
+          Above the search, because they are about the programme rather than about the list.
+
+          Destinations left, actions right. The split is the point: everything on the left takes you
+          somewhere and everything on the right changes something, so the row reads as two groups
+          rather than seven things of equal weight. */}
+      <div className="flex flex-wrap items-center gap-2 mb-5">
+        <ShortcutTile icon={LibraryIcon} label="Library" onClick={() => navigate('/library')} />
+        {/* Plants are programme master data, shared by every subproject covering the site, so they
+            belong here rather than inside any one wave. Assigning one to a subproject happens on
+            the subproject itself; this is where the list of sites is maintained. */}
+        <ShortcutTile icon={Factory} label="Plant Maintenance" onClick={() => navigate('/plants')} />
+        <ShortcutTile icon={Archive} label="Archive" onClick={() => navigate('/archive')} />
+        {/* Reads the whole system, so it sits with the other programme-wide entry points rather
+            than inside any one subproject. */}
+        <ShortcutTile icon={History} label="Change Log" onClick={() => navigate('/changes')} />
+        {/* Only for people who can actually decide one, and it carries the count — a tile that
+            hides the fact that three approvals are waiting is a tile nobody presses. This replaces
+            the separate banner: one place, not two. */}
+        {canApprove && (
+          <ShortcutTile
+            icon={ShieldCheck} label="Approvals" count={waitingOnMe}
+            onClick={() => navigate('/approvals')}
+          />
+        )}
+        <span className="ml-auto flex items-center gap-3">
+          {/* TEMPORARY — remove with src/lib/queries/testReset.ts before this is used for real.
+              Deliberately NOT a tile and NOT a button: it is neither a place you go nor something
+              you do routinely, and giving a destructive action either of those shapes is how it
+              gets clicked by reflex. Quiet text, and it sits before the primary rather than after
+              so the rightmost thing in the row is the safe one. */}
+          {adminOf.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setResetting(true)}
+              className="inline-flex items-center gap-1.5 text-2xs text-red hover:underline px-1"
+            >
+              <Eraser size={13} /> Reset test data
+            </button>
+          )}
+          {/* Anyone signed in may start a program and becomes its Program Admin by doing so —
+              there is no role above a program on which to gate it. */}
+          <Button variant="primary" onClick={() => setDialog({ level: 'PRGM' })}>
+            <Plus size={14} /> New program
+          </Button>
+        </span>
+      </div>
 
       <div className="flex items-center gap-3 mb-5">
         <ToolbarSearch value={query} onChange={setQuery} placeholder="Search any level by ID, name or GUID…" />
@@ -219,6 +236,7 @@ export function HierarchyPage() {
               onArchive={setArchiving}
               onCancelRequest={withdraw}
               onOpen={(subprojectId) => navigate(`/pg/${pg.id}/sp/${subprojectId}/dashboard`)}
+              onDelete={setDeleting}
             />
           ))}
         </div>
@@ -234,7 +252,83 @@ export function HierarchyPage() {
         onClose={() => setResetting(false)}
       />
 
+      {/* Deleting an EMPTY record, in place of archiving it. `dms_delete_empty` re-checks emptiness
+          server-side and refuses by name — the tree here cannot see scope rows or FMDs, so the
+          message it returns is the real answer and goes straight to the toast. */}
+      <ConfirmDialog
+        open={!!deleting}
+        title={`Delete ${deleting?.kind ?? ''}?`}
+        destructive
+        busy={deleteEmpty.isPending}
+        confirmLabel="Delete"
+        message={
+          <>
+            <strong>{deleting?.label}</strong> has nothing in it, so it can be removed outright
+            rather than archived. This cannot be undone — but there is no work underneath it to
+            lose.
+            {deleting?.cascades && (
+              <>
+                {' '}Its <strong>{deleting.cascades}</strong> will be deleted with it — that is the
+                record&apos;s own master data rather than work done under it, so it does not block
+                the delete, but it does go.
+              </>
+            )}
+          </>
+        }
+        onConfirm={async () => {
+          if (!deleting) return;
+          try {
+            await deleteEmpty.mutateAsync({ level: deleting.level, id: deleting.id });
+            toast.success(`${deleting.label} deleted.`);
+            setDeleting(null);
+          } catch (err: any) {
+            // The function names what is in the way ("This still has scope objects — archive it
+            // instead"), which is more useful than anything this screen could work out.
+            toast.error(err?.message ?? 'Could not delete that record.');
+            setDeleting(null);
+          }
+        }}
+        onCancel={() => setDeleting(null)}
+      />
+
     </div>
+  );
+}
+
+/** One programme-wide destination.
+ *
+ * Tile rather than button because each is a place you go, not a command — the same distinction the
+ * launchpad makes, at the smaller scale this row needs. The icon sits in a tinted square that picks
+ * up the accent on hover, so the whole tile reads as one target rather than an icon beside a label.
+ *
+ * `count` is for a destination with something waiting in it. Amber rather than the accent: it is
+ * telling you to go somewhere, which is a different thing from being the thing you clicked. */
+function ShortcutTile({ icon: Icon, label, count, onClick }: {
+  icon: typeof Archive;
+  label: string;
+  count?: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx(
+        'group inline-flex items-center gap-2.5 rounded-lg bg-surface pl-2.5 pr-3.5 py-2',
+        'shadow-[inset_0_0_0_1px_var(--line)] hover:shadow-[inset_0_0_0_1px_var(--blue-mid)]',
+        'hover:bg-blue-pale transition-colors',
+      )}
+    >
+      <span className="w-7 h-7 rounded bg-surface-2 text-muted grid place-items-center shrink-0 group-hover:bg-blue-light group-hover:text-blue-deep transition-colors">
+        <Icon size={14} />
+      </span>
+      <span className="text-sm2 text-text">{label}</span>
+      {!!count && count > 0 && (
+        <span className="rounded-pill bg-amber-bg text-amber-ink text-2xs px-1.5 tabular-nums">
+          {count}
+        </span>
+      )}
+    </button>
   );
 }
 
@@ -250,6 +344,12 @@ function nodeActions(opts: {
   /** What this node can contain — 'project' on a program, 'subproject' on a project. */
   childLabel?: string;
   onAdd?: () => void;
+  /** Offered INSTEAD of Archive when the record has nothing beneath it.
+   *
+   * Archiving an empty project someone created by mistake just moves the mistake into the archive,
+   * which then stops being a record of things that mattered. The two are mutually exclusive on
+   * purpose — one menu, one right answer, rather than asking the reader to know which applies. */
+  onDelete?: () => void;
 }): MenuAction[] {
   // Adding lives in the menu with everything else rather than as its own `+` button. One control
   // per row, not two, and a menu can say "Add project" where a bare icon could only say "add".
@@ -279,13 +379,15 @@ function nodeActions(opts: {
   return [
     ...add,
     edit,
-    { key: 'archive', label: `Archive ${opts.label}`, icon: <Archive size={14} />, danger: true, onSelect: opts.onArchive },
+    opts.onDelete
+      ? { key: 'delete', label: `Delete ${opts.label}`, icon: <Trash2 size={14} />, danger: true, onSelect: opts.onDelete }
+      : { key: 'archive', label: `Archive ${opts.label}`, icon: <Archive size={14} />, danger: true, onSelect: opts.onArchive },
   ];
 }
 
 /* ────────────────────────────────────────────────────────────────────────────── program */
 
-function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, onDialog, onArchive, onCancelRequest, onOpen }: {
+function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, onDialog, onArchive, onCancelRequest, onOpen, onDelete }: {
   program: ProgramNode;
   canEdit: boolean;
   statuses: RefStatus[];
@@ -294,6 +396,7 @@ function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, on
   onDialog: (t: HierarchyTarget) => void;
   onArchive: (t: ArchiveTarget) => void;
   onCancelRequest: (requestId: string) => void;
+  onDelete: (t: DeleteTarget) => void;
   onOpen: (subprojectId: string) => void;
 }) {
   const Icon = LEVEL_ICON.PRGM;
@@ -310,9 +413,15 @@ function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, on
           </span>
 
           <div className="min-w-0 flex-1">
+            {/* Name only, matching the project row. Three Active chips down one column — programme,
+                project, subproject — said one thing three times and made the tier that actually
+                carries state indistinguishable from the two containers above it. Archived and
+                pending still show, because neither is visible anywhere else on this row. */}
             <div className="flex items-center gap-2.5 flex-wrap">
               <h2 className="text-xl font-bold text-text">{pg.name}</h2>
-              <StatusTag level="PRGM" code={pg.status} statuses={statuses} archiveState={pg.archiveState} />
+              {pg.archiveState !== 'none' && (
+                <StatusTag level="PRGM" code={pg.status} statuses={statuses} archiveState={pg.archiveState} />
+              )}
             </div>
             {/* Identifier and size only. The lead and the date range are planning attributes: you
                 set them once in the dialog and never scan a list for them, and four of them per
@@ -337,6 +446,15 @@ function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, on
                   onEdit: () => onDialog({ level: 'PRGM', record: pg }),
                   onCancelRequest,
                   onArchive: () => onArchive({ entityType: 'program', entityId: pg.id, entityLabel: pg.name, programId: pg.id, cascadeNote: 'projects, subprojects, cycles, scope, FMDs, rules and runs' }),
+                  /* The tree can only see projects. A program also owns the SAP catalogue and its
+                     plants, which are not on screen — dms_delete_empty checks those and refuses by
+                     name, so offering Delete here is a reasonable guess that cannot be wrong in a
+                     way that loses anything. */
+                  onDelete: pg.projects.length === 0
+                    ? () => onDelete({
+                      level: 'PRGM', id: pg.id, label: pg.name, kind: 'program',
+                    })
+                    : undefined,
                 })}
               />
             </div>
@@ -366,6 +484,7 @@ function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, on
               onArchive={onArchive}
               onCancelRequest={onCancelRequest}
               onOpen={onOpen}
+              onDelete={onDelete}
             />
           ))}
         </div>
@@ -377,7 +496,7 @@ function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, on
 /* ────────────────────────────────────────────────────────────────────────────── project */
 
 /** A grouping, not a card — projects organise subprojects, they are not something you open. */
-function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDialog, onArchive, onCancelRequest, onOpen }: {
+function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDialog, onArchive, onCancelRequest, onOpen, onDelete }: {
   project: ProjectNode;
   canEdit: boolean;
   statuses: RefStatus[];
@@ -385,18 +504,11 @@ function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDi
   onDialog: (t: HierarchyTarget) => void;
   onArchive: (t: ArchiveTarget) => void;
   onCancelRequest: (requestId: string) => void;
+  onDelete: (t: DeleteTarget) => void;
   onOpen: (subprojectId: string) => void;
 }) {
   const Icon = LEVEL_ICON.PRJT;
 
-  /** A project's plants are the union of its subprojects', DERIVED here rather than stored on the
-   * project. Storing the same fact at two levels is the trap this schema has hit before: the moment
-   * a subproject's plants change, a stored project-level list is wrong and nothing says so. */
-  const projectPlants = useMemo(() => {
-    const all = new Set<string>();
-    for (const sp of pj.subprojects) for (const code of plantsBySubproject.get(sp.id) ?? []) all.add(code);
-    return [...all].sort();
-  }, [pj.subprojects, plantsBySubproject]);
 
   return (
     <div className="py-4 first:pt-1 last:pb-1">
@@ -405,22 +517,17 @@ function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDi
           <Icon size={14} />
         </span>
         <div className="min-w-0 flex-1">
+          {/* Name only.
+              The plant codes were a derived echo of what the subproject tile below already lists
+              under Plants — the same codes twice, a few pixels apart. The status tag went for the
+              same reason: with one Active chip on the project and another on its subproject, the
+              row read as two facts when it carried one.
+              An archived or pending project still says so, because that is NOT visible anywhere
+              else — StatusTag renders those regardless of the lifecycle status. */}
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-md font-bold text-text">{pj.name}</h3>
-            <StatusTag level="PRJT" code={pj.status} statuses={statuses} archiveState={pj.archiveState} />
-            {/* Read-only by design: the codes are here because they say what the project covers,
-                but the place to change them is the subproject that actually carries them. */}
-            {projectPlants.length > 0 && (
-              <span
-                className="flex items-center gap-1 text-2xs text-muted"
-                title={`Covers ${projectPlants.length} plant${projectPlants.length === 1 ? '' : 's'}, across its subprojects`}
-              >
-                <Factory size={11} className="shrink-0" />
-                {projectPlants.slice(0, 4).map((code) => (
-                  <span key={code} className="font-mono text-blue-deep bg-blue-light rounded-xs px-1 py-px">{code}</span>
-                ))}
-                {projectPlants.length > 4 && <span>+{projectPlants.length - 4}</span>}
-              </span>
+            {pj.archiveState !== 'none' && (
+              <StatusTag level="PRJT" code={pj.status} statuses={statuses} archiveState={pj.archiveState} />
             )}
           </div>
           <IdLine code={pj.code} />
@@ -433,10 +540,13 @@ function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDi
               actions={nodeActions({
                 label: 'project', archiveState: pj.archiveState, archiveRequestId: pj.archiveRequestId,
                 childLabel: 'subproject',
-                onAdd: () => onDialog({ level: 'SPRJ', parentId: pj.id, parentLabel: `${pj.code} · ${pj.name}`, programId: pj.programId }),
+                onAdd: () => onDialog({ level: 'SPRJ', parentId: pj.id, parentLabel: `${pj.code} · ${pj.name}` }),
                 onEdit: () => onDialog({ level: 'PRJT', record: pj }),
                 onCancelRequest,
                 onArchive: () => onArchive({ entityType: 'project', entityId: pj.id, entityLabel: pj.name, programId: pj.programId, cascadeNote: 'its subprojects, their cycles, and all their scope and mapping work' }),
+                onDelete: pj.subprojects.length === 0
+                  ? () => onDelete({ level: 'PRJT', id: pj.id, label: pj.name, kind: 'project' })
+                  : undefined,
               })}
             />
           </div>
@@ -450,7 +560,7 @@ function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDi
           <p className="text-2xs text-muted">
             No subprojects yet.{' '}
             {canEdit && (
-              <button onClick={() => onDialog({ level: 'SPRJ', parentId: pj.id, parentLabel: pj.name, programId: pj.programId })} className="text-blue font-semibold hover:underline">
+              <button onClick={() => onDialog({ level: 'SPRJ', parentId: pj.id, parentLabel: pj.name })} className="text-blue font-semibold hover:underline">
                 Add one
               </button>
             )}
@@ -469,6 +579,7 @@ function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDi
                 onDialog={onDialog}
                 onArchive={onArchive}
                 onCancelRequest={onCancelRequest}
+                onDelete={onDelete}
               />
             ))}
           </div>
@@ -482,7 +593,7 @@ function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDi
 
 /** The only level you can work inside, so the only one rendered as a destination. The whole tile is
  * the click target; the overflow menu stops propagation so administering never navigates. */
-function SubprojectTile({ subproject: sp, programId, canEdit, statuses, plantCodes, onOpen, onDialog, onArchive, onCancelRequest }: {
+function SubprojectTile({ subproject: sp, programId, canEdit, statuses, plantCodes, onOpen, onDialog, onArchive, onCancelRequest, onDelete }: {
   subproject: SubprojectNode;
   /** The program the subproject sits in — an archive request is scoped by program. */
   programId: string;
@@ -495,6 +606,7 @@ function SubprojectTile({ subproject: sp, programId, canEdit, statuses, plantCod
   onDialog: (t: HierarchyTarget) => void;
   onArchive: (t: ArchiveTarget) => void;
   onCancelRequest: (requestId: string) => void;
+  onDelete: (t: DeleteTarget) => void;
 }) {
   const Icon = LEVEL_ICON.SPRJ;
 
@@ -531,9 +643,15 @@ function SubprojectTile({ subproject: sp, programId, canEdit, statuses, plantCod
                     label: 'subproject', archiveState: sp.archiveState, archiveRequestId: sp.archiveRequestId,
                     childLabel: 'cycle',
                     onAdd: () => onDialog({ level: 'CYCL', parentId: sp.id, parentLabel: `${sp.code} · ${sp.name}` }),
-                    onEdit: () => onDialog({ level: 'SPRJ', record: sp, programId }),
+                    onEdit: () => onDialog({ level: 'SPRJ', record: sp }),
                     onCancelRequest,
                     onArchive: () => onArchive({ entityType: 'subproject', entityId: sp.id, entityLabel: sp.name, programId, cascadeNote: 'its cycles, scope, FMDs, rules and runs' }),
+                    /* Cycles are the only child the tree carries. Scope rows, FMDs and rules are
+                       not loaded here, so this is the cheap half of the test and the function is
+                       the authoritative half. */
+                    onDelete: sp.cycles.length === 0
+                      ? () => onDelete({ level: 'SPRJ', id: sp.id, label: sp.name, kind: 'subproject' })
+                      : undefined,
                   }),
                 ]}
               />
@@ -563,11 +681,42 @@ function SubprojectTile({ subproject: sp, programId, canEdit, statuses, plantCod
           <div className="flex items-baseline gap-2">
             <dt className="text-muted w-[72px] shrink-0">Cycles</dt>
             <dd className="flex flex-wrap gap-1 min-w-0">
+              {/* Each cycle is editable and removable. It used to be a plain chip with no
+                  affordance at all, and `dms_delete_empty` rejected the level — so a cycle added by
+                  mistake was permanent, and since cycles are the FIRST thing blocking a subproject
+                  delete, that mistake made the subproject undeletable too. A closed trap. */}
               {sp.cycles.length === 0
                 ? <span className="text-muted">None yet</span>
                 : sp.cycles.map((c) => (
-                  <span key={c.id} className="font-mono text-2xs bg-surface-2 text-text rounded-xs px-1.5 py-px">
-                    {c.code ?? c.name}
+                  <span
+                    key={c.id}
+                    className="group/cycle inline-flex items-center gap-0.5 font-mono text-2xs bg-surface-2 text-text rounded-xs pl-1.5 pr-0.5 py-px"
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
+                    {canEdit ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => onDialog({ level: 'CYCL', record: c })}
+                          title={`Edit ${c.code ?? c.name}`}
+                          className="hover:text-blue hover:underline"
+                        >
+                          {c.code ?? c.name}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDelete({ level: 'CYCL', id: c.id, label: c.code ?? c.name, kind: 'cycle' })}
+                          title={`Delete ${c.code ?? c.name}`}
+                          aria-label={`Delete ${c.code ?? c.name}`}
+                          className="w-3.5 h-3.5 grid place-items-center rounded-xs text-muted opacity-0 group-hover/cycle:opacity-100 focus-visible:opacity-100 hover:text-red transition-opacity"
+                        >
+                          <X size={10} />
+                        </button>
+                      </>
+                    ) : (
+                      <span className="pr-1">{c.code ?? c.name}</span>
+                    )}
                   </span>
                 ))}
             </dd>

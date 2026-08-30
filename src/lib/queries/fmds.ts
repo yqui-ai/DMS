@@ -59,6 +59,10 @@ export interface LibraryFmdRow extends Fmd, LibraryListing {
   /** Where the FMD lives, by name. `reference` carries the same fact as codes (PRG-PRJ); these are
    * what a person actually recognises, and a Global FMD has none of them — it is programme-wide. */
   programName?: string; projectName?: string; subprojectName?: string;
+  /** The same three by CODE. The Library list shows these rather than the names: a subproject
+   * called "Wave 1A — Material Master Core" under "S/4HANA Migration — NA Rollout" needs two
+   * wrapped lines to say what PROJX › W1 › W1A says in one, and the codes are what people cite. */
+  programCode?: string; projectCode?: string; subprojectCode?: string;
   latestState?: GovState;
 }
 
@@ -102,7 +106,7 @@ export function useLibraryFmds(enabled = true) {
         // subproject (it is program-wide), but it always has an object, and every object has a
         // program. The Golden fmd has neither and therefore no program at all — which is one
         // reason it can never be archived.
-        .select('*, subprojects(name, project_id, projects(id, code, name, program_id, programs(code, name))), migration_objects(program_id), fmd_versions!fmd_id(id, version, state, created_at, created_by, changed_at, changed_by, published_at)')
+        .select('*, subprojects(code, name, project_id, projects(id, code, name, program_id, programs(code, name))), migration_objects(program_id), fmd_versions!fmd_id(id, version, state, created_at, created_by, changed_at, changed_by, published_at)')
         .is('archived_at', null)
         .order('name');
       if (error) throw error;
@@ -163,6 +167,7 @@ export function useLibraryFmds(enabled = true) {
           programId,
           archiveBlockedReason: archiveBlockedReason(f, programId, customCountByObject),
           programName, projectName, subprojectName,
+          programCode, projectCode, subprojectCode: f.subprojects?.code as string | undefined,
           latestVersion: latest?.version as string | undefined, latestVersionId: latest?.id as string | undefined,
           activeVersion: [...versions].reverse().find((v: any) => v.published_at)?.version as string | undefined,
           activePublishedAt: [...versions].reverse().find((v: any) => v.published_at)?.published_at as string | undefined,

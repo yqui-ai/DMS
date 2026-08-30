@@ -161,10 +161,13 @@ export function GoldenXrefDesignerDialog({ target, onClose }: { target: LibraryX
         await mutations.create(GOLDEN_XREF_NAME, structure, comment.trim());
         toast.success('Golden XREF registered.');
       } else {
-        // target is narrowed to LibraryXrefRow here (null returned early, 'new' handled above).
-        // latestVersion is derived from xref_versions — the old xref_tables.version column was dead.
-        await mutations.saveNewVersion(target.id, version?.version ?? target.latestVersion ?? 'v1.0.0', structure, comment.trim());
-        toast.success('New version saved.');
+        /* Saves a DRAFT. It used to insert a numbered version, which meant every save released the
+           template — change one field, save, and the programme's live Golden XREF had moved. The
+           FMD has never worked that way; publishing is a separate, deliberate act, and now it is
+           here too (migration 0059). No version number is assigned until then.
+           `target` is narrowed to LibraryXrefRow here — null returns early, 'new' is handled above. */
+        await mutations.saveDraft(target.id, structure, comment.trim());
+        toast.success('Draft saved. Publish it from the version history when it is ready.');
       }
       setDirty(false);
       setCommentOpen(false);

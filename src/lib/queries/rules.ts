@@ -2,15 +2,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../supabase';
 import { useAuth } from '../auth';
 import { formatLibraryReference } from '../libraryReference';
+import { DRAFT_VERSION, bumpVersion } from '../fmdDraft';
 import type { GoldenFmdStructure, GovState, LibraryListing, Rule, XrefRow, XrefTable, XrefVersion } from '../../types/entities';
 
-/** Bumps the patch segment of a 'vMAJOR.MINOR.PATCH' version string — same convention as
- * bumpVersion in queries/fmds.ts, kept local since it's a 3-line pure helper. */
-const bumpVersion = (version: string): string => {
-  const m = /^v(\d+)\.(\d+)\.(\d+)$/.exec(version);
-  if (!m) return 'v1.0.1';
-  return `v${m[1]}.${m[2]}.${Number(m[3]) + 1}`;
-};
+/* Version numbering and the draft sentinel come from `fmdDraft`. The XREF follows the same
+   draft-then-publish rule as the FMD (migration 0059), so it has to follow the same numbering — a
+   local copy of `bumpVersion` lived here, and that is the kind of duplicate that agrees right up
+   until one of the two gets fixed. */
 
 const toRule = (r: any): Rule => ({
   id: r.id, subprojectId: r.subproject_id, code: r.code, name: r.name, migrationObjectId: r.migration_object_id ?? undefined,
@@ -110,9 +108,15 @@ export function useXrefTables(subprojectId?: string) {
 }
 
 export interface LibraryXrefRow extends XrefTable, LibraryListing {
-  /** The real current version, derived from xref_versions (newest by created_at) — not the dead
-   * xref_tables.version column, which no mutation has written to since versioning was introduced. */
+  /** The newest version row of any kind, derived from xref_versions — not the dead
+   * xref_tables.version column, which no mutation has written to since versioning was introduced.
+   * This can be an unpublished draft, so it is NOT what the catalogue should call "the" version. */
   latestVersion?: string; latestVersionId?: string;
+  /** The newest PUBLISHED version — what everyone else should treat as the live template. */
+  activeVersion?: string;
+  /** The newest version is an unpublished draft. Independent of activeVersion: a table that has
+   * been published once and is now being edited again has both, exactly as an FMD does. */
+  hasDraft?: boolean;
 }
 
 /** XREF tables across every subproject the user can access, enriched with the program/project
@@ -124,7 +128,7 @@ export function useLibraryXrefTables(enabled = true) {
     queryFn: async (): Promise<LibraryXrefRow[]> => {
       const { data, error } = await supabase
         .from('xref_tables')
-        .select('*, subprojects(projects(code, program_id, programs(code))), xref_versions!xref_table_id(id, version, created_at)')
+        .select('*, subprojects(projects(code, program_id, programs(code))), xref_versions!xref_table_id(id, version, created_at, published_at)')
         .is('archived_at', null)
         .order('name');
       if (error) throw error;
@@ -137,6 +141,10 @@ export function useLibraryXrefTables(enabled = true) {
           programId: x.subprojects?.projects?.program_id as string | undefined,
           reference: formatLibraryReference(x.class, programCode, projectCode),
           latestVersion: versions[0]?.version as string | undefined, latestVersionId: versions[0]?.id as string | undefined,
+          // Same split the FMD list makes: the catalogue's Version column has to name the LIVE
+          // template, and since 0059 the newest row may be a draft nobody has released.
+          activeVersion: versions.find((v: any) => v.published_at)?.version as string | undefined,
+          hasDraft: !!versions[0] && !versions[0].published_at,
         };
       });
     },
@@ -182,6 +190,8 @@ export function useXrefRowMutations(xrefTableId: string) {
 const toXrefVersion = (v: any): XrefVersion => ({
   id: v.id, xrefTableId: v.xref_table_id, version: v.version, state: v.state, structure: v.structure ?? { sections: [] },
   comment: v.comment ?? undefined, createdBy: v.created_by ?? undefined, createdAt: v.created_at ?? undefined,
+  // published_at is what makes a version live and frozen — `state` is a word anyone can set.
+  publishedBy: v.published_by ?? undefined, publishedAt: v.published_at ?? undefined,
 });
 
 /** Every version row for the (singleton) Golden XREF, newest first — the version-history viewer's
@@ -245,16 +255,84 @@ export function useGoldenXrefMutations() {
       await invalidate();
       return { xrefTableId: xrefTable.id, versionId: version.id };
     },
-    async saveNewVersion(xrefTableId: string, previousVersion: string, structure: GoldenFmdStructure, comment: string): Promise<string> {
+    /** Saves the working DRAFT — it does not release anything.
+     *
+     * This used to insert a new numbered version on every save, so editing the template published
+     * it: open the designer, change one field, save, and the programme's live Golden XREF had
+     * moved. The FMD has never worked that way, and two templates in one catalogue versioned by
+     * opposite rules is a trap rather than a preference.
+     *
+     * Now it mirrors `fmds.ts`: mutate the newest unpublished row in place, or start one if the
+     * newest is published. There is deliberately no merge for a second concurrent draft — the
+     * unique (xref_table_id, version) index makes 'Draft' one-per-table, which is the intended
+     * model rather than an accident of it. */
+    async saveDraft(xrefTableId: string, structure: GoldenFmdStructure, comment: string): Promise<string> {
       const who = user?.email ?? 'Unknown';
       const now = new Date().toISOString();
-      const { data: version, error } = await supabase
+
+      const { data: newest, error: readError } = await supabase
         .from('xref_versions')
-        .insert({ xref_table_id: xrefTableId, version: bumpVersion(previousVersion), state: 'Draft', structure, comment, created_by: who, created_at: now })
+        .select('id, published_at')
+        .eq('xref_table_id', xrefTableId)
+        .order('created_at', { ascending: false })
+        .limit(1).maybeSingle();
+      if (readError) throw readError;
+
+      if (newest && !newest.published_at) {
+        const { error } = await supabase
+          .from('xref_versions')
+          .update({ structure, comment, created_by: who, created_at: now })
+          .eq('id', newest.id);
+        if (error) throw error;
+        await invalidate();
+        return newest.id as string;
+      }
+
+      // Numbered at publish, not here — nothing carries a version until somebody decides it is
+      // finished, which is what the literal 'Draft' says out loud.
+      const { data: created, error } = await supabase
+        .from('xref_versions')
+        .insert({
+          xref_table_id: xrefTableId, version: DRAFT_VERSION, state: 'Draft',
+          structure, comment, created_by: who, created_at: now,
+        })
         .select('id').single();
       if (error) throw error;
       await invalidate();
-      return version.id;
+      return created.id as string;
+    },
+
+    /** Releases the draft: assigns the next number and freezes it.
+     *
+     * The number comes from what is already PUBLISHED, not from the newest row — a draft carries
+     * the literal 'Draft', which does not parse, and bumping from it would reset the count. */
+    async publishDraft(xrefTableId: string, comment?: string): Promise<string> {
+      const who = user?.email ?? 'Unknown';
+      const now = new Date().toISOString();
+
+      const { data: rows, error: readError } = await supabase
+        .from('xref_versions')
+        .select('id, version, comment, published_at')
+        .eq('xref_table_id', xrefTableId)
+        .order('created_at', { ascending: false });
+      if (readError) throw readError;
+
+      const draft = (rows ?? []).find((r: any) => !r.published_at);
+      if (!draft) throw new Error('There is no draft to publish.');
+      const lastNumbered = (rows ?? []).find((r: any) => r.published_at && r.version !== DRAFT_VERSION);
+      const next = lastNumbered ? bumpVersion(lastNumbered.version as string) : 'v1.0.0';
+
+      const { error } = await supabase
+        .from('xref_versions')
+        .update({
+          version: next, state: 'Approved',
+          comment: comment?.trim() || (draft as any).comment || `Published ${next}`,
+          published_by: who, published_at: now,
+        })
+        .eq('id', draft.id);
+      if (error) throw error;
+      await invalidate();
+      return next;
     },
   };
 }

@@ -49,21 +49,11 @@ export function useAllRefStatus() {
   });
 }
 
-/** `end_date` defaults to `9999-12-31` (migration 0001) and means OPEN-ENDED, not a date.
- *
- * It has to be stripped everywhere it surfaces: printed in a list it reads as a data error
- * ("Jan 05, 2026 – Dec 31, 9999"), and loaded into a date input it turns an unset end date into
- * one the user then has to clear by hand — or worse, saves back unnoticed. */
-export const isOpenEnded = (iso?: string) => !iso || iso.startsWith('9999');
+/* The pure form and date rules live in ../hierarchyForm — testable without a Supabase client.
+   Re-exported so every caller keeps importing one module. */
+export * from '../hierarchyForm';
+import { d, payloadFor, type HierarchyForm } from '../hierarchyForm';
 
-/** An open-ended date as an empty form value, so a date input shows blank rather than 9999. */
-export const dateForInput = (iso?: string) => (isOpenEnded(iso) ? '' : iso);
-
-export const statusName = (statuses: RefStatus[], type: HierarchyLevel, code?: string): string =>
-  statuses.find((s) => s.type === type && s.code === code)?.name ?? code ?? '—';
-
-export const isClosedStatus = (statuses: RefStatus[], type: HierarchyLevel, code?: string): boolean =>
-  !!statuses.find((s) => s.type === type && s.code === code)?.isClosed;
 
 /** The whole hierarchy the user can reach, in one shape.
  *
@@ -84,7 +74,7 @@ export type ArchiveState = 'none' | 'pending' | 'archived';
 export interface WithArchive {
   archiveState: ArchiveState;
   /** The open request, so a row can offer to withdraw it rather than raise a second one the
-   * database would reject. Present only while  is . */
+   * database would reject. Present only while `archiveState` is `pending`. */
   archiveRequestId?: string;
   archivedAt?: string; archivedBy?: string;
 }
@@ -102,9 +92,9 @@ export function useHierarchy(includeArchived = false) {
       const live = (q: any) => (includeArchived ? q : q.is('archived_at', null));
       const [programs, projects, subprojects, cycles] = await Promise.all([
         live(supabase.from('programs').select('*')).order('code'),
-        live(supabase.from('projects').select('*')).order('seq'),
-        live(supabase.from('subprojects').select('*')).order('seq'),
-        live(supabase.from('cycles').select('*')).order('seq'),
+        live(supabase.from('projects').select('*')).order('seq').order('code'),
+        live(supabase.from('subprojects').select('*')).order('seq').order('code'),
+        live(supabase.from('cycles').select('*')).order('seq').order('code'),
       ]);
       for (const r of [programs, projects, subprojects, cycles]) if (r.error) throw r.error;
 
@@ -152,43 +142,6 @@ export function useHierarchy(includeArchived = false) {
 
 /** Snake-cased payload for one level. Only the fields that level actually has — sending a null
  * `owner` to a cycle would be rejected by the column that doesn't exist. */
-export interface HierarchyForm {
-  code: string; name: string; description?: string; status?: string;
-  startDate?: string; endDate?: string;
-  owner?: string; coLead?: string;
-  prepStartDate?: string; prepEndDate?: string; freezeDate?: string;
-  migStart?: string; migEnd?: string; dataFreeze?: string;
-  seq?: number;
-}
-
-/** Empty string → null. A date input clears to '', and '' is not a date; Postgres rejects it
- * rather than treating it as absent, which surfaces as an opaque 22007 on save. */
-const d = (v?: string) => (v && v.trim() ? v : null);
-
-const payloadFor = (level: HierarchyLevel, form: HierarchyForm): Record<string, unknown> => {
-  const base: Record<string, unknown> = {
-    code: form.code.trim(),
-    name: form.name.trim(),
-    description: form.description?.trim() || null,
-    status: form.status || null,
-    start_date: d(form.startDate),
-    end_date: d(form.endDate),
-  };
-  if (level === 'PRGM') return { ...base, owner: form.owner?.trim() || null, co_lead: form.coLead?.trim() || null };
-  if (level === 'PRJT') return { ...base, seq: form.seq ?? 1 };
-  if (level === 'SPRJ') {
-    return {
-      ...base, seq: form.seq ?? 1,
-      prep_start_date: d(form.prepStartDate), prep_end_date: d(form.prepEndDate),
-      freeze_date: d(form.freezeDate),
-    };
-  }
-  return {
-    ...base, seq: form.seq ?? 1,
-    mig_start: d(form.migStart), mig_end: d(form.migEnd), data_freeze: d(form.dataFreeze),
-  };
-};
-
 export function useHierarchyMutations() {
   const queryClient = useQueryClient();
   /** A write at any level changes what the pickers, the switcher and the launchpad counts show. */
@@ -259,9 +212,45 @@ export function useHierarchyMutations() {
     onSuccess: invalidate,
   });
 
-  // There is no `remove`. Nothing in this hierarchy is deleted — see `useArchiveMutations` and
-  // migrations 0040/0041, where a BEFORE DELETE trigger rejects it outright. The mutation that used
-  // to live here is what hard-deleted a subproject, and its cycles, scope, FMDs, rules and runs
-  // went with it through the cascades.
-  return { create, update };
+  /** Patches only the DATE columns of one record.
+   *
+   * Separate from `update` on purpose. That one sends the whole form, so using it to move a freeze
+   * date would also rewrite the record's code, name and status from whatever the caller happened to
+   * have loaded — fine in the edit dialog, where the user is looking at all of it, and a good way
+   * to lose a rename in a timeline editor, where they are not.
+   *
+   * Keys are already snake-cased and null-normalised by the caller: this hook has no idea which
+   * dates a given level has, and inventing that knowledge in two places is how they drift. */
+  const setDates = useMutation({
+    mutationFn: async ({ level, id, dates }: {
+      level: HierarchyLevel; id: string; dates: Record<string, string | null>;
+    }) => {
+      const { error } = await supabase.from(LEVELS[level].table).update(dates).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: invalidate,
+  });
+
+  /** Deletes a record that has nothing beneath it. Everything else is archived.
+   *
+   * The old `remove` was removed for good reason: it hard-deleted a subproject and its cycles,
+   * scope, FMDs, rules and runs went with it through the cascades, which is why 0041 added a
+   * BEFORE DELETE trigger to make "nothing is deleted" true rather than merely intended.
+   *
+   * That rule protects what is BELOW a record, so it has nothing to say about a record with nothing
+   * below it. Archiving an empty project created by a typo just moves the typo into the archive,
+   * which then stops being a record of things that mattered.
+   *
+   * Emptiness is decided by `dms_delete_empty` (0055), never here. The client cannot see scope rows
+   * or FMDs from the tree it has loaded, so a check on this side would be a guess — the function
+   * refuses and names what is in the way, and that message is what the caller shows. */
+  const deleteEmpty = useMutation({
+    mutationFn: async ({ level, id }: { level: HierarchyLevel; id: string }) => {
+      const { error } = await supabase.rpc('dms_delete_empty', { p_level: level, p_id: id });
+      if (error) throw new Error(error.message || 'Could not delete that record.');
+    },
+    onSuccess: invalidate,
+  });
+
+  return { create, update, setDates, deleteEmpty };
 }

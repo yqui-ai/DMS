@@ -41,9 +41,6 @@ export interface HierarchyTarget {
   parentId?: string;
   /** Shown in the dialog subtitle so it is obvious what this is being created under. */
   parentLabel?: string;
-  /** The programme this record belongs to. Only used at SPRJ, to offer that programme's plants —
-   * a plant is programme master data, and another engagement's sites must not be selectable here. */
-  programId?: string;
 }
 
 const EMPTY: HierarchyForm = { code: '', name: '' };
@@ -78,10 +75,10 @@ export function HierarchyDialog({ target, onClose }: { target: HierarchyTarget |
   /* Plants are part of the subproject form rather than a separate action: which sites a wave covers
      is part of what the wave IS, so it is decided when the wave is created. A second dialog meant a
      subproject could exist for days with no site attached and nothing ever asking for one. */
-  const { data: allPlants = [] } = usePlants(target?.programId, false, level === 'SPRJ');
+  const { data: allPlants = [] } = usePlants(false, level === 'SPRJ');
   const { data: plantIdsBySubproject } = useSubprojectPlants(level === 'SPRJ');
   const [plantIds, setPlantIds] = useState<string[]>([]);
-  const { setSubprojectPlants } = usePlantMutations(target?.programId);
+  const { setSubprojectPlants } = usePlantMutations();
 
   useEffect(() => {
     if (!target) return;

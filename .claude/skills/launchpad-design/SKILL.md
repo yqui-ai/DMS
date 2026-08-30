@@ -25,8 +25,17 @@ never told is an approval that never happens.
 ## Migration Project's action row
 
 Everything programme-wide hangs off this screen rather than the area switcher, because these are
-things you do *with* the hierarchy: **Library · Plant Maintenance · Archive · Change Log ·
-Approvals** (role-gated, carries a count) · **Reset test data** (temporary) · **New program**.
+things you do *with* the hierarchy. They are **tiles in a row above the search**, not header
+buttons: **Library · Plant Maintenance · Archive · Change Log · Approvals** (role-gated, carries a
+count). Six controls in the header slot squeezed the description into three narrow lines and gave a
+place you GO the same weight as a thing you DO.
+
+**The row is destinations left, actions right**, and the header carries nothing — that split is
+what keeps seven controls from reading as seven equal things. `New program` is the primary button
+at the far right. **Reset test data is deliberately neither a tile nor a button** — it is not a
+destination and not something you do routinely, and either shape is how a destructive action gets
+clicked by reflex. Quiet red text, and it sits BEFORE the primary so the rightmost control in the
+row is the safe one.
 
 **Migration Project is the only place the hierarchy is edited.** `ProgramSettingsPage` and its
 `programSettings` ScreenKey are gone: its Configure tab was a second editor for the same program →

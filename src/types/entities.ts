@@ -12,7 +12,8 @@ export type RoleId =
 export type ScreenKey =
   | 'myWork' | 'programAdmin' | 'preparation' | 'rules' | 'referenceData'
   | 'dashboard' | 'migration' | 'quality' | 'cutover' | 'promotions'
-  | 'jobMonitor' | 'catalogObjects' | 'catalogFmds' | 'catalogRules' | 'catalogXref' | 'connections';
+  | 'jobMonitor' | 'catalogObjects' | 'catalogFmds' | 'catalogRules' | 'catalogXref' | 'connections'
+  | 'modelObjects' | 'modelWorkflow' | 'modelRules' | 'modelXref' | 'modelFmd';
 
 export interface AppUser { id: UUID; name: string; email: string; status: 'Active' | 'Invited' | 'Disabled'; lastLogin?: string }
 export interface Role { id: RoleId; name: string; description?: string; isStandard: boolean }
@@ -342,6 +343,10 @@ export interface XrefTable { id: UUID; subprojectId?: UUID; name: string; purpos
 export interface XrefVersion {
   id: UUID; xrefTableId: UUID; version: string; state: GovState; structure: GoldenFmdStructure;
   comment?: string; createdBy?: string; createdAt?: string;
+  /** Unset while the version is an editable draft; stamped at publish, after which migration 0059's
+   * trigger freezes the structure. This — not `state` — is what makes a version live, exactly as on
+   * `FmdVersion`. */
+  publishedBy?: string; publishedAt?: string;
 }
 /** Library-list row shape shared by the FMD/Rule/XREF catalogue screens — `reference` and
  * `latestVersion` are derived at query time (see src/lib/libraryReference.ts), not stored. */

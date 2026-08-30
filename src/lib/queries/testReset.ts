@@ -14,9 +14,13 @@ import { supabase } from '../supabase';
  * the same waves can be re-walked. `hierarchy` additionally removes the projects and subprojects
  * themselves, for starting the structure over. Two modes rather than one because they answer
  * different questions, and a delete dialog should never make the larger one the only option. */
-export type ResetMode = 'data' | 'hierarchy';
+export type ResetMode = 'data' | 'hierarchy' | 'everything';
 
 export interface ResetCounts {
+  programs: number;
+  plants: number;
+  archiveRequests: number;
+  changeLog: number;
   projects: number;
   subprojects: number;
   cycles: number;
@@ -30,14 +34,18 @@ export interface ResetCounts {
 
 const DATA_KEYS = ['fmds', 'rules', 'xrefs', 'scopeObjects', 'candidates', 'waivers'] as const;
 const HIERARCHY_KEYS = ['projects', 'subprojects', 'cycles'] as const;
+const EVERYTHING_KEYS = ['programs', 'plants', 'archiveRequests', 'changeLog'] as const;
 
 /** What a given mode would actually remove — the hierarchy counts only apply to `hierarchy`. */
 export const resetTotal = (c: ResetCounts, mode: ResetMode): number => {
-  const keys = mode === 'hierarchy' ? [...HIERARCHY_KEYS, ...DATA_KEYS] : DATA_KEYS;
+  const keys = mode === 'everything'
+    ? [...EVERYTHING_KEYS, ...HIERARCHY_KEYS, ...DATA_KEYS]
+    : mode === 'hierarchy' ? [...HIERARCHY_KEYS, ...DATA_KEYS] : DATA_KEYS;
   return keys.reduce((n, k) => n + c[k], 0);
 };
 
 export const EMPTY_COUNTS: ResetCounts = {
+  programs: 0, plants: 0, archiveRequests: 0, changeLog: 0,
   projects: 0, subprojects: 0, cycles: 0,
   fmds: 0, rules: 0, xrefs: 0, scopeObjects: 0, candidates: 0, waivers: 0,
 };
@@ -99,9 +107,64 @@ export async function previewReset(programId: string): Promise<ResetCounts> {
     countIn('scope_waivers', 'subproject_id', subprojectIds),
   ]);
   return {
+    ...EMPTY_COUNTS,
     projects: projectIds.length,
     subprojects: subprojectIds.length,
     cycles, fmds, rules, xrefs, scopeObjects, candidates, waivers,
+  };
+}
+
+/** What a system-wide reset would remove.
+ *
+ * Unscoped on purpose — 'everything' spans every programme, so a per-programme count would
+ * understate it. RLS still applies, so these are the rows the caller can see; the function will
+ * refuse outright unless they administer every programme, so the two agree in the case that
+ * matters. */
+export async function previewResetEverything(): Promise<ResetCounts> {
+  const countAll = async (table: string): Promise<number> => {
+    const { count, error } = await supabase.from(table).select('*', { count: 'exact', head: true });
+    if (error) throw describeError(table, error);
+    return count ?? 0;
+  };
+
+  const [
+    programs, projects, subprojects, cycles, fmds, rules, xrefs,
+    scopeObjects, candidates, waivers, plants, archiveRequests, changeLog,
+  ] = await Promise.all([
+    // The programmes that will actually GO. The ones holding catalogue rows are kept as shells —
+    // `migration_objects.program_id` cascades, so deleting the last programme would take the 442
+    // DMC objects and ~180k structure/field rows with it. See migration 0053.
+    countAll('programs'),
+    countAll('projects'), countAll('subprojects'), countAll('cycles'),
+    countAll('fmds'), countAll('rules'), countAll('xref_tables'),
+    countAll('subproject_objects'), countAll('scope_candidates'), countAll('scope_waivers'),
+    countAll('plants'), countAll('archive_requests'), countAll('change_log'),
+  ]);
+
+  /* How many programmes survive as catalogue shells.
+   *
+   * Counted per programme rather than by reading a page of migration_objects and de-duplicating.
+   * The old form was `.select('program_id').limit(1000)`, which silently under-counted the moment
+   * the catalogue grew past the page size — and it is 442 rows today, so it would have kept
+   * looking right until it did not. */
+  const { data: programRows, error } = await supabase.from('programs').select('id');
+  if (error) throw describeError('programs', error);
+  const owns = await Promise.all((programRows ?? []).map(async (row: any) => {
+    const { count, error: cErr } = await supabase
+      .from('migration_objects')
+      .select('*', { count: 'exact', head: true })
+      .eq('program_id', row.id);
+    if (cErr) throw describeError('migration_objects', cErr);
+    return (count ?? 0) > 0;
+  }));
+  const kept = owns.filter(Boolean).length;
+
+  return {
+    ...EMPTY_COUNTS,
+    // Only the programmes without catalogue rows are deleted; the rest are emptied in place.
+    programs: Math.max(0, programs - kept),
+    projects, subprojects, cycles, fmds, rules, xrefs,
+    scopeObjects, candidates, waivers, plants, archiveRequests, changeLog,
   };
 }
 
@@ -110,6 +173,7 @@ export function useTestDataReset() {
 
   return {
     previewReset,
+    previewResetEverything,
 
     /** Empties one programme. The programme row itself always survives — it is what you are
      * standing in, and deleting it would remove the thing you were resetting from under you.
