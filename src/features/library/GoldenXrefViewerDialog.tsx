@@ -3,8 +3,9 @@ import clsx from 'clsx';
 import { Dialog } from '../../components/Dialog';
 import { Select } from '../../components/Select';
 import { Pane } from '../../components/Pane';
+import { Tag } from '../../components/Tag';
+import { By, Fact, Group } from './fmd/versionFacts';
 import { useXrefVersions, type LibraryXrefRow } from '../../lib/queries/rules';
-import { fmtDateTime } from '../../lib/format';
 import { GoldenFmdStructureView } from './GoldenFmdStructureView';
 
 type Tab = 'structure' | 'versions';
@@ -21,7 +22,8 @@ type Tab = 'structure' | 'versions';
  *   · ONE version selector in the header, driving every tab — a single answer to "which version am
  *     I looking at" wherever you are in the dialog.
  *   · Structure tab: the selected version's fields at FULL dialog width, and nothing else.
- *   · Versions tab: the version list and its details side by side.
+ *   · Versions tab: the version details at full width. NO version list — the header dropdown is
+ *     already the selector, and a list beside it is a second one for the same thing.
  *
  * Editing is still only ever through the "Golden XREF" toolbar button / GoldenXrefDesignerDialog.
  * There is no Where-used tab because nothing references a Golden XREF template yet — an empty tab
@@ -98,51 +100,45 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
                 <p className="text-sm2 text-muted py-8 text-center">No structure recorded for this version.</p>
               )
             ) : (
-              <div className="grid grid-cols-[320px_minmax(0,1fr)] gap-4 items-start">
-                <Pane title="Versions">
-                  <div className="flex flex-col">
-                    {versions.length === 0 && <p className="text-sm2 text-muted p-3">No versions yet.</p>}
-                    {versions.map((v) => (
-                      <button
-                        key={v.id}
-                        onClick={() => setSelectedId(v.id)}
-                        className={clsx(
-                          'w-full text-left px-3 py-2 border-b border-line-soft last:border-b-0',
-                          v.id === selected?.id ? 'bg-blue-pale' : 'hover:bg-surface-2',
-                        )}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-sm2 text-blue-deep">{v.version}</span>
-                          {v.id === latest?.id && <span className="text-2xs text-muted">latest</span>}
-                        </div>
-                        <div className="text-2xs text-muted truncate">{v.comment || 'No comment provided'}</div>
-                      </button>
-                    ))}
-                  </div>
-                </Pane>
-
-                <Pane title="Version details">
-                  {selected ? (
-                    <div className="flex flex-col gap-2.5 p-3.5">
-                      <span className="font-mono text-sm2 text-blue-deep w-fit bg-blue-pale px-2 py-0.5 rounded">
+              /* Full width, and NO version list.
+                 The header dropdown is the single version selector — a list pane beside it was a
+                 second selector for the same thing, which is exactly what the FMD viewer removed
+                 and what the library-section-design skill says not to reintroduce. Rendered with
+                 the same Fact/Group primitives as that pane rather than a lookalike, so the two
+                 cannot drift again. */
+              <Pane title="Version details" bodyClassName="p-3.5">
+                {selected ? (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono font-bold text-sm2 text-blue-deep w-fit bg-blue-pale px-2 py-0.5 rounded">
                         {selected.version}
                       </span>
-                      <div className="text-sm2">
-                        <span className="text-muted">Edited by</span> {selected.createdBy ?? '—'}
-                      </div>
-                      <div className="text-sm2">
-                        <span className="text-muted">On</span> {fmtDateTime(selected.createdAt)}
-                      </div>
-                      <div>
-                        <div className="text-2xs font-semibold uppercase tracking-[.04em] text-muted mb-1">Comment</div>
-                        <p className="text-sm2">{selected.comment || 'No comment provided'}</p>
-                      </div>
+                      {selected.id === latest?.id && <Tag variant="accent">Latest</Tag>}
                     </div>
-                  ) : (
-                    <p className="text-sm2 text-muted p-3.5">Select a version to see its details.</p>
-                  )}
-                </Pane>
-              </div>
+
+                    <Group>
+                      <Fact label="Modified by"><By who={selected.createdBy} at={selected.createdAt} /></Fact>
+                    </Group>
+
+                    {/* Stable attributes of the template rather than of this release — the same
+                        split the FMD pane makes between who touched a version and what the
+                        document is. */}
+                    <Group>
+                      <Fact label="Class">{xref.class}</Fact>
+                      <Fact label="Reference">{xref.reference}</Fact>
+                      <Fact label="Versions">{versions.length}</Fact>
+                    </Group>
+
+                    <Group>
+                      <Fact label="Comment">
+                        {selected.comment || <span className="text-muted">No comment provided</span>}
+                      </Fact>
+                    </Group>
+                  </div>
+                ) : (
+                  <p className="text-sm2 text-muted">No versions yet.</p>
+                )}
+              </Pane>
             )}
           </div>
         </div>
