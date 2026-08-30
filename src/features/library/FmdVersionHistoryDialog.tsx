@@ -18,6 +18,7 @@ import { diffTablesByStructure, rowKey, summariseVersionChange } from '../../lib
 import { useMappingReview, readMappingReviews, findingKey } from '../../lib/queries/mappingReview';
 import { analyseFmd } from '../../lib/fmdHealth';
 import { criticalFieldsOf, outstandingIssue } from '../../lib/mappingRulePolicy';
+import { isActionable } from '../../lib/reviewPointCategories';
 import { exportGeneratedFmdToExcel } from '../../lib/generatedFmdExport';
 import { exportGoldenFmdToExcel } from '../../lib/goldenFmdExport';
 import { GoldenFmdStructureView } from './GoldenFmdStructureView';
@@ -313,6 +314,27 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
     }
     return byTable.size > 0 ? byTable : undefined;
   }, [fieldNotes]);
+
+  /** Review points counted per ROW, for the grid's left gutter.
+   *
+   * Deliberately not derived from the map above: that one is keyed by cell and skips every point
+   * with no `field`, so a point raised about the mapping as a whole — which is most of them, since
+   * the composer's default is the row — left no mark on the grid at all. Replies are excluded so a
+   * thread counts once; `open` counts only unresolved ACTIONABLE points, matching the badge in the
+   * review pane, so a remark never reads as work outstanding. */
+  const reviewPointRowsByTable = useMemo(() => {
+    const byTable = new Map<string, Map<string, { total: number; open: number }>>();
+    for (const n of fieldNotes) {
+      if (n.parentId) continue;
+      const byRow = byTable.get(n.structureId) ?? new Map<string, { total: number; open: number }>();
+      const tally = byRow.get(n.rowKey) ?? { total: 0, open: 0 };
+      tally.total += 1;
+      if (!n.resolved && isActionable(n.tag)) tally.open += 1;
+      byRow.set(n.rowKey, tally);
+      byTable.set(n.structureId, byRow);
+    }
+    return byTable.size > 0 ? byTable : undefined;
+  }, [fieldNotes]);
   // Oldest first, for the exported Version History sheet — the on-screen list stays independently
   // sortable (sortedVersions) but the export always reads the same way regardless of that toggle.
   const exportVersions = useMemo(
@@ -593,6 +615,7 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
                         canEdit={isCustomFmd && canEditSelected}
                         onSaveField={handleSaveField}
                         reviewPointCellsByTable={reviewPointCellsByTable}
+                        reviewPointRowsByTable={reviewPointRowsByTable}
                         onAddReviewPoint={(structureId, rowIndex, field) => {
                           const t = selected!.sheets.generatedTables!.find((x) => x.structureId === structureId);
                           const r = t?.rows[rowIndex];

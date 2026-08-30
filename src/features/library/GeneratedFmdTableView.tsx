@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
-import { Check, ChevronLeft, ChevronRight, Columns3, Filter, Maximize2, Pencil, Type } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Columns3, Filter, Maximize2, MessageSquare, Pencil, Type } from 'lucide-react';
 import { Dialog } from '../../components/Dialog';
 import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import { useDismiss } from '../../components/useDismiss';
@@ -248,7 +248,7 @@ function GridCell({ column, value, onSave }: {
   );
 }
 
-export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, reviewFindingsByTable, onOpenField, onAddReviewPoint, reviewPointCellsByTable, canEdit = false, onSaveField }: {
+export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, reviewFindingsByTable, onOpenField, onAddReviewPoint, reviewPointCellsByTable, reviewPointRowsByTable, canEdit = false, onSaveField }: {
   columns: GeneratedColumn[]; tables: GeneratedTable[];
   /** structureId -> rowKey -> changed field names, vs. the previous version — yellow-highlights
    * exactly the cells that changed since then. Undefined/absent means "nothing to compare against
@@ -274,6 +274,13 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
   onAddReviewPoint?: (structureId: string, rowIndex: number, field: string) => void;
   /** structureId -> rowKey -> fields that already carry a review point, for the corner marker. */
   reviewPointCellsByTable?: Map<string, Map<string, Set<string>>>;
+  /** structureId -> rowKey -> how many review points the ROW carries, and how many are still open.
+   *
+   * Separate from `reviewPointCellsByTable`, which is keyed by cell and — by construction — drops
+   * every point that is about the row rather than one of its fields. Those had no marker anywhere
+   * on the grid: raise a point about a mapping without pinning it to a column and the row looked
+   * untouched. This drives the gutter, which is the row-level answer. */
+  reviewPointRowsByTable?: Map<string, Map<string, { total: number; open: number }>>;
 }) {
   const [activeTableId, setActiveTableId] = useState<string | null>(tables[0]?.structureId ?? null);
   const [tabLabelMode, setTabLabelMode] = useState<'ident' | 'description'>('ident');
@@ -357,6 +364,10 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
   const changedCells = changedCellsByTable?.get(activeTable?.structureId ?? '');
   const reviewFindings = reviewFindingsByTable?.get(activeTable?.structureId ?? '');
   const reviewPointCells = reviewPointCellsByTable?.get(activeTable?.structureId ?? '');
+  const reviewPointRows = reviewPointRowsByTable?.get(activeTable?.structureId ?? '');
+  /** The gutter exists only when this FMD has review points at all — an always-present empty
+   * column is 28px of nothing on every row of every document that has never been reviewed. */
+  const showPointGutter = !!reviewPointRowsByTable;
   /** How many rows the template says are NOT being migrated. Counted before the filter so the
    * button can say what it would hide, and so "0 out of scope" can disable it rather than offering
    * a toggle that does nothing. */
@@ -568,6 +579,10 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
         <table className="border-separate border-spacing-0 text-sm2">
           <thead>
             <tr ref={bandRef}>
+              {/* The gutter has no section — it is not a field of the document, it is a note about
+                  one. Left blank in the band so it reads as a margin rather than as a column of
+                  some section it does not belong to. */}
+              {showPointGutter && <th className="sticky top-0 bg-surface-3 w-8" aria-hidden />}
               {runs.map((run, i) => (
                 <th
                   key={i} colSpan={run.span}
@@ -579,6 +594,15 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
               ))}
             </tr>
             <tr>
+              {showPointGutter && (
+                <th
+                  className="sticky bg-surface-3 w-8 z-[2] px-0"
+                  style={{ top: bandHeight }}
+                  title="Rows carrying a review point"
+                >
+                  <MessageSquare size={12} className="text-muted mx-auto" />
+                </th>
+              )}
               {visibleColumns.map((c) => (
                 <th
                   key={c.field} onClick={() => toggleSort(c.field)}
@@ -595,7 +619,7 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
           </thead>
           <tbody>
             {processedRows.length === 0 && (
-              <tr><td colSpan={visibleColumns.length} className="px-2.5 py-6 text-center text-muted text-sm2">No rows.</td></tr>
+              <tr><td colSpan={visibleColumns.length + (showPointGutter ? 1 : 0)} className="px-2.5 py-6 text-center text-muted text-sm2">No rows.</td></tr>
             )}
             {processedRows.map((row, i) => {
               // Keyed on the row's position in the DOCUMENT, not in this render. rowKey falls back
@@ -614,6 +638,32 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                   onDoubleClick={onOpenField && !editing ? () => onOpenField(activeTable.structureId, originalIndex) : undefined}
                   className={clsx(onOpenField && !editing && 'cursor-default select-none')}
                 >
+                  {showPointGutter && (() => {
+                    const points = reviewPointRows?.get(rk);
+                    return (
+                      <td className="border-t border-line-soft px-0 align-middle w-8">
+                        {points && (
+                          /* Two states, because "someone commented" and "someone is waiting on you"
+                             are different facts. An open actionable point is amber and solid; a
+                             thread where everything is resolved stays visible but recedes, since
+                             the record of why a mapping looks the way it does is worth keeping
+                             findable without it reading as outstanding work. */
+                          <span
+                            className="flex justify-center"
+                            title={points.open > 0
+                              ? `${points.open} open review point${points.open === 1 ? '' : 's'} on this field${points.total > points.open ? ` (${points.total} in total)` : ''}`
+                              : `${points.total} review point${points.total === 1 ? '' : 's'}, all resolved`}
+                          >
+                            <MessageSquare
+                              size={12}
+                              className={points.open > 0 ? 'text-amber-ink' : 'text-muted/50'}
+                              fill={points.open > 0 ? 'currentColor' : 'none'}
+                            />
+                          </span>
+                        )}
+                      </td>
+                    );
+                  })()}
                   {visibleColumns.map((c) => {
                     const maxWidth = FIELD_MAX_WIDTH[c.field];
                     const finding = rowFindings?.get(c.field);
