@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { SlidersHorizontal } from 'lucide-react';
+import { CalendarDays, SlidersHorizontal } from 'lucide-react';
 import { PageHeader } from '../../components/PageHeader';
 import { Button } from '../../components/Button';
-import { Card } from '../../components/Card';
 import { useSubproject } from '../../lib/queries/programme';
 import { ProgramGantt } from './ProgramGantt';
 import { ConfigureTimelineDialog } from './ConfigureTimelineDialog';
+import { TimelineSpanDialog } from './TimelineSpanDialog';
+import { useProgramTimeline, type Span } from './programTimeline';
 
 /** The programme's shape over time, and nothing else yet.
  *
@@ -20,34 +21,55 @@ import { ConfigureTimelineDialog } from './ConfigureTimelineDialog';
 export function DashboardPage() {
   const { programId, subprojectId } = useParams();
   const [configuring, setConfiguring] = useState(false);
+  const [pickingSpan, setPickingSpan] = useState(false);
   const { data: subproject } = useSubproject(subprojectId);
+
+  /* Null means "fit to the data", which is the right thing to open on and the wrong thing to be
+     stuck with. Once someone picks a span it is theirs until they change it — the chart no longer
+     jumps because a date moved somewhere else in the programme. Held here rather than persisted:
+     it is how you are reading the chart right now, not a property of the programme. */
+  const [span, setSpan] = useState<Span | null>(null);
+  const [showWeekBands, setShowWeekBands] = useState(false);
+
+  // Same hook the chart uses, so the Calendar dialog opens on exactly the window that is on screen.
+  const { autoSpan } = useProgramTimeline(programId, subprojectId);
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        title="Dashboard"
+        title="Timeline"
         description={subproject
           ? `${subproject.name} — where this subproject sits in the programme.`
-          : undefined}
+          : 'Program-level plan, drawn from the dates on each project, subproject and cycle.'}
         actions={
-          /* Opens here rather than navigating to a settings tab. The timeline is edited while
-             looking at it — you move a freeze date because of where it sits on the chart, and a
-             round trip to another screen and back loses exactly that context. */
-          <Button variant="secondary" onClick={() => setConfiguring(true)}>
-            <SlidersHorizontal size={14} /> Configure timeline
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Two different jobs, deliberately not one dialog: Calendar changes what you are
+                LOOKING at, Configure changes what the programme IS. Folding a view control into
+                the editor would make every re-scale look like an edit. */}
+            <Button variant="secondary" onClick={() => setPickingSpan(true)}>
+              <CalendarDays size={14} /> Calendar
+            </Button>
+            <Button variant="secondary" onClick={() => setConfiguring(true)}>
+              <SlidersHorizontal size={14} /> Configure
+            </Button>
+          </div>
         }
       />
 
-      <Card>
-        <div className="flex items-baseline justify-between gap-3 mb-3">
-          <span className="text-sm2 font-bold uppercase tracking-[.05em] text-muted">Programme timeline</span>
-          <span className="text-2xs text-muted">
-            Drawn from the dates on each program, project, subproject and cycle.
-          </span>
-        </div>
-        <ProgramGantt programId={programId} highlightSubprojectId={subprojectId} />
-      </Card>
+      <ProgramGantt
+        programId={programId}
+        highlightSubprojectId={subprojectId}
+        span={span}
+        showWeekBands={showWeekBands}
+      />
+
+      <TimelineSpanDialog
+        open={pickingSpan}
+        span={span ?? autoSpan}
+        showWeekBands={showWeekBands}
+        onApply={(next, bands) => { setSpan(next); setShowWeekBands(bands); }}
+        onClose={() => setPickingSpan(false)}
+      />
 
       <ConfigureTimelineDialog
         open={configuring}

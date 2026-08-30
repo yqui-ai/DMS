@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { Dialog } from '../../components/Dialog';
+import { useToast } from '../../components/Toast';
 import { Select } from '../../components/Select';
 import { Pane } from '../../components/Pane';
 import { Tag } from '../../components/Tag';
+import { Button } from '../../components/Button';
 import { By, Fact, Group } from './fmd/versionFacts';
-import { useXrefVersions, type LibraryXrefRow } from '../../lib/queries/rules';
+import { useGoldenXrefMutations, useXrefVersions, type LibraryXrefRow } from '../../lib/queries/rules';
 import { GoldenFmdStructureView } from './GoldenFmdStructureView';
 
 type Tab = 'structure' | 'versions';
@@ -30,8 +32,11 @@ type Tab = 'structure' | 'versions';
  * would be a promise the data cannot keep. */
 export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow | null; onClose: () => void }) {
   const { data: versions = [], isLoading } = useXrefVersions(xref?.id);
+  const mutations = useGoldenXrefMutations();
+  const toast = useToast();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('structure');
+  const [publishing, setPublishing] = useState(false);
 
   useEffect(() => {
     setSelectedId(versions[0]?.id ?? null);
@@ -43,6 +48,38 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
   const selected = useMemo(
     () => versions.find((v) => v.id === selectedId) ?? latest,
     [versions, selectedId, latest],
+  );
+
+  /* A version is a draft when it has no `published_at` — never because its `state` reads "Draft".
+     State is a word the designer writes; published_at is what the database trigger enforces. */
+  const isDraft = !!selected && !selected.publishedAt;
+
+  const publish = async () => {
+    if (!xref) return;
+    setPublishing(true);
+    try {
+      const version = await mutations.publishDraft(xref.id);
+      toast.success(`Published ${version}.`);
+    } catch (err: any) {
+      toast.error(err.message ?? 'Could not publish the draft.');
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  /* Publishing is offered wherever the draft is on screen, because that is where the decision gets
+     made — reading the structure is what tells you it is ready. The FMD keeps its Publish on a
+     dedicated Draft tab; the XREF has no such tab (its draft is a whole structure, not a list of
+     pending cell edits), so the banner rides above whichever tab is showing it. */
+  const draftBanner = isDraft && (
+    <div className="flex items-center gap-3 mb-3 shrink-0 rounded border border-amber-300 bg-amber-50 px-3 py-2">
+      <span className="text-sm2 text-amber-900 flex-1 min-w-0">
+        This is an unpublished draft. It is not the live Golden XREF until you publish it.
+      </span>
+      <Button size="sm" onClick={publish} disabled={publishing}>
+        {publishing ? 'Publishing…' : 'Publish'}
+      </Button>
+    </div>
   );
 
   if (!xref) return null;
@@ -84,13 +121,17 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
                 >
                   {versions.map((v) => (
                     <option key={v.id} value={v.id}>
-                      {v.version}{v.id === latest?.id ? ' · latest' : ''}
+                      {/* "latest" is only meaningful for a released version — a draft sits above
+                          the live one without being it, so it says so instead. */}
+                      {v.version}{!v.publishedAt ? ' · unpublished' : v.id === latest?.id ? ' · latest' : ''}
                     </option>
                   ))}
                 </Select>
               </label>
             )}
           </div>
+
+          {draftBanner}
 
           <div className="flex-1 min-h-0 overflow-auto">
             {tab === 'structure' ? (
@@ -113,11 +154,18 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
                       <span className="font-mono font-bold text-sm2 text-blue-deep w-fit bg-blue-pale px-2 py-0.5 rounded">
                         {selected.version}
                       </span>
-                      {selected.id === latest?.id && <Tag variant="accent">Latest</Tag>}
+                      {!selected.publishedAt
+                        ? <Tag variant="danger">Draft</Tag>
+                        : selected.id === latest?.id && <Tag variant="accent">Latest</Tag>}
                     </div>
 
                     <Group>
                       <Fact label="Modified by"><By who={selected.createdBy} at={selected.createdAt} /></Fact>
+                      <Fact label="Published by">
+                        {selected.publishedAt
+                          ? <By who={selected.publishedBy} at={selected.publishedAt} />
+                          : <span className="text-muted">Not published yet</span>}
+                      </Fact>
                     </Group>
 
                     {/* Stable attributes of the template rather than of this release — the same

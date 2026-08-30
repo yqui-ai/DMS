@@ -2,155 +2,107 @@ import { useMemo } from 'react';
 import { Snowflake, Star } from 'lucide-react';
 import clsx from 'clsx';
 import { EmptyState } from '../../components/EmptyState';
-import { isOpenEnded } from '../../lib/hierarchyForm';
-import { useHierarchy } from '../../lib/queries/hierarchy';
-import { useTimelineCategories, useTimelineEntries } from '../../lib/queries/timelineAdmin';
-import { LEVEL_ICON } from '../programme/hierarchyLevels';
-import type { HierarchyLevel } from '../../types/entities';
+import {
+  daysBetween, formatMonthYear, parseDate, useProgramTimeline,
+  type MarkerKind, type Span, type TaskRow,
+} from './programTimeline';
 
-const DAY = 86_400_000;
-const parse = (iso?: string) => (iso && !isOpenEnded(iso) ? new Date(iso + 'T00:00:00') : null);
-const days = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / DAY);
+/** Rail width. Wide enough for a wave name plus the two or three legend lines under it, and fixed
+ * so every row's bar starts on the same edge — the alignment is what makes the chart scannable. */
+const RAIL = 220;
 
-/** One row of the chart: a record with a span, plus the moments that matter on it. */
-interface Row {
-  id: string;
-  level: HierarchyLevel;
-  /** 0 = program, 1 = project, 2 = subproject, 3 = cycle. Drives the indent, nothing else. */
-  depth: number;
-  code?: string;
-  name: string;
-  start: Date | null;
-  end: Date | null;
-  /** Named dates drawn ON the bar. A freeze is a deadline, not a duration — it is a point. */
-  markers: { at: Date; label: string; kind: 'freeze' | 'milestone' }[];
-  highlight?: boolean;
-}
+/** Glyph and colour per marker kind, used by the chart AND by the legend above it, so a symbol
+ * cannot appear on the chart in a colour the legend does not explain. */
+const MARKER: Record<MarkerKind, { Icon: typeof Snowflake; className: string; dot: string; legend: string }> = {
+  // `dot` is spelled out rather than derived from `className` — Tailwind only ships classes it can
+  // find in the source, so a class built at runtime by swapping "text-" for "bg-" resolves to
+  // nothing and the legend dots come out invisible.
+  'data-freeze': { Icon: Snowflake, className: 'text-blue-mid', dot: 'bg-blue-mid', legend: 'Data freeze' },
+  'fmd-freeze': { Icon: Snowflake, className: 'text-amber', dot: 'bg-amber', legend: 'FMD freeze' },
+  milestone: { Icon: Star, className: 'text-amber-ink', dot: 'bg-amber-ink', legend: 'Milestone' },
+};
 
-/** The programme structure as a Gantt: every level, its span, and the deadlines on it.
+/** The programme structure as a Gantt: every wave and cycle, its span, and the deadlines on it.
  *
- * Built from the hierarchy's own dates rather than from a separate timeline table. Programs,
- * projects, subprojects and cycles all already carry start and end dates, and subprojects and
- * cycles carry freeze dates on top — so the shape of the programme is data that exists, not
- * something anyone has to re-enter. A chart fed by a parallel table would drift from the hierarchy
- * the first time a date moved.
+ * The rows and the date window come from `useProgramTimeline` — this file only draws them. The
+ * layout is a two-part row: a rail naming the record and, under it, what each thing on its bar
+ * MEANS, then the plotted track. Naming the elements per row is what lets the chart stay legible
+ * once a wave carries a window, a freeze and two milestones at once; a shared legend at the top can
+ * say what a gold snowflake is, but not that this particular row has one.
  *
- * Configured milestones (Program Admin → Timelines) are drawn ON TOP of that, matched to a row by
- * its label. They are for the things the hierarchy has no column for — a steering committee, a
- * go/no-go, a business blackout.
- *
- * `9999-12-31` means open-ended (see isOpenEnded) and is treated as no end date rather than as a
- * bar running to the year 9999, which is what made the old strip unreadable whenever one existed. */
-export function ProgramGantt({ programId, highlightSubprojectId }: {
+ * `span` bounds what is drawn. Passing null fits the window to the data, which is the right default
+ * but the wrong permanent behaviour: one cycle sitting a year out stretches every other bar into a
+ * sliver. The Calendar dialog exists to override it. */
+export function ProgramGantt({ programId, highlightSubprojectId, span, showWeekBands = false }: {
   programId?: string;
   highlightSubprojectId?: string;
+  /** The window to draw. Null fits it to the data. */
+  span?: Span | null;
+  showWeekBands?: boolean;
 }) {
-  const { data: programs = [], isLoading } = useHierarchy();
-  const { data: categories = [] } = useTimelineCategories(programId);
-  const categoryIds = useMemo(() => categories.map((c) => c.id), [categories]);
-  const { data: entries = [] } = useTimelineEntries(categoryIds);
+  const { program, rows, autoSpan, isLoading } = useProgramTimeline(programId, highlightSubprojectId);
+  const window = span ?? autoSpan;
 
-  const rows = useMemo((): Row[] => {
-    const program = programs.find((p) => p.id === programId) ?? programs[0];
-    if (!program) return [];
+  const total = window ? Math.max(1, daysBetween(window.from, window.to)) : 1;
 
-    /* Configured milestones, keyed by the row label they name. `row_label` is free text typed in
-       the admin screen, so it is matched case- and space-insensitively against a code or a name —
-       an exact match would fail on "wave 1" vs "Wave 1" and give no clue why. */
-    const key = (s: string) => s.trim().toLowerCase();
-    const extra = new Map<string, { at: Date; label: string; kind: 'milestone' }[]>();
-    for (const e of entries) {
-      const at = parse(e.startDate);
-      if (!at) continue;
-      const k = key(e.rowLabel);
-      extra.set(k, [...(extra.get(k) ?? []), { at, label: e.name, kind: 'milestone' }]);
-    }
-    const extrasFor = (...names: (string | undefined)[]) =>
-      names.filter(Boolean).flatMap((n) => extra.get(key(n!)) ?? []);
-
-    const out: Row[] = [{
-      id: program.id, level: 'PRGM', depth: 0, code: program.code, name: program.name,
-      start: parse(program.startDate), end: parse(program.endDate),
-      markers: extrasFor(program.code, program.name),
-    }];
-
-    for (const pj of program.projects) {
-      out.push({
-        id: pj.id, level: 'PRJT', depth: 1, code: pj.code, name: pj.name,
-        start: parse(pj.startDate), end: parse(pj.endDate),
-        markers: extrasFor(pj.code, pj.name),
-      });
-
-      for (const sp of pj.subprojects) {
-        const freeze = parse(sp.freezeDate);
-        out.push({
-          id: sp.id, level: 'SPRJ', depth: 2, code: sp.code, name: sp.name,
-          // Preparation starts before the wave proper, so the bar spans whichever comes first —
-          // a subproject whose prep began in January does not start in March.
-          start: parse(sp.prepStartDate) ?? parse(sp.startDate),
-          end: parse(sp.endDate) ?? parse(sp.prepEndDate),
-          markers: [
-            ...(freeze ? [{ at: freeze, label: 'Field Mapping freeze', kind: 'freeze' as const }] : []),
-            ...extrasFor(sp.code, sp.name),
-          ],
-          highlight: sp.id === highlightSubprojectId,
-        });
-
-        for (const cy of sp.cycles) {
-          const dataFreeze = parse(cy.dataFreeze);
-          out.push({
-            id: cy.id, level: 'CYCL', depth: 3, code: cy.code, name: cy.name,
-            start: parse(cy.migStart) ?? parse(cy.startDate),
-            end: parse(cy.migEnd) ?? parse(cy.endDate),
-            markers: [
-              ...(dataFreeze ? [{ at: dataFreeze, label: 'Source data freeze', kind: 'freeze' as const }] : []),
-              ...extrasFor(cy.code, cy.name),
-            ],
-          });
-        }
-      }
-    }
-    return out;
-  }, [programs, programId, entries, highlightSubprojectId]);
-
-  /** The window every bar is positioned in. Derived from the dates present — a fixed window would
-   * either clip a programme or leave most of the chart empty. */
-  const window = useMemo(() => {
-    const all = rows.flatMap((r) => [r.start, r.end, ...r.markers.map((m) => m.at)])
-      .filter((d): d is Date => !!d);
-    if (all.length === 0) return null;
-    const min = new Date(Math.min(...all.map((d) => d.getTime())));
-    const max = new Date(Math.max(...all.map((d) => d.getTime())));
-    // Snapped to month boundaries so the header reads as months rather than as arbitrary offsets.
-    const from = new Date(min.getFullYear(), min.getMonth(), 1);
-    const to = new Date(max.getFullYear(), max.getMonth() + 1, 0);
-    return { from, to, total: Math.max(1, days(from, to)) };
-  }, [rows]);
-
-  /** Position as a PERCENTAGE, not pixels. The chart then fits whatever width it is given instead
+  /** Position as a PERCENTAGE, not pixels. The track then fits whatever width it is given instead
    * of needing a horizontal scrollbar sized from a guessed pixels-per-day. */
-  const pct = (d: Date) => {
+  const pct = useMemo(() => (d: Date) => {
     if (!window) return 0;
-    return Math.min(100, Math.max(0, (days(window.from, d) / window.total) * 100));
-  };
+    return Math.min(100, Math.max(0, (daysBetween(window.from, d) / total) * 100));
+  }, [window, total]);
 
-  const months = useMemo(() => {
-    if (!window) return [];
-    const out: { label: string; left: number; width: number }[] = [];
+  const inWindow = (d: Date) => !!window && d >= window.from && d <= window.to;
+
+  /** Month columns, and the year headings above them. A programme spanning a year boundary needs
+   * the year said once over its months rather than repeated in every column label. */
+  const { months, years } = useMemo(() => {
+    if (!window) return { months: [], years: [] as { label: string; left: number; width: number }[] };
+    const months: { key: string; label: string; left: number; width: number; year: number }[] = [];
     const cursor = new Date(window.from);
     while (cursor <= window.to) {
-      const startOfMonth = new Date(cursor);
+      const startOfMonth = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
       const endOfMonth = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
       const left = pct(startOfMonth);
       const right = pct(endOfMonth > window.to ? window.to : endOfMonth);
-      out.push({
-        label: startOfMonth.toLocaleDateString(undefined, { month: 'short', year: '2-digit' }),
+      months.push({
+        key: `${startOfMonth.getFullYear()}-${startOfMonth.getMonth()}`,
+        label: startOfMonth.toLocaleDateString(undefined, { month: 'short' }).toUpperCase(),
         left, width: Math.max(0, right - left),
+        year: startOfMonth.getFullYear(),
       });
       cursor.setMonth(cursor.getMonth() + 1);
     }
+    const years = [...new Set(months.map((m) => m.year))].map((y) => {
+      const mine = months.filter((m) => m.year === y);
+      const left = mine[0].left;
+      const last = mine[mine.length - 1];
+      return { label: String(y), left, width: last.left + last.width - left };
+    });
+    return { months, years };
+  }, [window, pct]);
+
+  /** Faint weekly stripes. Off by default: over three years they are 150-odd bands and become
+   * texture rather than a scale. On a single quarter they are what lets you read a bar to the week. */
+  const weeks = useMemo(() => {
+    if (!window || !showWeekBands) return [];
+    const out: { key: number; left: number; width: number }[] = [];
+    const cursor = new Date(window.from);
+    // Start from the Monday on or before the window, so bands line up with real weeks rather than
+    // with whichever weekday the window happens to open on.
+    cursor.setDate(cursor.getDate() - ((cursor.getDay() + 6) % 7));
+    let i = 0;
+    while (cursor <= window.to) {
+      const end = new Date(cursor);
+      end.setDate(end.getDate() + 7);
+      const left = pct(cursor < window.from ? window.from : cursor);
+      const right = pct(end > window.to ? window.to : end);
+      if (i % 2 === 0 && right > left) out.push({ key: i, left, width: right - left });
+      cursor.setDate(cursor.getDate() + 7);
+      i += 1;
+    }
     return out;
-  }, [window]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [window, showWeekBands, pct]);
 
   if (!isLoading && rows.length === 0) {
     return (
@@ -170,105 +122,181 @@ export function ProgramGantt({ programId, highlightSubprojectId }: {
   }
 
   const today = new Date();
-  const todayPct = today >= window.from && today <= window.to ? pct(today) : null;
+  const todayPct = inWindow(today) ? pct(today) : null;
+
+  const programStart = parseDate(program?.startDate);
+  const programEnd = parseDate(program?.endDate);
 
   return (
-    <div className="flex flex-col">
-      {/* Month scale. Sticky so it stays readable while a long programme scrolls. */}
-      <div className="flex items-end gap-3 pb-1.5 border-b border-line">
-        <div className="w-[240px] shrink-0" />
-        <div className="relative flex-1 h-4">
-          {months.map((m) => (
-            <span
-              key={m.label + m.left}
-              className="absolute text-2xs text-muted border-l border-line pl-1 truncate"
-              style={{ left: `${m.left}%`, width: `${m.width}%` }}
-            >
-              {m.label}
-            </span>
-          ))}
+    <div className="border border-line rounded-[var(--r)] bg-surface overflow-hidden">
+      {/* What the chart is, and what its symbols mean — one strip, so neither is hunted for. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2 px-3.5 py-2.5 border-b border-line">
+        <div className="flex items-baseline gap-2.5 min-w-0">
+          <span className="text-sm2 font-bold text-text truncate">{program?.name ?? 'Programme'}</span>
+          <span className="text-2xs text-muted whitespace-nowrap">
+            {programStart ? formatMonthYear(programStart) : formatMonthYear(window.from)}
+            {' – '}
+            {program?.endDate && !programEnd
+              ? 'open-ended'
+              : formatMonthYear(programEnd ?? window.to)}
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs text-muted">
+          {(Object.keys(MARKER) as MarkerKind[]).map((k) => {
+            const { Icon, className, legend } = MARKER[k];
+            return (
+              <span key={k} className="inline-flex items-center gap-1.5">
+                <Icon size={11} className={className} /> {legend}
+              </span>
+            );
+          })}
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-3.5 border-t-2 border-red inline-block" /> Today
+          </span>
         </div>
       </div>
 
-      <div className="relative flex flex-col">
-        {/* One line for today, drawn once across every row rather than per row. */}
-        {todayPct !== null && (
+      {/* Month scale. The year sits above its own months rather than being repeated in each label. */}
+      <div className="flex border-b border-line bg-surface-2">
+        <div className="shrink-0 border-r border-line" style={{ width: RAIL }} />
+        <div className="relative flex-1">
+          <div className="relative h-4">
+            {years.map((y) => (
+              <span
+                key={y.label}
+                className="absolute inset-y-0 flex items-center justify-center text-2xs font-bold tracking-[.06em] text-muted"
+                style={{ left: `${y.left}%`, width: `${y.width}%` }}
+              >
+                {y.label}
+              </span>
+            ))}
+          </div>
+          <div className="relative h-5">
+            {months.map((m) => (
+              <span
+                key={m.key}
+                className="absolute inset-y-0 flex items-center justify-center overflow-hidden text-2xs tracking-[.06em] text-muted border-l border-line"
+                style={{ left: `${m.left}%`, width: `${m.width}%` }}
+              >
+                {m.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="relative">
+        {/* Grid and the today line are drawn ONCE behind every row, not per row — a gridline
+            reassembled out of 30 row-height segments never quite lines up. */}
+        <div className="absolute inset-y-0 right-0 pointer-events-none" style={{ left: RAIL }}>
+          {weeks.map((w) => (
+            <div
+              key={w.key}
+              className="absolute inset-y-0 bg-surface-2/70"
+              style={{ left: `${w.left}%`, width: `${w.width}%` }}
+            />
+          ))}
+          {months.map((m) => (
+            <div key={m.key} className="absolute inset-y-0 border-l border-line" style={{ left: `${m.left}%` }} />
+          ))}
+          {todayPct !== null && (
+            <div
+              className="absolute inset-y-0 border-l-2 border-red z-20"
+              style={{ left: `${todayPct}%` }}
+              title={`Today — ${today.toLocaleDateString()}`}
+            />
+          )}
+        </div>
+
+        {rows.map((r) => (
+          r.type === 'group' ? (
+            <div
+              key={r.id}
+              className="relative z-10 flex items-center h-7 px-3.5 bg-blue-pale border-y border-line text-2xs font-bold uppercase tracking-[.08em] text-blue-deep"
+            >
+              <span className="truncate" title={r.label}>{r.label}</span>
+            </div>
+          ) : (
+            <GanttRow key={r.id} row={r} pct={pct} inWindow={inWindow} />
+          )
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** One record: its name and per-element legend on the left, its bar and deadlines on the right. */
+function GanttRow({ row, pct, inWindow }: {
+  row: TaskRow;
+  pct: (d: Date) => number;
+  inWindow: (d: Date) => boolean;
+}) {
+  const hasBar = !!row.start;
+  const left = row.start ? pct(row.start) : 0;
+  const right = row.end ? pct(row.end) : left;
+
+  /* The row's own legend: the bar, then each deadline on it, in the colour it is drawn in. Built
+     from the row's markers rather than written out, so a row cannot claim a marker it does not
+     have — or stay silent about one it does. */
+  const legend = [
+    ...(hasBar ? [{ label: row.barLabel, className: row.level === 'CYCL' ? 'bg-blue' : 'bg-blue-deep' }] : []),
+    ...row.markers.map((m) => ({ label: m.label, className: MARKER[m.kind].dot })),
+  ];
+
+  return (
+    <div className={clsx('relative flex border-b border-line-soft last:border-b-0', row.highlight && 'bg-blue-light/40')}>
+      <div
+        className="shrink-0 min-w-0 px-3.5 py-2 border-r border-line relative z-10"
+        style={{ width: RAIL, paddingLeft: row.level === 'CYCL' ? 26 : 14 }}
+      >
+        <div className="flex items-baseline gap-1.5 min-w-0">
+          <span
+            className={clsx('text-sm2 font-semibold truncate', row.highlight ? 'text-blue-deep' : 'text-text')}
+            title={row.code ? `${row.code} · ${row.name}` : row.name}
+          >
+            {row.name}
+          </span>
+        </div>
+        <div className="mt-1 flex flex-col gap-[3px]">
+          {legend.map((l) => (
+            <span key={l.label} className="flex items-center gap-1.5 text-2xs text-muted min-w-0">
+              <span className={clsx('w-1.5 h-1.5 rounded-full shrink-0', l.className)} />
+              <span className="truncate">{l.label}</span>
+            </span>
+          ))}
+          {!hasBar && <span className="text-2xs text-muted italic">No dates set</span>}
+        </div>
+      </div>
+
+      <div className="relative flex-1 py-2">
+        {/* The bar sits low in the row so the markers above it have their own band and never
+            overlap it — a deadline is a moment, and drawing it inside the duration it falls in
+            would say the wrong thing. */}
+        {hasBar && (
           <div
-            className="absolute top-0 bottom-0 border-l border-dashed border-red/60 z-10 pointer-events-none"
-            style={{ left: `calc(240px + 0.75rem + ${todayPct}% * (100% - 240px - 0.75rem) / 100%)` }}
-            title={`Today — ${today.toLocaleDateString()}`}
+            className={clsx(
+              'absolute bottom-2 h-2.5 rounded-[3px] z-10',
+              row.level === 'CYCL' ? 'bg-blue' : 'bg-blue-deep',
+            )}
+            style={{ left: `${left}%`, width: `${Math.max(0.5, right - left)}%` }}
+            title={`${row.name}${row.start ? ` · ${row.start.toLocaleDateString()}` : ''}${row.end ? ` → ${row.end.toLocaleDateString()}` : ' → open-ended'}`}
           />
         )}
 
-        {rows.map((r) => {
-          const Icon = LEVEL_ICON[r.level];
-          const hasBar = !!r.start;
-          const left = r.start ? pct(r.start) : 0;
-          const right = r.end ? pct(r.end) : left;
+        {row.markers.filter((m) => inWindow(m.at)).map((m, i) => {
+          const { Icon, className } = MARKER[m.kind];
           return (
-            <div
-              key={r.id}
-              className={clsx(
-                'flex items-center gap-3 h-8 border-b border-line-soft last:border-b-0',
-                r.highlight && 'bg-blue-pale',
-              )}
+            <span
+              key={`${m.label}-${i}`}
+              className="absolute top-1.5 -translate-x-1/2 z-10"
+              style={{ left: `${pct(m.at)}%` }}
+              title={`${m.label} — ${m.at.toLocaleDateString()}`}
             >
-              <div
-                className="w-[240px] shrink-0 flex items-center gap-1.5 min-w-0"
-                style={{ paddingLeft: r.depth * 14 }}
-              >
-                <Icon size={12} className="shrink-0 text-muted" />
-                {r.code && <span className="font-mono text-2xs text-muted shrink-0">{r.code}</span>}
-                <span className={clsx('text-sm2 truncate min-w-0', r.highlight ? 'text-blue-deep' : 'text-text')} title={r.name}>
-                  {r.name}
-                </span>
-              </div>
-
-              <div className="relative flex-1 h-5">
-                {hasBar ? (
-                  <div
-                    className={clsx(
-                      'absolute top-1 h-3 rounded-xs',
-                      // Depth reads as weight rather than as hue: the programme bar is the ground,
-                      // its waves sit on top. Colour here would compete with the freeze markers,
-                      // which are the only thing on this chart that needs attention.
-                      r.depth === 0 ? 'bg-blue-deep'
-                        : r.depth === 1 ? 'bg-blue'
-                          : r.depth === 2 ? 'bg-blue-mid' : 'bg-blue-mid/60',
-                    )}
-                    style={{ left: `${left}%`, width: `${Math.max(0.6, right - left)}%` }}
-                    title={`${r.name}${r.start ? ` · ${r.start.toLocaleDateString()}` : ''}${r.end ? ` → ${r.end.toLocaleDateString()}` : ' → open-ended'}`}
-                  />
-                ) : (
-                  <span className="absolute top-0.5 left-0 text-2xs text-muted italic">No dates set</span>
-                )}
-
-                {/* Markers sit above the bar, never inside it — a deadline is a moment, and drawing
-                    it as a segment of the duration it falls in would say the wrong thing. */}
-                {r.markers.map((m, i) => (
-                  <span
-                    key={`${m.label}-${i}`}
-                    className="absolute top-0 -translate-x-1/2 z-[5]"
-                    style={{ left: `${pct(m.at)}%` }}
-                    title={`${m.label} — ${m.at.toLocaleDateString()}`}
-                  >
-                    {m.kind === 'freeze'
-                      ? <Snowflake size={12} className="text-blue-deep" />
-                      : <Star size={12} className="text-amber-ink" />}
-                  </span>
-                ))}
-              </div>
-            </div>
+              <Icon size={13} className={className} />
+            </span>
           );
         })}
-      </div>
-
-      <div className="flex items-center gap-4 pt-2.5 text-2xs text-muted">
-        <span className="inline-flex items-center gap-1.5"><Snowflake size={11} className="text-blue-deep" /> Freeze date</span>
-        <span className="inline-flex items-center gap-1.5"><Star size={11} className="text-amber-ink" /> Milestone</span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="w-3 border-t border-dashed border-red/60 inline-block" /> Today
-        </span>
       </div>
     </div>
   );

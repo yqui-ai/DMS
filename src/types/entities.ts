@@ -343,6 +343,10 @@ export interface XrefTable { id: UUID; subprojectId?: UUID; name: string; purpos
 export interface XrefVersion {
   id: UUID; xrefTableId: UUID; version: string; state: GovState; structure: GoldenFmdStructure;
   comment?: string; createdBy?: string; createdAt?: string;
+  /** Unset while the version is an editable draft; stamped at publish, after which migration 0059's
+   * trigger freezes the structure. This — not `state` — is what makes a version live, exactly as on
+   * `FmdVersion`. */
+  publishedBy?: string; publishedAt?: string;
 }
 /** Library-list row shape shared by the FMD/Rule/XREF catalogue screens — `reference` and
  * `latestVersion` are derived at query time (see src/lib/libraryReference.ts), not stored. */

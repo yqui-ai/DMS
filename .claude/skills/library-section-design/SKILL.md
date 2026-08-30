@@ -293,12 +293,27 @@ Don't "fix" these silently; they're recorded so the next change is an informed o
   explicitly deferred by the user ("Rules later") — do not start it unprompted.
 - **The Golden XREF viewer follows the FMD viewer's shape**, deliberately: one version selector
   in the header driving every tab, a Cross Reference tab at full dialog width, and a Versions tab
-  with the list and details side by side. It used to invert that — a permanent 300px version rail
-  with the structure squeezed into the remainder — so two templates read the same way, opened from
-  sibling rows of one catalogue, gave the reader two different screens. No Where-used tab: nothing
-  references a Golden XREF template yet, and an empty tab is a promise the data cannot keep.
+  showing the version details at full width with **no version list** — the header dropdown is the
+  selector, and a list beside it is a second one for the same thing. It used to invert that — a
+  permanent 300px version rail with the structure squeezed into the remainder — so two templates
+  read the same way, opened from sibling rows of one catalogue, gave the reader two different
+  screens. The details pane is built from the **shared** `Fact`/`Group`/`By` in
+  `src/features/library/fmd/versionFacts.tsx`, not from a lookalike, so the two cannot drift again.
+  No Where-used tab: nothing references a Golden XREF template yet, and an empty tab is a promise
+  the data cannot keep.
 - **XREF has a designer + viewer for Golden only.** Standard XREF rows have no viewer; they're
   inert rows (correctly styled as such via `rowClickable`).
+- **The Golden XREF versions the same way an FMD does** (migration `0059`). `xref_versions` carries
+  `published_at`/`published_by`, and — as everywhere else in this app — that column, **not `state`**,
+  is what makes a version live. Saving from the designer writes a DRAFT (`saveDraft`: mutate the
+  newest unpublished row, else insert one carrying the literal `DRAFT_VERSION`); `publishDraft`
+  assigns the next number, bumping from the last **published** row because a draft's version string
+  does not parse. A trigger (`xref_versions_block_published_edit`) freezes published structures, so
+  the rule holds however the write arrives. Publish lives in the viewer's draft banner rather than on
+  a Draft tab — an XREF draft is a whole structure, not a list of pending cell edits, so there is
+  nothing to select. Before 0059 every save inserted a numbered version, i.e. editing the template
+  published it. `LibraryXrefRow` therefore splits `activeVersion` (newest published — what the
+  catalogue's Version column names) from `hasDraft`, exactly as the FMD list does.
 - **`useAllFmds` maps a narrow column subset** (no `owner`/`aiGenerated`/`hist*`). Fine for its
   Scope consumers; use `useLibraryFmds` if you need the enriched row.
 
