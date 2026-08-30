@@ -2,14 +2,14 @@ import { Select } from '../../components/Select';
 import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import { parseValueList } from '../../lib/mappingRulePolicy';
 import { useEffect, useState } from 'react';
-import { GripVertical, Lock, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, GripVertical, Lock, Plus, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import { Dialog } from '../../components/Dialog';
 import { Button } from '../../components/Button';
 import { useToast } from '../../components/Toast';
 import { useLatestFmdVersion, useGoldenFmdMutations, type LibraryFmdRow } from '../../lib/queries/fmds';
 import { SECTION_COLORS, colorByKey, nextColor } from '../../lib/goldenFmdColors';
-import { isRequiredGoldenField, missingRequiredGoldenFields } from '../../lib/goldenFmdRequiredFields';
+import { isRequiredGoldenField, missingRequiredGoldenFields, withMissingBaselineFields } from '../../lib/goldenFmdRequiredFields';
 import type { GoldenFmdStructure } from '../../types/entities';
 
 export const GOLDEN_FMD_NAME = 'Golden_Field_Mapping_Document_Template';
@@ -53,6 +53,13 @@ const defaultStructure = (): GoldenFmdStructure => ({
         { id: newId(), field: 'TGT_FIELD_LENGTH', description: '' },
         { id: newId(), field: 'TGT_FIELD_DECIMAL', description: '' },
         { id: newId(), field: 'TGT_CHECK_TABLE', description: '' },
+        // Target classification: what KIND of field this is, as opposed to what it holds. A field
+        // added on one FMD rather than inherited from this template carries 'Custom', which is what
+        // lets a generated document say which of its columns the template never gave it.
+        {
+          id: newId(), field: 'FIELD_TYPE', kind: 'select', options: ['Standard', 'Custom'],
+          description: 'Standard = comes from the Golden template. Custom = added on this FMD only.',
+        },
       ],
     },
     {
@@ -148,6 +155,13 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
   if (!target) return null;
 
   const activeSection = structure.sections.find((s) => s.id === activeSectionId) ?? null;
+
+  /** Baseline fields this template does not have. Recomputed on every edit rather than checked only
+   * at save, because "you cannot save" is far more useful before you have made twenty changes than
+   * after. */
+  const missingBaseline = missingRequiredGoldenFields(
+    structure.sections.flatMap((s) => s.fields.map((f) => f.field)),
+  );
 
   const updateSection = (id: string, patch: Partial<GoldenFmdStructure['sections'][number]>) => {
     setStructure((s) => ({ sections: s.sections.map((sec) => (sec.id === id ? { ...sec, ...patch } : sec)) }));
@@ -265,7 +279,37 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
       {!isNew && isLoading ? (
         <p className="text-sm2 text-muted">Loading…</p>
       ) : (
-        <div className="h-full flex gap-4">
+        <div className="h-full flex flex-col gap-3">
+        {/* The baseline moves. When a field is added to REQUIRED_GOLDEN_FIELDS, every template
+            written before that becomes unsaveable — the save refuses while a required field is
+            absent, so a programme is locked out of editing its own template until someone recreates
+            the field by hand, spelled correctly, in the right section, with the right value list.
+            That is a wall with no instructions on it. This is the same repair as one action, and it
+            goes through the normal comment-and-version path rather than happening invisibly. */}
+        {missingBaseline.length > 0 && (
+          <div className="flex items-start gap-3 rounded-lg bg-amber-bg shadow-[inset_0_0_0_1px_var(--amber-ink)] px-3.5 py-2.5 shrink-0">
+            <AlertTriangle size={15} className="text-amber-ink shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1 text-2xs text-amber-ink">
+              <span className="font-semibold">
+                {missingBaseline.length} baseline field{missingBaseline.length === 1 ? '' : 's'} missing:
+              </span>{' '}
+              <span className="font-mono font-semibold">{missingBaseline.join(', ')}</span>
+              <span className="ml-1 font-normal">
+                — the template cannot be saved without {missingBaseline.length === 1 ? 'it' : 'them'}.
+                Adding {missingBaseline.length === 1 ? 'it' : 'them'} here puts{' '}
+                {missingBaseline.length === 1 ? 'it' : 'each'} in the closest matching section, with
+                its description and value list filled in.
+              </span>
+            </div>
+            <Button
+              variant="primary" size="sm" className="shrink-0"
+              onClick={() => { setStructure((s) => withMissingBaselineFields(s)); setDirty(true); }}
+            >
+              Add {missingBaseline.length === 1 ? 'it' : 'them'}
+            </Button>
+          </div>
+        )}
+        <div className="flex-1 min-h-0 flex gap-4">
           <div className="w-[260px] shrink-0 flex flex-col rounded-lg shadow-[inset_0_0_0_1px_var(--line)] overflow-hidden">
             <div className="px-3 py-2 text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface-3">Sections</div>
             <div className="flex-1 overflow-auto">
@@ -444,6 +488,7 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
               </>
             )}
           </div>
+        </div>
         </div>
       )}
 
