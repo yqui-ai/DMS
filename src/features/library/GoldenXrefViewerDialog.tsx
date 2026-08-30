@@ -3,15 +3,15 @@ import clsx from 'clsx';
 import { Dialog } from '../../components/Dialog';
 import { useToast } from '../../components/Toast';
 import { Select } from '../../components/Select';
-import { Pane } from '../../components/Pane';
 import { Tag } from '../../components/Tag';
-import { Button } from '../../components/Button';
-import { By, Fact, Group } from './fmd/versionFacts';
 import { useGoldenXrefMutations, useXrefVersions, type LibraryXrefRow } from '../../lib/queries/rules';
 import { GoldenFmdStructureView } from './GoldenFmdStructureView';
 import { XrefHealthTab } from './xref/XrefHealthTab';
+import { XrefDraftTab } from './xref/XrefDraftTab';
+import { XrefReviewTab } from './xref/XrefReviewTab';
+import { XrefWhereUsedTab } from './xref/XrefWhereUsedTab';
 
-type Tab = 'structure' | 'health' | 'versions';
+type Tab = 'structure' | 'health' | 'draft' | 'versions' | 'where-used';
 
 /** Read-only view of the (singleton) Golden XREF — shaped exactly like the Golden FMD viewer.
  *
@@ -21,16 +21,18 @@ type Tab = 'structure' | 'health' | 'versions';
  * the one that showed the actual content gave it the smaller half.
  *
  * So it follows the contract in the library-section-design skill, the one the FMD viewer already
- * keeps:
- *   · ONE version selector in the header, driving every tab — a single answer to "which version am
- *     I looking at" wherever you are in the dialog.
- *   · Structure tab: the selected version's fields at FULL dialog width, and nothing else.
- *   · Versions tab: the version details at full width. NO version list — the header dropdown is
- *     already the selector, and a list beside it is a second one for the same thing.
+ * keeps: ONE version selector in the header driving every tab, and the same five tabs answering the
+ * same five questions.
  *
- * Editing is still only ever through the "Golden XREF" toolbar button / GoldenXrefDesignerDialog.
- * There is no Where-used tab because nothing references a Golden XREF template yet — an empty tab
- * would be a promise the data cannot keep. */
+ *   · Cross Reference — the selected version's fields, at full dialog width.
+ *   · Health          — can this template do its job. Always the LATEST version, so the header
+ *                       selector hides while it is open.
+ *   · Draft           — present only while an unpublished draft exists, and the only place Publish
+ *                       lives, exactly as on the FMD.
+ *   · Versions & Review — the selected version's facts beside the review of the template.
+ *   · Where used      — which tables were built from this template and which have fallen behind.
+ *
+ * Editing is still only ever through the "Golden XREF" toolbar button / GoldenXrefDesignerDialog. */
 export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow | null; onClose: () => void }) {
   const { data: versions = [], isLoading } = useXrefVersions(xref?.id);
   const mutations = useGoldenXrefMutations();
@@ -53,7 +55,8 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
 
   /* A version is a draft when it has no `published_at` — never because its `state` reads "Draft".
      State is a word the designer writes; published_at is what the database trigger enforces. */
-  const isDraft = !!selected && !selected.publishedAt;
+  const hasDraft = !!latest && !latest.publishedAt;
+  const latestPublished = versions.find((v) => v.publishedAt);
 
   const publish = async () => {
     if (!xref) return;
@@ -61,6 +64,9 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
     try {
       const version = await mutations.publishDraft(xref.id);
       toast.success(`Published ${version}.`);
+      // Land on Versions afterwards: the Draft tab is about to disappear, and leaving someone on a
+      // tab that vanishes under them is disorienting.
+      setTab('versions');
     } catch (err: any) {
       toast.error(err.message ?? 'Could not publish the draft.');
     } finally {
@@ -68,20 +74,15 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
     }
   };
 
-  /* Publishing is offered wherever the draft is on screen, because that is where the decision gets
-     made — reading the structure is what tells you it is ready. The FMD keeps its Publish on a
-     dedicated Draft tab; the XREF has no such tab (its draft is a whole structure, not a list of
-     pending cell edits), so the banner rides above whichever tab is showing it. */
-  const draftBanner = isDraft && (
-    <div className="flex items-center gap-3 mb-3 shrink-0 rounded border border-amber-300 bg-amber-50 px-3 py-2">
-      <span className="text-sm2 text-amber-900 flex-1 min-w-0">
-        This is an unpublished draft. It is not the live Golden XREF until you publish it.
-      </span>
-      <Button size="sm" onClick={publish} disabled={publishing}>
-        {publishing ? 'Publishing…' : 'Publish'}
-      </Button>
-    </div>
-  );
+  /* The Draft tab exists only while a draft does — its absence is how you know nothing is pending,
+     and a permanently-present tab reading "no draft" is a tab nobody ever needs to click. */
+  const TABS = [
+    { key: 'structure' as const, label: 'Cross Reference' },
+    { key: 'health' as const, label: 'Health' },
+    ...(hasDraft ? [{ key: 'draft' as const, label: 'Draft' }] : []),
+    { key: 'versions' as const, label: 'Versions & Review' },
+    { key: 'where-used' as const, label: 'Where used' },
+  ];
 
   if (!xref) return null;
 
@@ -93,11 +94,7 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
         <div className="flex flex-col h-full min-h-0">
           <div className="flex items-center justify-between gap-3 border-b border-line mb-3 shrink-0">
             <div className="flex items-center gap-1">
-              {([
-                { key: 'structure', label: 'Cross Reference' },
-                { key: 'health', label: 'Health' },
-                { key: 'versions', label: 'Versions' },
-              ] as const).map((t) => (
+              {TABS.map((t) => (
                 <button
                   key={t.key}
                   onClick={() => setTab(t.key)}
@@ -107,15 +104,17 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
                   )}
                 >
                   {t.label}
+                  {t.key === 'draft' && <Tag variant="danger" size="sm" className="ml-1.5">1</Tag>}
                 </button>
               ))}
             </div>
 
             {/* One selector for the whole dialog, matching the FMD viewer — every tab that renders
                 a version renders whatever is picked here, so there is a single answer to which
-                version is on screen. Hidden on Health, which always measures the latest: a selector
-                that visibly does nothing is worse than no selector. */}
-            {versions.length > 0 && tab !== 'health' && (
+                version is on screen. Hidden on the tabs that do not read it: Health always measures
+                the latest, Draft is by definition the draft, and Where used compares against the
+                latest published one. A selector that visibly does nothing is worse than none. */}
+            {versions.length > 0 && (tab === 'structure' || tab === 'versions') && (
               <label className="flex items-center gap-1.5 text-2xs text-muted shrink-0 -mt-[5px]">
                 Version
                 <Select
@@ -135,8 +134,6 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
             )}
           </div>
 
-          {draftBanner}
-
           <div className="flex-1 min-h-0 overflow-auto">
             {tab === 'structure' ? (
               selected?.structure?.sections?.length ? (
@@ -148,69 +145,14 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
               <XrefHealthTab
                 versions={versions}
                 selectedId={selected?.id}
-                onPublish={publish}
-                publishing={publishing}
+                onOpenDraft={() => setTab('draft')}
               />
+            ) : tab === 'draft' ? (
+              <XrefDraftTab versions={versions} onPublish={publish} publishing={publishing} />
+            ) : tab === 'versions' ? (
+              <XrefReviewTab xref={xref} versions={versions} selected={selected} />
             ) : (
-              /* Full width, and NO version list.
-                 The header dropdown is the single version selector — a list pane beside it was a
-                 second selector for the same thing, which is exactly what the FMD viewer removed
-                 and what the library-section-design skill says not to reintroduce. Rendered with
-                 the same Fact/Group primitives as that pane rather than a lookalike, so the two
-                 cannot drift again. */
-              <Pane
-                title="Version details"
-                bodyClassName="p-3.5"
-                actions={
-                  /* Offered only on the draft itself, never on a published version you happened to
-                     select. Publishing releases the open draft — attaching the button to a frozen
-                     v1.0.0 would suggest it re-releases that, which is not what it does. */
-                  isDraft && (
-                    <Button size="sm" onClick={publish} disabled={publishing}>
-                      {publishing ? 'Publishing…' : 'Publish this draft'}
-                    </Button>
-                  )
-                }
-              >
-                {selected ? (
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-mono font-bold text-sm2 text-blue-deep w-fit bg-blue-pale px-2 py-0.5 rounded">
-                        {selected.version}
-                      </span>
-                      {!selected.publishedAt
-                        ? <Tag variant="danger">Draft</Tag>
-                        : selected.id === latest?.id && <Tag variant="accent">Latest</Tag>}
-                    </div>
-
-                    <Group>
-                      <Fact label="Modified by"><By who={selected.createdBy} at={selected.createdAt} /></Fact>
-                      <Fact label="Published by">
-                        {selected.publishedAt
-                          ? <By who={selected.publishedBy} at={selected.publishedAt} />
-                          : <span className="text-muted">Not published yet</span>}
-                      </Fact>
-                    </Group>
-
-                    {/* Stable attributes of the template rather than of this release — the same
-                        split the FMD pane makes between who touched a version and what the
-                        document is. */}
-                    <Group>
-                      <Fact label="Class">{xref.class}</Fact>
-                      <Fact label="Reference">{xref.reference}</Fact>
-                      <Fact label="Versions">{versions.length}</Fact>
-                    </Group>
-
-                    <Group>
-                      <Fact label="Comment">
-                        {selected.comment || <span className="text-muted">No comment provided</span>}
-                      </Fact>
-                    </Group>
-                  </div>
-                ) : (
-                  <p className="text-sm2 text-muted">No versions yet.</p>
-                )}
-              </Pane>
+              <XrefWhereUsedTab goldenId={xref.id} latestPublished={latestPublished} />
             )}
           </div>
         </div>

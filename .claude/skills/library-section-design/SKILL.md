@@ -270,7 +270,9 @@ anything editable here.
   |---|---|
   | `fmds` | `fmds-all`, `fmds-library`, `golden-where-used`, `standard-fmd-links`, `fmd-versions/<id>`, `fmd-version-latest/<id>` |
   | `rules` | `rules/<subprojectId>`, `rules-all`, `rules-library` |
-  | `xref_tables` | `xref-tables/<subprojectId>`, `xref-tables-library`, `golden-xref-summary` |
+  | `xref_tables` | `xref-tables/<subprojectId>`, `xref-tables-library`, `golden-xref-summary`, `xref-where-used` |
+  | `xref_versions` | `xref-versions/<xrefTableId>`, `xref-tables-library`, `golden-xref-summary` |
+  | `xref_review_points` | `xref-review-points/<xrefTableId>` |
   | `subproject_objects` | `subproject-objects/<subprojectId>`, `scope-object-owners`, `fmd-usage`, `object-scope-usage/<migrationObjectId>`, `fmd-assignments` (prefix — covers the per-FMD hook AND the batched `fmd-assignments/counts` behind Field Mapping's **Used by** column), plus the scope-graph keys |
 
   Missing `rules-library` was a real bug (new/edited rules didn't appear in the catalogue). So was
@@ -291,28 +293,53 @@ Don't "fix" these silently; they're recorded so the next change is an informed o
 - **Rule's "Version" column is a frozen literal.** `rules.version` is written once as `v1.0.0` at
   insert and never bumped; there is no `rule_versions` table. Building real Rule versioning was
   explicitly deferred by the user ("Rules later") — do not start it unprompted.
-- **The Golden XREF viewer follows the FMD viewer's shape**, deliberately: one version selector
-  in the header driving every tab, a Cross Reference tab at full dialog width, and a Versions tab
-  showing the version details at full width with **no version list** — the header dropdown is the
-  selector, and a list beside it is a second one for the same thing. A **Health** tab sits between
-  them, shaped after `FmdHealthTab`: same metric strip, same fail-first checks list with the passing
-  ones folded, same single coloured panel for the one thing with a button on it. It measures the
-  **latest** version and the header hides the version selector while it is open, exactly as the FMD
-  tab does. What it measures differs of necessity — the FMD grades a mapping document (rows, rules,
-  effort, findings); a Golden XREF is the template, so `src/lib/xrefHealth.ts` checks whether the
-  template is *capable*: two columns minimum, unique field names, no blank names, no empty sections,
-  descriptions present, and whether it has ever been published. `diffXrefStructures` powers
-  **Compare versions…**, which reads and never writes — there is no XREF equivalent of
-  `SyncGoldenFmdDialog` because nothing is generated from a Golden XREF yet, and a rename is
-  reported honestly as a removal plus an addition rather than guessed at. It used to invert that — a
-  permanent 300px version rail with the structure squeezed into the remainder — so two templates
-  read the same way, opened from sibling rows of one catalogue, gave the reader two different
-  screens. The details pane is built from the **shared** `Fact`/`Group`/`By` in
-  `src/features/library/fmd/versionFacts.tsx`, not from a lookalike, so the two cannot drift again.
-  No Where-used tab: nothing references a Golden XREF template yet, and an empty tab is a promise
-  the data cannot keep.
+- **The Golden XREF viewer carries the FMD viewer's full tab set** (`GoldenXrefViewerDialog`,
+  components under `src/features/library/xref/`). One version selector in the header, and five tabs
+  answering the FMD's five questions:
+
+  | Tab | XREF behaviour |
+  |---|---|
+  | Cross Reference | The selected version's fields, full dialog width. |
+  | Health | `XrefHealthTab` + `src/lib/xrefHealth.ts`. Always the **latest** version. |
+  | Draft | `XrefDraftTab`. Present only while a draft exists, and **the only place Publish lives**. |
+  | Versions & Review | `XrefReviewTab` — version details beside review points. |
+  | Where used | `XrefWhereUsedTab` — tables built from the template, and which are behind. |
+
+  The header selector is hidden on Health, Draft and Where used, because none of them read it —
+  Health always measures the latest, Draft *is* the draft, Where used compares against the latest
+  published. A selector that visibly does nothing is worse than none.
+
+  What each tab measures differs from the FMD's of necessity, and the differences are deliberate:
+  - **Health** checks whether the template is *capable*, not how complete a document is: two columns
+    minimum, unique and non-blank field names, no empty sections, descriptions present, ever
+    published. `diffXrefStructures` also powers **Compare versions…**, which reads and never writes.
+  - **Draft** shows a *diff against the live version*, not a checklist of pending changes. An FMD
+    draft is individually-selectable cell edits; an XREF draft is a whole structure saved by the
+    designer, so there is nothing to select between and checkboxes would offer a choice the model
+    cannot honour. It reuses `diffXrefStructures`, so it and Compare can never disagree.
+  - **Review** has **no Auto review (AI) pane**. That review reads mapping data — a rule per row, a
+    source and a target — and a template has none. Points anchor to `(section_id, field)` with both
+    nullable, so a point can be about one field or the whole template; they attach to the TABLE, not
+    a version, so the list is deliberately not filtered by the header selector. Anyone may raise,
+    reply and resolve — RLS already decides who reaches the template; ownership gates *changing* it.
+  - **Where used** only became answerable in `0060`, which added
+    `xref_tables.based_on_golden_version_id`. **Build from Golden** (`useBuildXrefFromGolden`) is
+    what writes it, so most rows start as "Never built" — a different state from "Outdated", and
+    reported as such: a table that was never generated is not *behind* the template, it has no
+    relationship with it. Generated versions arrive **published** (a generated document is a
+    released fact), unlike the Golden's own editable drafts, and are numbered from the table's own
+    history rather than the template's.
+
+  The details pane uses the **shared** `Fact`/`Group`/`By` from
+  `src/features/library/fmd/versionFacts.tsx`, not a lookalike, so the two viewers cannot drift.
+  There is still **no version list pane** — the header dropdown is the selector, and a list beside it
+  is a second one for the same thing. The viewer once inverted this whole layout (a permanent 300px
+  version rail with the structure squeezed into the remainder), which gave two templates read the
+  same way, from sibling rows of one catalogue, two different screens.
 - **XREF has a designer + viewer for Golden only.** Standard XREF rows have no viewer; they're
-  inert rows (correctly styled as such via `rowClickable`).
+  inert rows (correctly styled as such via `rowClickable`). They can now be *built* from the Golden
+  template (Where used → Build from Golden), which gives them a structure and a version — but still
+  no screen of their own to read it on. That is the next gap worth closing.
 - **The Golden XREF versions the same way an FMD does** (migration `0059`). `xref_versions` carries
   `published_at`/`published_by`, and — as everywhere else in this app — that column, **not `state`**,
   is what makes a version live. Saving from the designer writes a DRAFT (`saveDraft`: mutate the

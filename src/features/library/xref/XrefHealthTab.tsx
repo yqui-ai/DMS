@@ -49,13 +49,16 @@ function Group({ label, note, children }: { label: string; note?: string; childr
  * Always measured against the LATEST version, never the one selected in the header. "Is this
  * template healthy" is a question about the template as it stands, and answering it from a
  * superseded version someone happened to be browsing would report a state that no longer exists. */
-export function XrefHealthTab({ versions, selectedId, onPublish, publishing }: {
+export function XrefHealthTab({ versions, selectedId, onOpenDraft }: {
   /** Newest first. */
   versions: XrefVersion[];
   /** The version on screen — the comparison opens against this one. */
   selectedId?: string;
-  onPublish: () => void;
-  publishing: boolean;
+  /** Sends the reader to the Draft tab, which is the ONLY place publishing happens. This panel
+   * reports that a draft is open; it deliberately does not release it. Publish appeared here, on
+   * the Draft tab and in the version details at once, which is three buttons for one irreversible
+   * act and no single place that owns it — the FMD settled that question long ago. */
+  onOpenDraft: () => void;
 }) {
   const [showPassing, setShowPassing] = useState(false);
   const [comparing, setComparing] = useState(false);
@@ -110,12 +113,12 @@ export function XrefHealthTab({ versions, selectedId, onPublish, publishing }: {
             <div className="text-sm2 font-semibold text-amber-ink">An unpublished draft is open</div>
             <p className="text-2xs text-amber-ink/90 mt-0.5">
               {latestPublished
-                ? <>The programme is still using <span className="font-mono font-semibold">{latestPublished.version}</span>. Publishing releases the draft as the next version and freezes it.</>
-                : <>Nothing has been released yet, so no downstream work can be built against this template. Publishing makes it <span className="font-mono font-semibold">v1.0.0</span>.</>}
+                ? <>The programme is still using <span className="font-mono font-semibold">{latestPublished.version}</span>. The Draft tab shows what would change, and publishes it.</>
+                : <>Nothing has been released yet, so nothing can be built against this template. The Draft tab publishes it.</>}
             </p>
           </div>
-          <Button variant="primary" size="sm" className="shrink-0" onClick={onPublish} disabled={publishing}>
-            {publishing ? 'Publishing…' : 'Publish'}
+          <Button variant="primary" size="sm" className="shrink-0" onClick={onOpenDraft}>
+            Review draft
           </Button>
         </div>
       ) : latestPublished && (
