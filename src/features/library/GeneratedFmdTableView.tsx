@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
-import { Check, ChevronLeft, ChevronRight, Columns3, Maximize2, Pencil, Type } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Columns3, Filter, Maximize2, Pencil, Type } from 'lucide-react';
 import { Dialog } from '../../components/Dialog';
 import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import { useDismiss } from '../../components/useDismiss';
 import { Button } from '../../components/Button';
-import { optionsOf, valueTypeError } from '../../lib/mappingRulePolicy';
+import { optionsOf, scopeOf, valueTypeError } from '../../lib/mappingRulePolicy';
 import { colorByKey } from '../../lib/goldenFmdColors';
 import { rowKey } from '../../lib/rowDiff';
 import type { GeneratedColumn, GeneratedTable } from '../../types/entities';
@@ -55,6 +55,13 @@ const minWidthFor = (field: string): number | undefined =>
   field in FIELD_MAX_WIDTH && !(field in FIELD_MIN_WIDTH)
     ? undefined
     : FIELD_MIN_WIDTH[field] ?? DEFAULT_MIN_WIDTH;
+/** In scope means MIGRATION_IN_SCOPE says so — **not** "isn't explicitly out".
+ *
+ * The same call the health tab makes, and made for the same reason: a field nobody has decided on
+ * is not a field being migrated. Treating blanks as in-scope would let the filter show rows that
+ * still need a decision as though they were settled, which is exactly the group most worth seeing. */
+const isInScope = (row: Record<string, string>) => scopeOf(row.MIGRATION_IN_SCOPE) === 'in';
+
 const CHANGED_BG = '#fef9c3';
 const REVIEW_ERROR_BG = '#fecaca';
 const REVIEW_WARNING_BG = '#fed7aa';
@@ -281,6 +288,9 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
   }, []);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
+  /** Off by default: the document is the whole sender structure, and opening on a filtered view
+   * would misrepresent what the FMD contains to anyone who does not notice the toggle. */
+  const [hideOutOfScope, setHideOutOfScope] = useState(false);
   /** Off by default, exactly like the field-level view's sections. A grid you can change by clicking
    * into it is a grid you can change by accident, so the mode makes the intent explicit and leaves
    * read-only as the resting state. */
@@ -340,8 +350,20 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
   const changedCells = changedCellsByTable?.get(activeTable?.structureId ?? '');
   const reviewFindings = reviewFindingsByTable?.get(activeTable?.structureId ?? '');
   const reviewPointCells = reviewPointCellsByTable?.get(activeTable?.structureId ?? '');
+  /** How many rows the template says are NOT being migrated. Counted before the filter so the
+   * button can say what it would hide, and so "0 out of scope" can disable it rather than offering
+   * a toggle that does nothing. */
+  const outOfScopeCount = useMemo(
+    () => (activeTable?.rows ?? []).filter((r) => !isInScope(r)).length,
+    [activeTable],
+  );
+
   const processedRows = useMemo(() => {
     let rows = activeTable?.rows ?? [];
+    /* Hiding is a VIEW, never an edit: the rows stay in the document and in every export. On a
+       large object most of the sender structure is out of scope, and reading the twenty fields that
+       matter meant scrolling past two hundred that do not. */
+    if (hideOutOfScope) rows = rows.filter(isInScope);
     if (sortField) {
       rows = [...rows].sort((a, b) => {
         const cmp = (a[sortField] ?? '').localeCompare(b[sortField] ?? '');
@@ -349,7 +371,7 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
       });
     }
     return rows;
-  }, [activeTable, sortField, sortDir]);
+  }, [activeTable, sortField, sortDir, hideOutOfScope]);
 
   const toggleSort = (field: string) => {
     if (sortField !== field) { setSortField(field); setSortDir('asc'); }
@@ -452,6 +474,30 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
             })}
           </div>
         </IconPopoverButton>
+
+        {/* Rows out of scope, hidden or shown. Sits right after the column filter because it is the
+            same kind of control — what this grid displays — and the pair reads as "which columns,
+            which rows". Hiding is a VIEW: the rows stay in the document, in every export, and in
+            the counts on the Health tab. Disabled when every field is in scope, because a toggle
+            that provably changes nothing should say so rather than appearing to work. */}
+        <button
+          onClick={() => setHideOutOfScope((v) => !v)}
+          disabled={outOfScopeCount === 0}
+          aria-pressed={hideOutOfScope}
+          aria-label="Show or hide fields not in scope"
+          title={outOfScopeCount === 0
+            ? 'Every field in this structure is marked in scope'
+            : hideOutOfScope
+              ? `Showing in-scope fields only — ${outOfScopeCount} hidden. Click to show all.`
+              : `Hide the ${outOfScopeCount} field${outOfScopeCount === 1 ? '' : 's'} not marked in scope`}
+          className={clsx(
+            'flex items-center justify-center w-8 h-8 rounded disabled:opacity-40 disabled:pointer-events-none',
+            hideOutOfScope ? 'text-blue bg-blue-pale' : 'text-muted hover:text-blue hover:bg-blue-pale',
+          )}
+        >
+          <Filter size={15} />
+        </button>
+
         {tables.length > 1 && (
           <>
             {/* Grouped with sort/columns: all three change how the grid is displayed, so they read
@@ -545,11 +591,16 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
               <tr><td colSpan={visibleColumns.length} className="px-2.5 py-6 text-center text-muted text-sm2">No rows.</td></tr>
             )}
             {processedRows.map((row, i) => {
-              const rk = rowKey(row, i);
+              // Keyed on the row's position in the DOCUMENT, not in this render. rowKey falls back
+              // to the index for a row carrying neither SRC_FIELD nor TGT_FIELD, and the render
+              // index moves whenever the grid is sorted or filtered — so such a row's highlights,
+              // findings and review points would attach to whichever row happened to land in that
+              // slot. Sorting already had this; the scope filter would have widened it.
+              const originalIndex = activeTable.rows.indexOf(row);
+              const rk = rowKey(row, originalIndex);
               const rowChanges = changedCells?.get(rk);
               const rowFindings = reviewFindings?.get(rk);
               const rowPoints = reviewPointCells?.get(rk);
-              const originalIndex = activeTable.rows.indexOf(row);
               return (
                 <tr
                   key={i}
