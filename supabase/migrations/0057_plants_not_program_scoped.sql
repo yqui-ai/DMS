@@ -24,6 +24,18 @@
 drop index if exists plants_program_code_key;
 drop index if exists plants_program_idx;
 
+/* The POLICIES have to go before the column does. Both read `program_id`, and Postgres refuses to
+   drop a column anything still depends on:
+
+     cannot drop column program_id of table plants because other objects depend on it
+     policy plants_select on table plants depends on column program_id of table plants
+
+   Dropped here and recreated at the bottom in their new, programme-free form. The gap between is
+   not an exposure: `supabase db push` runs each migration in one transaction, so the table is never
+   visible without a policy — and RLS stays enabled throughout, which denies by default anyway. */
+drop policy if exists plants_select on plants;
+drop policy if exists plants_write on plants;
+
 /* Any duplicate that only existed because two programmes each had their own 1010 has to go before
    the global index can be built. The survivor is the oldest — it is the one anything already
    points at — and its assignments absorb the others' so no subproject silently loses a plant. */
@@ -74,11 +86,9 @@ create unique index if not exists plants_code_key
    Writing: any program admin. Not narrower, because there is no longer a programme to check the
    plant against — the check has to be about the person, not about the row. */
 
-drop policy if exists plants_select on plants;
 create policy plants_select on plants for select
   using (exists (select 1 from memberships m where m.user_id = auth.uid()));
 
-drop policy if exists plants_write on plants;
 create policy plants_write on plants for all
   using (exists (
     select 1 from memberships m where m.user_id = auth.uid() and m.role_id = 'program_admin'
