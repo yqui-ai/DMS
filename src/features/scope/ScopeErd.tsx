@@ -26,6 +26,7 @@ export function ScopeErd() {
   const [trail, setTrail] = useState<MigrationObject[]>([]);
 
   const inScope = useMemo(() => subprojectObjects.filter((w) => w.inScope), [subprojectObjects]);
+  const inScopeIds = useMemo(() => new Set(inScope.map((w) => w.migrationObjectId)), [inScope]);
   const savedOrder = useMemo(
     () => [...inScope]
       .sort((a, b) => (a.loadSeq ?? Number.MAX_SAFE_INTEGER) - (b.loadSeq ?? Number.MAX_SAFE_INTEGER))
@@ -76,6 +77,9 @@ export function ScopeErd() {
         }}
         // Reading the object to understand the diagram, not authoring a document from it.
         allowGenerateFmd={false}
+        // Consistent with the graph it was opened from: that graph draws the scope, so the
+        // per-object diagram inside the dialog must not silently widen to the whole catalogue.
+        scopeObjectIds={inScopeIds}
       />
     </>
   );

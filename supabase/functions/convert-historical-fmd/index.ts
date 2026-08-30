@@ -16,9 +16,31 @@
 // practice, and there's no good fallback for "the AI call just didn't work" on something that
 // should have a definite right answer.
 
+// Set ALLOWED_ORIGIN (`supabase secrets set ALLOWED_ORIGIN=https://your-app`) to stop other sites
+// driving this function from a signed-in user's browser. Defaults to '*' so an unconfigured
+// deployment keeps working rather than failing closed on a header nobody knew to set.
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN') ?? '*';
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Vary': 'Origin',
+};
+
+/** Every call here spends money at Anthropic, and nothing upstream bounds the request.
+ *
+ * Supabase verifies the JWT before this function runs, so a caller is at least *authenticated* —
+ * but that is every signed-up user, and an authenticated caller could previously post a hundred
+ * thousand rows and have them all rendered into one prompt. These caps are the difference between
+ * a bad request and an unbounded bill. They sit well above what the client actually sends
+ * (mapping-review batches per structure, rules per conversion batch), so they bound abuse without
+ * bounding use. */
+const MAX_BODY_BYTES = 1_000_000;
+const MAX_ROWS: Record<string, number> = {
+  'rules': 200,
+  'mapping-review': 200,
+  'change-summary': 200,
+  'golden-sync': 400,
 };
 
 interface RuleRequestRow { id: string; srcField?: string; srcFieldDesc?: string; tgtField?: string; tgtFieldDesc?: string; mappingType?: string }
@@ -254,7 +276,14 @@ async function callClaude(apiKey: string, prompt: string, maxTokens: number): Pr
       messages: [{ role: 'user', content: prompt }],
     }),
   });
-  if (!res.ok) throw new Error(`Anthropic API error (${res.status}): ${await res.text()}`);
+  if (!res.ok) {
+    // Status only. The upstream body is logged for whoever operates this function, but it is not
+    // returned to the browser: provider error payloads echo request context back, and the client
+    // renders `body.error` verbatim. The status is what a user can act on ("rate limited",
+    // "credit exhausted"); the rest is operator detail.
+    console.error(`Anthropic API error (${res.status}): ${await res.text()}`);
+    throw new Error(`The AI provider returned an error (HTTP ${res.status}). Please try again; if it persists, check the function logs.`);
+  }
   const json = await res.json();
   // `content[0]` isn't reliably the text block — a leading block of another type (e.g. thinking)
   // silently made this always return '' (json.content?.[0]?.text was undefined every time), which
@@ -276,7 +305,34 @@ Deno.serve(async (req: Request) => {
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
     if (!apiKey) return new Response(JSON.stringify({ error: 'ANTHROPIC_API_KEY is not configured for this Edge Function.' }), { status: 500, headers: jsonHeaders });
 
-    const body: RequestBody = await req.json();
+    // Read as text first so the size can be checked before it is parsed — `req.json()` on a
+    // 200 MB body has already done the damage by the time you can look at the result.
+    const raw = await req.text();
+    if (raw.length > MAX_BODY_BYTES) {
+      return new Response(
+        JSON.stringify({ error: `Request body is too large (${raw.length} bytes; the limit is ${MAX_BODY_BYTES}). Send it in smaller batches.` }),
+        { status: 413, headers: jsonHeaders },
+      );
+    }
+
+    let body: RequestBody;
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      return new Response(JSON.stringify({ error: 'Request body is not valid JSON.' }), { status: 400, headers: jsonHeaders });
+    }
+
+    const cap = MAX_ROWS[(body as { task?: string }).task ?? ''];
+    const sent = (body as { rows?: unknown[]; entries?: unknown[]; removed?: unknown[]; added?: unknown[] });
+    const count = (sent.rows?.length ?? 0) + (sent.entries?.length ?? 0)
+      + (sent.removed?.length ?? 0) + (sent.added?.length ?? 0);
+    if (cap && count > cap) {
+      return new Response(
+        JSON.stringify({ error: `Too many rows for one call (${count}; the limit is ${cap}). Send it in smaller batches.` }),
+        { status: 413, headers: jsonHeaders },
+      );
+    }
+
     let prompt: string;
     let maxTokens: number;
     if (body.task === 'rules') {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/Button';
-import { ArrowDownToLine, ArrowUpFromLine, ChevronDown, ChevronRight, ExternalLink, Files, Key, Table2 } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpFromLine, ChevronDown, ChevronRight, ExternalLink, EyeOff, Files, Filter, Key, Table2 } from 'lucide-react';
 import clsx from 'clsx';
 import { Dialog } from '../../components/Dialog';
 import { Tag } from '../../components/Tag';
@@ -38,10 +38,20 @@ export interface LibraryObjectDialogProps {
    * irreversible side trip out of the step someone is in the middle of. Defaults to true so
    * the Library keeps it without opting in. */
   allowGenerateFmd?: boolean;
+  /** Migration object ids that are in the current subproject's scope. When supplied, the dependency
+   * diagram is restricted to them.
+   *
+   * The catalogue's dependency graph is program-wide: `object_dependencies` says what an object
+   * needs in SAP, not what this subproject agreed to migrate. Opened from Scope, that meant a
+   * twelve-object scope could produce a diagram full of objects nobody had chosen — indistinguishable
+   * from objects that WERE in scope, so the picture quietly overstated the work. Undefined (the
+   * Library's own use) means "no scope to restrict to", and the full catalogue graph is correct
+   * there. */
+  scopeObjectIds?: ReadonlySet<string>;
 }
 
 export function LibraryObjectDialog({
-  object, onClose, onSelectObject, onBack, allowGenerateFmd = true,
+  object, onClose, onSelectObject, onBack, allowGenerateFmd = true, scopeObjectIds,
 }: LibraryObjectDialogProps) {
   const [tab, setTab] = useState<Tab>('details');
   const [history, setHistory] = useState<string[]>([]);
@@ -93,7 +103,7 @@ export function LibraryObjectDialog({
             )}
           </div>
           <div className="flex-1 min-h-0 overflow-auto">
-            {tab === 'details' && <DetailsTab object={object} onSelectObject={navigateTo} />}
+            {tab === 'details' && <DetailsTab object={object} onSelectObject={navigateTo} scopeObjectIds={scopeObjectIds} />}
             {tab === 'structure' && <StructureTab object={object} />}
           </div>
           {allowGenerateFmd && (
@@ -105,8 +115,19 @@ export function LibraryObjectDialog({
   );
 }
 
-function DetailsTab({ object, onSelectObject }: { object: MigrationObject; onSelectObject: (objectId: string) => void }) {
-  const { data: dependencies = [], isLoading: depsLoading } = useObjectDependencies(object.id);
+function DetailsTab({ object, onSelectObject, scopeObjectIds }: {
+  object: MigrationObject;
+  onSelectObject: (objectId: string) => void;
+  scopeObjectIds?: ReadonlySet<string>;
+}) {
+  const { data: allDependencies = [], isLoading: depsLoading } = useObjectDependencies(object.id);
+
+  /** The catalogue's prerequisites, narrowed to what this subproject actually migrates. */
+  const dependencies = useMemo(
+    () => (scopeObjectIds ? allDependencies.filter((d) => scopeObjectIds.has(d.requiresObjectId)) : allDependencies),
+    [allDependencies, scopeObjectIds],
+  );
+  const hidden = allDependencies.length - dependencies.length;
   const { data: standardFmdLinks = [] } = useStandardFmdLinks();
   const fmdLink = standardFmdLinks.find((l) => l.migrationObjectId === object.id);
   const navigate = useNavigate();
@@ -170,10 +191,42 @@ function DetailsTab({ object, onSelectObject }: { object: MigrationObject; onSel
       </div>
 
       <div className="flex-1 min-w-0 flex flex-col">
-        <div className="text-2xs font-semibold uppercase tracking-[.04em] text-muted mb-2 shrink-0">Dependency Diagram</div>
+        <div className="flex items-center gap-2 mb-2 shrink-0">
+          <span className="text-2xs font-semibold uppercase tracking-[.04em] text-muted">Dependency Diagram</span>
+          {/* Says what you are looking at even when nothing was filtered out. "All eight
+              prerequisites happen to be in scope" and "this diagram is the whole catalogue" look
+              identical otherwise, and only one of them stays true as the scope changes. */}
+          {scopeObjectIds && (
+            <Tag variant="accent" size="sm" title="Restricted to objects in this subproject's scope">
+              <Filter size={10} /> In scope only
+            </Tag>
+          )}
+        </div>
+        {hidden > 0 && (
+          <div className="flex items-start gap-2 mb-2 shrink-0 rounded border border-amber-ink/25 bg-amber-bg px-2.5 py-2 text-2xs text-amber-ink">
+            <EyeOff size={13} className="shrink-0 mt-px" />
+            <span>
+              <strong className="font-semibold">
+                {hidden} prerequisite{hidden === 1 ? '' : 's'} hidden.
+              </strong>{' '}
+              {object.objectId} depends on {allDependencies.length} object{allDependencies.length === 1 ? '' : 's'} in
+              the SAP catalogue, but only {dependencies.length} {dependencies.length === 1 ? 'is' : 'are'} in this
+              subproject&apos;s scope. Open it from Library &rsaquo; Migration Object to see the full graph.
+            </span>
+          </div>
+        )}
         <div className="flex-1 min-h-0">
           {depsLoading ? (
             <p className="text-sm2 text-muted">Loading…</p>
+          ) : dependencies.length === 0 && allDependencies.length > 0 ? (
+            /* Not the same as "no dependencies", and the diagram's own empty state says exactly
+               that — which would be a lie here. This object has prerequisites; none of them were
+               brought into scope. */
+            <EmptyState
+              icon={<EyeOff size={22} />}
+              title="No prerequisites in scope"
+              description={`${object.objectId} depends on ${allDependencies.length} catalogue object${allDependencies.length === 1 ? '' : 's'}, none of which this subproject migrates. Add one to the scope to see it here.`}
+            />
           ) : (
             <DependencyDiagram
               key={object.id}

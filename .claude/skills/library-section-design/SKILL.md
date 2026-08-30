@@ -271,8 +271,13 @@ anything editable here.
   | `fmds` | `fmds-all`, `fmds-library`, `golden-where-used`, `standard-fmd-links`, `fmd-versions/<id>`, `fmd-version-latest/<id>` |
   | `rules` | `rules/<subprojectId>`, `rules-all`, `rules-library` |
   | `xref_tables` | `xref-tables/<subprojectId>`, `xref-tables-library`, `golden-xref-summary` |
+  | `subproject_objects` | `subproject-objects/<subprojectId>`, `scope-object-owners`, `fmd-usage`, `object-scope-usage/<migrationObjectId>`, plus the scope-graph keys |
 
-  Missing `rules-library` was a real bug (new/edited rules didn't appear in the catalogue).
+  Missing `rules-library` was a real bug (new/edited rules didn't appear in the catalogue). So was
+  missing `xref-tables` on Golden XREF writes (present in the Library, absent from Rules > Value
+  Mapping), and missing `scope-object-owners` on `setAssignee` — that one reached the FMD viewer:
+  `canPublish` reads `isOwner` from that cache, so assigning yourself an object's consultant left
+  Publish disabled until the staleTime expired.
 
 ## Known inconsistencies — deliberate or not yet addressed
 
@@ -457,6 +462,21 @@ view on the first keystroke, when the render swapped to the draft.
 The FMD list shows this as two derived fields: `activeVersion` (newest published — what everyone
 else should treat as current) and `hasDraft` (uncommitted changes, or a version never published).
 Both can be true at once; don't collapse them into one "version" column.
+
+### FMD status badges live in `src/components/FmdStatusTags.tsx`
+
+Version, Draft, Outdated and New / New Version are read in two places — Library > Field Mapping and
+Scope > Scope Register — so the **rules** are shared and the **layout** is not. Import the
+predicates (`isNewFmd`, `isNewVersion`, `isFmdOutdated`, `fmdOutdatedReason`, `fmdStatusRank`)
+rather than re-deriving them; Scope Register additionally renders the whole set through
+`<FmdStatusTags>` in its own **Status** column.
+
+This existed as two divergent copies: Scope showed only version + Draft while Library showed the
+full set, so the same FMD reported different things depending on which list you read it in. Adding
+a flag means adding it in one file, and both lists get it.
+
+`fmdStatusRank` orders by urgency (outdated → drafting → recent → clean), which is what a Status
+column should sort by — alphabetical on a badge set is meaningless.
 
 ### Locked Golden fields
 

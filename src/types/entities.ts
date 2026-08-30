@@ -10,7 +10,7 @@ export type RoleId =
   | 'etl_developer' | 'cab' | 'end_user' | 'guest';
 
 export type ScreenKey =
-  | 'myWork' | 'programSettings' | 'programAdmin' | 'preparation' | 'rules' | 'referenceData'
+  | 'myWork' | 'programAdmin' | 'preparation' | 'rules' | 'referenceData'
   | 'dashboard' | 'migration' | 'quality' | 'cutover' | 'promotions'
   | 'jobMonitor' | 'catalogObjects' | 'catalogFmds' | 'catalogRules' | 'catalogXref' | 'connections';
 

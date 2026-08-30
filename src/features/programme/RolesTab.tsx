@@ -9,7 +9,7 @@ const SCREEN_GROUPS: { title: string; screens: { key: ScreenKey; label: string }
     title: 'General',
     screens: [
       { key: 'myWork', label: 'My Work' }, { key: 'dashboard', label: 'Dashboard' },
-      { key: 'programSettings', label: 'Program Settings' }, { key: 'programAdmin', label: 'Program Admin' },
+      { key: 'programAdmin', label: 'Program Admin' },
     ],
   },
   {

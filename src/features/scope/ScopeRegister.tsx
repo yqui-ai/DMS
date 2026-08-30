@@ -17,6 +17,7 @@ import { buildScopeGraph } from '../../lib/scopeGraph';
 import { useAssignablePeople } from '../../lib/queries/people';
 import { useScopeCandidates } from '../../lib/queries/scopeCandidates';
 import { useLibraryFmds, type LibraryFmdRow } from '../../lib/queries/fmds';
+import { FmdStatusTags, fmdStatusRank } from '../../components/FmdStatusTags';
 import { libraryPath } from '../../lib/libraryNav';
 import { GenerateFmdDialog } from '../library/GenerateFmdDialog';
 import { AssignFmdDialog } from './AssignFmdDialog';
@@ -66,6 +67,10 @@ export function ScopeRegister() {
 
   const inScope = useMemo(() => subprojectObjects.filter((w) => w.inScope), [subprojectObjects]);
   const byId = useMemo(() => new Map(objects.map((o) => [o.id, o])), [objects]);
+  /** What this subproject migrates, as a lookup — used to restrict the object dialog's dependency
+   * diagram to the scope rather than the whole catalogue. Memoised because it is a prop: a fresh
+   * Set every render would re-run the filter inside the dialog on every keystroke in this screen. */
+  const inScopeIds = useMemo(() => new Set(inScope.map((w) => w.migrationObjectId)), [inScope]);
 
   // The ENRICHED row: this list shows the live version and draft state, which the narrow
   // `useAllFmds` mapper does not carry. See the library-section-design skill.
@@ -175,7 +180,7 @@ export function ScopeRegister() {
       },
     },
     {
-      key: 'objectId', header: 'Object ID', width: 220,
+      key: 'objectId', header: 'Object ID', width: 190,
       sortValue: ({ object }) => object.objectId,
       render: ({ object }) => {
         const source = sourceIdentOf.get(object.id);
@@ -202,7 +207,7 @@ export function ScopeRegister() {
       render: ({ object }) => object.component ?? '—',
     },
     {
-      key: 'consultant', header: 'Consultant', width: 190,
+      key: 'consultant', header: 'Consultant', width: 170,
       sortValue: ({ scope }) => scope.consultant,
       render: ({ scope, object }) => (
         editing === object.id ? (
@@ -217,7 +222,7 @@ export function ScopeRegister() {
       ),
     },
     {
-      key: 'etl', header: 'ETL Developer', width: 190,
+      key: 'etl', header: 'ETL Developer', width: 170,
       sortValue: ({ scope }) => scope.etlDeveloper,
       render: ({ scope, object }) => (
         editing === object.id ? (
@@ -235,7 +240,7 @@ export function ScopeRegister() {
       /* Merged in from the old FMD Mapping tab. They listed the same twelve objects with two
          different subsets of their columns, so answering "who owns this and does it have a mapping"
          meant switching tabs and re-finding the row. One list, one row per object. */
-      key: 'fmd', header: 'Field Mapping', width: 300,
+      key: 'fmd', header: 'Field Mapping', width: 250,
       sortValue: ({ fmd }) => fmd?.name ?? '',
       // The column reports; it does not act. The assign/change action is an icon in the row's
       // action cluster, so eleven unmapped objects no longer put eleven bordered buttons down the
@@ -251,11 +256,22 @@ export function ScopeRegister() {
           >
             {fmd.name}
           </button>
-          <FmdStatus fmd={fmd} />
         </span>
       ) : (
         <span className="text-muted">Not assigned</span>
       )),
+    },
+    {
+      /* Status is its own column rather than tags trailing the name. Sharing a cell, the badges
+         were whatever width was left after a 24-character monospace filename and truncated first —
+         which loses exactly the part you were scanning for. Given a column they line up down the
+         list, so "which of these needs work" is one glance instead of twelve.
+         Sorted by urgency, not alphabetically: see fmdStatusRank. */
+      key: 'fmdStatus', header: 'Status', width: 190,
+      sortValue: ({ fmd }) => fmdStatusRank(fmd),
+      render: ({ fmd }) => (fmd
+        ? <FmdStatusTags fmd={fmd} />
+        : <span className="text-muted">—</span>),
     },
     {
       key: 'actions', header: '', width: 104,
@@ -395,6 +411,10 @@ export function ScopeRegister() {
         }}
         // Reading the object to check what was agreed, not authoring a document from it.
         allowGenerateFmd={false}
+        // The dependency diagram answers "what does this need" against the SAP catalogue, which is
+        // program-wide. Here the question is narrower — what does this need *that we are actually
+        // migrating* — so the graph is restricted to the scope and says so on its face.
+        scopeObjectIds={inScopeIds}
       />
     </div>
   );
@@ -405,30 +425,6 @@ function Assignee({ name }: { name?: string }) {
   return <span className="truncate">{name}</span>;
 }
 
-/** Live, Draft or Unpublished — the three states of an FMD, beside its name.
- *
- * "Which version is everyone else seeing" and "is someone mid-edit" are the two things you need
- * before opening a mapping, and neither was on this list: the name alone says a document exists,
- * not whether it is finished. Both can be true at once — an FMD can have a published version AND
- * unreleased edits on top — so these are separate tags rather than one status word.
- *
- * `activeVersion` is the newest PUBLISHED version. Its absence is not "no version"; it means the
- * document has never been released, which is a different and more important thing to say. */
-function FmdStatus({ fmd }: { fmd: LibraryFmdRow }) {
-  return (
-    <span className="flex items-center gap-1 shrink-0">
-      {fmd.activeVersion ? (
-        <Tag variant="accent" size="sm" title={`Version ${fmd.activeVersion} is live`}>
-          {fmd.activeVersion}
-        </Tag>
-      ) : (
-        <Tag variant="neutral" size="sm" title="Generated but never published — only editors see it">
-          Unpublished
-        </Tag>
-      )}
-      {fmd.hasDraft && (
-        <Tag variant="warn" size="sm" title="Unreleased edits are waiting in a draft">Draft</Tag>
-      )}
-    </span>
-  );
-}
+/* The FMD status badges moved to `components/FmdStatusTags` — this screen carried a cut-down copy
+   (version + Draft) while Library carried the full set, so the same FMD reported different things
+   depending on which list you were reading it in. One component now, one definition of each flag. */

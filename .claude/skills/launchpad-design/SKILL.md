@@ -22,6 +22,56 @@ area you choose to work in. It lives in the app switcher, gated to `APPROVER_ROL
 announced by a banner on Migration Project when something is waiting on you — an approver who is
 never told is an approval that never happens.
 
+## Migration Project's action row
+
+Everything programme-wide hangs off this screen rather than the area switcher, because these are
+things you do *with* the hierarchy: **Library · Plant Maintenance · Archive · Change Log ·
+Approvals** (role-gated, carries a count) · **Reset test data** (temporary) · **New program**.
+
+**Migration Project is the only place the hierarchy is edited.** `ProgramSettingsPage` and its
+`programSettings` ScreenKey are gone: its Configure tab was a second editor for the same program →
+project → subproject → cycle tree, and two editors for one hierarchy is one too many. Its three
+other tabs were not duplicated anywhere, so **Archive Approvers, Timelines and Internal moved into
+Program Admin** rather than being deleted with the screen around them. Do not reintroduce a
+settings screen that edits the hierarchy.
+
+**Reset test data** (`ResetTestDataDialog`, `src/lib/queries/testReset.ts`) is **temporary — delete
+both before this app is used for real.** It empties one programme's subproject data (scope, FMDs,
+rules, XREF) so a test run can be walked again. Three things keep it safe enough to live in the app
+meanwhile: it is scoped to one programme, it counts what it will remove before asking, and it
+requires the programme code typed out. It cannot reach the Golden FMD, the Standard FMDs or the
+Golden XREF — those are program-wide rows (`subproject_id is null`) and the delete is
+subproject-scoped, so the templates are protected by construction rather than by a filter someone
+could change.
+
+**No screen reached from here carries its own back button.** The breadcrumb already goes to
+Migration Project; a second way back that only one screen has reads as a page-specific control
+rather than navigation. (Change Log had one; it was removed.) Centre these screens the same way —
+`max-w-[1120px] mx-auto w-full` — including the Library tile page.
+
+**Plants (`/plants`, `programme/PlantsPage.tsx`) are programme master data**, so the list is
+maintained here and never inside a subproject — two waves covering plant 1010 must be talking about
+the same 1010. The form asks four things: **code, name, city, country**. It does *not* ask for the
+programme (taken from the filter, or the only one you can reach) and there is no description —
+`plants.description` was dropped in 0050 rather than left as a column nothing writes.
+
+***Assigning* plants is a field inside the create/edit subproject form** (`PlantPicker` in
+`HierarchyDialog`), not a separate action. It was a "Plants covered" menu item on the subproject
+tile for exactly one iteration: which sites a wave covers is part of what the wave *is*, so it is
+decided when the wave is created — a second dialog let a subproject exist with no site attached and
+nothing ever asking for one. `HierarchyTarget.programId` carries which programme's plants to offer.
+
+Creating a subproject reads its own row back (`.select('id').single()`, subprojects only) so the
+plant links can be written in the same save. That is safe *only* at this level: 0039 replaced the
+subprojects SELECT policy with `can_see_subproject(id, project_id)` expressly so `INSERT …
+RETURNING` works. Do not copy the `.select()` to the other levels.
+
+`subproject_plants` is many-to-many (migration 0049). **A project's plants are DERIVED as the union
+of its subprojects'** and rendered read-only on the project header — never stored at the project
+level, which would be the same two-sources-of-truth trap as `fmds.owner` (dropped in 0030). Plants
+share scope and FMDs through their subproject; there is deliberately no plant→FMD link, because
+`subproject_objects.fmd_id` already carries that and a parallel one would have to be kept in step.
+
 `/library` is likewise not a tile: it is reached from a **Library** button on Migration Project, and
 from the switcher. The four catalogues also stay as direct sidebar entries, because someone already
 working wants the catalogue, not a page describing it.

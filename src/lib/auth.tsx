@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 
@@ -24,12 +24,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  const value: AuthState = {
+  const signOut = useCallback(async () => { await supabase.auth.signOut(); }, []);
+
+  /** Memoised because this is the value of a context read near the root.
+   *
+   * A fresh object every render makes every `useAuth()` consumer re-render whenever this provider
+   * does — and it sits above the whole app, so that is the entire tree. The session only actually
+   * changes on sign-in, sign-out and token refresh; without this the identity of `value` changed
+   * far more often than the session behind it did. */
+  const value = useMemo<AuthState>(() => ({
     user: session?.user ?? null,
     session,
     loading,
-    signOut: async () => { await supabase.auth.signOut(); },
-  };
+    signOut,
+  }), [session, loading, signOut]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowLeft, FilePlus2, FileX2, Pencil, Sparkles } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { FilePlus2, FileX2, Pencil, Sparkles } from 'lucide-react';
 import clsx from 'clsx';
 import { PageHeader } from '../../components/PageHeader';
 import { Button } from '../../components/Button';
@@ -13,7 +12,8 @@ import { EmptyState } from '../../components/EmptyState';
 import { useToast } from '../../components/Toast';
 import { fmtDateTime } from '../../lib/format';
 import {
-  entityLabel, formatValue, summariseChanges, useChangeLog, useEntityHistory,
+  describeChange, entityLabel, fieldLabel, formatValue, isDocumentField, summariseChanges,
+  useChangeLog, useEntityHistory,
   type ChangeEntry, type ChangeOp,
 } from '../../lib/queries/changeLog';
 
@@ -38,7 +38,6 @@ const OP_META: Record<ChangeOp, { label: string; icon: typeof Pencil; className:
  * of what is on screen and nothing more — it is an enrichment, and the page is fully usable when it
  * is unavailable. */
 export function ChangeLogPage() {
-  const navigate = useNavigate();
   const toast = useToast();
   const { data: entries = [], isLoading } = useChangeLog({ limit: 300 });
 
@@ -97,10 +96,9 @@ export function ChangeLogPage() {
 
   return (
     <div className="max-w-[1120px] mx-auto w-full">
-      <Button variant="quiet" size="sm" className="mb-2" onClick={() => navigate('/projects')}>
-        <ArrowLeft size={14} /> Migration Project
-      </Button>
-
+      {/* No back button. The breadcrumb above already goes to Migration Project, and no other
+          screen reached the same way carries one — a second way back that only one screen has
+          reads as a control specific to this page rather than as navigation. */}
       <PageHeader
         title="Change Log"
         description="Every change recorded across the system, newest first. Open one to see exactly which fields moved."
@@ -165,7 +163,7 @@ function Row({ entry: e, aiSummary, onOpen }: {
       <Icon size={14} className={clsx('shrink-0', meta.className)} />
       <Tag variant="neutral" size="sm" className="shrink-0 w-[128px] justify-center">{entityLabel(e.entity)}</Tag>
       <span className="min-w-0 flex-1">
-        <span className="block text-sm2 text-text truncate">{aiSummary ?? e.summary ?? meta.label}</span>
+        <span className="block text-sm2 text-text truncate">{aiSummary ?? describeChange(e)}</span>
         {/* When AI has rewritten the line, the recorded sentence stays visible underneath. The log
             is an audit trail; a generated sentence must never be the only version of it on screen. */}
         {aiSummary && e.summary && (
@@ -195,14 +193,13 @@ function Row({ entry: e, aiSummary, onOpen }: {
 function ChangeDetailDialog({ entry, onClose }: { entry: ChangeEntry | null; onClose: () => void }) {
   const { data: history = [] } = useEntityHistory(entry?.entity, entry?.entityId);
   if (!entry) return null;
-  const meta = OP_META[entry.op];
 
   return (
     <Dialog
       open
       onClose={onClose}
       size="lg"
-      title={entry.summary ?? meta.label}
+      title={describeChange(entry)}
       subtitle={`${entityLabel(entry.entity)} · ${entry.actor} · ${fmtDateTime(entry.at)}`}
       footer={<Button variant="secondary" onClick={onClose}>Close</Button>}
     >
@@ -220,13 +217,24 @@ function ChangeDetailDialog({ entry, onClose }: { entry: ChangeEntry | null; onC
             <div className="rounded bg-surface shadow-[inset_0_0_0_1px_var(--line)] divide-y divide-line-soft overflow-hidden">
               {entry.fields.map((f) => (
                 <div key={f.field} className="flex items-start gap-3 px-3 py-2">
-                  <span className="w-[190px] shrink-0 text-2xs font-mono font-semibold text-text pt-0.5">
-                    {f.field}
+                  <span className="w-[190px] shrink-0 text-2xs font-semibold text-text pt-0.5">
+                    {fieldLabel(f.field)}
                   </span>
-                  <span className="min-w-0 flex-1 flex flex-col gap-0.5 text-sm2">
-                    <span className="text-muted line-through decoration-1 break-words">{formatValue(f.from)}</span>
-                    <span className="text-text font-semibold break-words">{formatValue(f.to)}</span>
-                  </span>
+                  {/* A JSONB column holds a whole document — a draft's pending edits, an FMD's
+                      sheets. Printing 400 characters of it buries every readable entry around it,
+                      so it reports that it moved and sends you to the record's own screen, which is
+                      built to show it. See the change-log-writing skill. */}
+                  {isDocumentField(f.field) ? (
+                    <span className="min-w-0 flex-1 text-sm2 text-muted">
+                      Changed. Open the record to see the current contents — the log records that it
+                      moved, not the document itself.
+                    </span>
+                  ) : (
+                    <span className="min-w-0 flex-1 flex flex-col gap-0.5 text-sm2">
+                      <span className="text-muted line-through decoration-1 break-words">{formatValue(f.from)}</span>
+                      <span className="text-text font-semibold break-words">{formatValue(f.to)}</span>
+                    </span>
+                  )}
                 </div>
               ))}
             </div>

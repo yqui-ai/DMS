@@ -8,6 +8,18 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <title>DMS — Data Migration Solution</title>
+    <script>
+      /* Theme before first paint. This ran in a useEffect in providers.tsx, which is after React
+         mounts — so a dark-theme user got a white flash on every load and every hard refresh.
+         Reading localStorage is synchronous and this is the only way to have the answer in time.
+         Wrapped because storage access throws outright in some privacy modes, and an unthemed app
+         is a far better failure than a blank one. */
+      try {
+        if (localStorage.getItem('dms-theme') === 'dark') document.documentElement.classList.add('dark');
+        var brand = localStorage.getItem('dms-brand');
+        if (brand && brand !== 'default') document.documentElement.dataset.brand = brand;
+      } catch (e) { /* storage unavailable — default theme */ }
+    </script>
   </head>
   <body>
     <div id="root"></div>
