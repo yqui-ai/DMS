@@ -141,10 +141,23 @@ export async function previewResetEverything(): Promise<ResetCounts> {
     countAll('plants'), countAll('archive_requests'), countAll('change_log'),
   ]);
 
-  const { data: catalogueOwners, error } = await supabase
-    .from('migration_objects').select('program_id').limit(1000);
-  if (error) throw describeError('migration_objects', error);
-  const kept = new Set((catalogueOwners ?? []).map((r: any) => r.program_id as string)).size;
+  /* How many programmes survive as catalogue shells.
+   *
+   * Counted per programme rather than by reading a page of migration_objects and de-duplicating.
+   * The old form was `.select('program_id').limit(1000)`, which silently under-counted the moment
+   * the catalogue grew past the page size — and it is 442 rows today, so it would have kept
+   * looking right until it did not. */
+  const { data: programRows, error } = await supabase.from('programs').select('id');
+  if (error) throw describeError('programs', error);
+  const owns = await Promise.all((programRows ?? []).map(async (row: any) => {
+    const { count, error: cErr } = await supabase
+      .from('migration_objects')
+      .select('*', { count: 'exact', head: true })
+      .eq('program_id', row.id);
+    if (cErr) throw describeError('migration_objects', cErr);
+    return (count ?? 0) > 0;
+  }));
+  const kept = owns.filter(Boolean).length;
 
   return {
     ...EMPTY_COUNTS,

@@ -76,7 +76,7 @@ export function useProjects(programId?: string) {
     queryKey: ['projects', programId],
     enabled: !!programId,
     queryFn: async (): Promise<Project[]> => {
-      const { data, error } = await supabase.from('projects').select('*').eq('program_id', programId!).order('seq');
+      const { data, error } = await supabase.from('projects').select('*').eq('program_id', programId!).order('seq').order('code');
       if (error) throw error;
       return (data ?? []).map(toProject);
     },
@@ -89,7 +89,7 @@ export function useProjectsForPrograms(programIds: string[]) {
     queryKey: ['projects-multi', programIds],
     enabled: programIds.length > 0,
     queryFn: async (): Promise<Project[]> => {
-      const { data, error } = await supabase.from('projects').select('*').in('program_id', programIds).order('seq');
+      const { data, error } = await supabase.from('projects').select('*').in('program_id', programIds).order('seq').order('code');
       if (error) throw error;
       return (data ?? []).map(toProject);
     },
@@ -113,7 +113,7 @@ export function useSubprojects(projectIds: string[]) {
     queryKey: ['subprojects', projectIds],
     enabled: projectIds.length > 0,
     queryFn: async (): Promise<Subproject[]> => {
-      const { data, error } = await supabase.from('subprojects').select('*').in('project_id', projectIds).order('seq');
+      const { data, error } = await supabase.from('subprojects').select('*').in('project_id', projectIds).order('seq').order('code');
       if (error) throw error;
       return (data ?? []).map(toSubproject);
     },
@@ -137,7 +137,7 @@ export function useCyclesForSubprojects(subprojectIds: string[]) {
     queryKey: ['cycles-multi', subprojectIds],
     enabled: subprojectIds.length > 0,
     queryFn: async (): Promise<Cycle[]> => {
-      const { data, error } = await supabase.from('cycles').select('*').in('subproject_id', subprojectIds).order('seq');
+      const { data, error } = await supabase.from('cycles').select('*').in('subproject_id', subprojectIds).order('seq').order('code');
       if (error) throw error;
       return (data ?? []).map(toCycle);
     },

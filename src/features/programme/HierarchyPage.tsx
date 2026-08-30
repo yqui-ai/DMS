@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Archive, ArrowRight, Eraser, Factory, History, CheckCircle2, Clock, Library as LibraryIcon, Package, Pencil, Plus, ShieldCheck, Trash2, Undo2 } from 'lucide-react';
+import { Archive, ArrowRight, Eraser, Factory, History, CheckCircle2, Clock, Library as LibraryIcon, Package, Pencil, Plus, ShieldCheck, Trash2, Undo2, X } from 'lucide-react';
 import clsx from 'clsx';
 import { PageHeader } from '../../components/PageHeader';
 import { Button } from '../../components/Button';
@@ -688,11 +688,42 @@ function SubprojectTile({ subproject: sp, programId, canEdit, statuses, plantCod
           <div className="flex items-baseline gap-2">
             <dt className="text-muted w-[72px] shrink-0">Cycles</dt>
             <dd className="flex flex-wrap gap-1 min-w-0">
+              {/* Each cycle is editable and removable. It used to be a plain chip with no
+                  affordance at all, and `dms_delete_empty` rejected the level — so a cycle added by
+                  mistake was permanent, and since cycles are the FIRST thing blocking a subproject
+                  delete, that mistake made the subproject undeletable too. A closed trap. */}
               {sp.cycles.length === 0
                 ? <span className="text-muted">None yet</span>
                 : sp.cycles.map((c) => (
-                  <span key={c.id} className="font-mono text-2xs bg-surface-2 text-text rounded-xs px-1.5 py-px">
-                    {c.code ?? c.name}
+                  <span
+                    key={c.id}
+                    className="group/cycle inline-flex items-center gap-0.5 font-mono text-2xs bg-surface-2 text-text rounded-xs pl-1.5 pr-0.5 py-px"
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
+                    {canEdit ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => onDialog({ level: 'CYCL', record: c })}
+                          title={`Edit ${c.code ?? c.name}`}
+                          className="hover:text-blue hover:underline"
+                        >
+                          {c.code ?? c.name}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDelete({ level: 'CYCL', id: c.id, label: c.code ?? c.name, kind: 'cycle' })}
+                          title={`Delete ${c.code ?? c.name}`}
+                          aria-label={`Delete ${c.code ?? c.name}`}
+                          className="w-3.5 h-3.5 grid place-items-center rounded-xs text-muted opacity-0 group-hover/cycle:opacity-100 focus-visible:opacity-100 hover:text-red transition-opacity"
+                        >
+                          <X size={10} />
+                        </button>
+                      </>
+                    ) : (
+                      <span className="pr-1">{c.code ?? c.name}</span>
+                    )}
                   </span>
                 ))}
             </dd>
