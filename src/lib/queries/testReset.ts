@@ -124,42 +124,30 @@ export function useTestDataReset() {
      * cannot administer, you cannot reset. The change-log trigger fires on cascaded deletes as well
      * as direct ones, so a reset is itself fully auditable. */
     async resetProgram(programId: string, mode: ResetMode): Promise<ResetCounts> {
-      const before = await previewReset(programId);
-      const projectIds = await idsOf('projects', 'program_id', [programId]);
-      if (projectIds.length === 0) return before;
-
-      if (mode === 'hierarchy') {
-        // One statement. `subprojects.project_id`, `cycles.subproject_id` and every
-        // subproject-scoped table all declare `on delete cascade`, so removing the projects takes
-        // the whole tree with it. Deleting each level by hand first would only double the
-        // change-log entries for one event.
-        const { error } = await supabase.from('projects').delete().in('id', projectIds);
-        if (error) throw describeError('projects', error);
-      } else {
-        const subprojectIds = await idsOf('subprojects', 'project_id', projectIds);
-        if (subprojectIds.length === 0) return before;
-
-        const wipe = async (table: string) => {
-          const { error } = await supabase.from(table).delete().in('subproject_id', subprojectIds);
-          if (error) throw describeError(table, error);
-        };
-        // Scope first, then the documents it points at. `subproject_objects.fmd_id` is `on delete
-        // set null` (0045) so the order is belt-and-braces rather than load-bearing — but a
-        // half-finished reset leaving assignments pointed at deleted documents would be worse than
-        // either outcome.
-        await wipe('scope_waivers');
-        await wipe('scope_candidates');
-        await wipe('subproject_objects');
-        // fmd_versions and fmd_field_notes cascade from fmds; xref_versions from xref_tables.
-        await wipe('rules');
-        await wipe('xref_tables');
-        await wipe('fmds');
-      }
+      /* One RPC, not six deletes.
+       *
+       * Doing this from the client could not work and could not finish. Migration 0041 blocks
+       * DELETE on fmds, rules, xref_tables and the whole hierarchy — "nothing is deleted, enforced
+       * here, not only in the UI" — but NOT on the scope tables. So the scope rows went, `fmds`
+       * raised, and the reset stopped half-done: scope gone, documents still there. Six PostgREST
+       * calls are also six transactions, so there was never a moment at which the reset either had
+       * or had not happened.
+       *
+       * `dms_reset_program` (0052) does the whole thing in one transaction, under a
+       * transaction-local exception to that trigger, and checks the caller administers the
+       * programme before it does anything. A failure now leaves the programme untouched. */
+      const { data, error } = await supabase.rpc('dms_reset_program', {
+        p_program_id: programId,
+        p_mode: mode,
+      });
+      if (error) throw describeError('reset', error);
 
       // Everything, rather than a curated list. A reset invalidates more of the cache than any
       // normal write, and naming twenty keys here is how one gets missed.
       await queryClient.invalidateQueries();
-      return before;
+      // The function reports what it actually removed, rather than echoing a preview taken a
+      // moment earlier against data that may have moved since.
+      return { ...EMPTY_COUNTS, ...((data as Partial<ResetCounts>) ?? {}) };
     },
   };
 }

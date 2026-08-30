@@ -16,16 +16,31 @@
 // practice, and there's no good fallback for "the AI call just didn't work" on something that
 // should have a definite right answer.
 
-// Set ALLOWED_ORIGIN (`supabase secrets set ALLOWED_ORIGIN=https://your-app`) to stop other sites
-// driving this function from a signed-in user's browser. Defaults to '*' so an unconfigured
-// deployment keeps working rather than failing closed on a header nobody knew to set.
-const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN') ?? '*';
+// Set ALLOWED_ORIGIN to stop other sites driving this function from a signed-in user's browser:
+//   supabase secrets set ALLOWED_ORIGIN=https://your-app,http://localhost:5173
+// Comma-separated, because a single value locks out local development — `vite dev` serves from
+// localhost, so a lone production origin turns every AI call in the app you are building into a
+// CORS failure. Defaults to '*' so an unconfigured deployment keeps working rather than failing
+// closed on a header nobody knew to set.
+const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGIN') ?? '*')
+  .split(',').map((o) => o.trim()).filter(Boolean);
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Vary': 'Origin',
-};
+/** Echo back the caller's origin when it is on the list.
+ *
+ * `Access-Control-Allow-Origin` takes one origin or `*`, never a list — returning the configured
+ * string verbatim would only ever match the first one. `Vary: Origin` so a cache cannot serve one
+ * origin's response to another. */
+function corsFor(req: Request): Record<string, string> {
+  const origin = req.headers.get('origin') ?? '';
+  const allow = ALLOWED_ORIGINS.includes('*')
+    ? '*'
+    : ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0] ?? '*';
+  return {
+    'Access-Control-Allow-Origin': allow,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Vary': 'Origin',
+  };
+}
 
 /** Every call here spends money at Anthropic, and nothing upstream bounds the request.
  *
@@ -298,6 +313,7 @@ async function callClaude(apiKey: string, prompt: string, maxTokens: number): Pr
 }
 
 Deno.serve(async (req: Request) => {
+  const corsHeaders = corsFor(req);
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
   const jsonHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
 
