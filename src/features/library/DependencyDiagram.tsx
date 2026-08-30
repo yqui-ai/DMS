@@ -197,12 +197,18 @@ export function DependencyDiagram({
       const optionalColor = futuristic ? FUTURISTIC_CYAN : '#9aa4b2';
       return {
         id: `root-${d.requiresObjectId}`, source: 'root', target: d.requiresObjectId,
+        /* Hidden, not faded. Every other edge used to stay on screen at opacity 0.15, and fifteen
+           ghost lines converging on the same root is still fifteen lines — the one you asked to see
+           had to compete with all of them. Showing a lineage means showing the lineage. */
+        hidden: isOther,
         style: {
           stroke: d.mandatory ? mandatoryColor : optionalColor,
-          strokeWidth: isSelected ? 3 : 1.5,
+          // Thicker and fully opaque when it is the one being traced: it is now the only line on
+          // the canvas, so it should look like the answer rather than like a survivor.
+          strokeWidth: isSelected ? 3.5 : 1.5,
           strokeDasharray: d.mandatory ? undefined : '5,4',
-          opacity: isOther ? 0.15 : 1,
-          ...(futuristic ? { filter: `drop-shadow(0 0 ${isSelected ? 5 : 3}px ${d.mandatory ? FUTURISTIC_RED : FUTURISTIC_CYAN})` } : {}),
+          opacity: 1,
+          ...(futuristic ? { filter: `drop-shadow(0 0 ${isSelected ? 6 : 3}px ${d.mandatory ? FUTURISTIC_RED : FUTURISTIC_CYAN})` } : {}),
         },
       };
     });
