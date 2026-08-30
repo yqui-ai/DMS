@@ -30,9 +30,13 @@ const FIELD_MAX_WIDTH: Record<string, number> = {
  * below a size that fits a normal one. And a floor rather than sizing the input to its content,
  * which would make every column jump as you type.
  *
- * TRANSFORMATION_RULE and TECHNICAL_RULE are deliberately absent. Their content is unbounded — a
- * technical rule can be a paragraph of SQL — so they wrap inside FIELD_MAX_WIDTH instead; giving
- * them a generous floor as well would push every column after them off the screen. */
+ * The wrapping columns need a floor MORE than the others, not less. A max-width is the most a
+ * column may take, never what it keeps: a cell set to wrap has a min-content width of its longest
+ * single word, so the table shrinks it first whenever the grid is crowded. TECHNICAL_RULE was
+ * capped at 600 and floored at nothing, and duly collapsed to about 120px — `SELECT BANKS AS BANKS
+ * FROM S_BNKA` broke across three lines in a column wide enough for one word. Cap and floor are
+ * both needed, and they are not in tension: the floor stops the collapse, the cap stops one long
+ * rule stretching the table sideways. */
 const DEFAULT_MIN_WIDTH = 128;
 const FIELD_MIN_WIDTH: Record<string, number> = {
   // SAP field and table names run to 30 characters.
@@ -42,6 +46,11 @@ const FIELD_MIN_WIDTH: Record<string, number> = {
   SRC_SYSTEM: 140, TGT_SYSTEM: 140,
   // Descriptions wrap (they carry a FIELD_MAX_WIDTH), but still need room to be worth reading.
   SRC_FIELD_DESC: 260, TGT_FIELD_DESC: 260,
+  // The rule columns. TECHNICAL_RULE holds SQL, which is the longest thing on the row and the one
+  // people read line by line — roughly double what it was collapsing to, and still capped at 600
+  // so it cannot run away with the table. TRANSFORMATION_RULE is usually a token like "1:1", so it
+  // gets a smaller floor: enough that a wordy one does not shred into one word per line either.
+  TECHNICAL_RULE: 300, TRANSFORMATION_RULE: 210,
   // Selects: the widest option plus the browser's arrow, which is not part of the text.
   // Both spellings: the Golden template ships this one with a space, and a programme that renames
   // it to the underscored form should not silently lose its width.
@@ -50,11 +59,9 @@ const FIELD_MIN_WIDTH: Record<string, number> = {
   SRC_FIELD_DATATYPE: 150, TGT_FIELD_DATATYPE: 150,
 };
 
-/** The floor for one column, or undefined for the free-text rules that must stay capped. */
-const minWidthFor = (field: string): number | undefined =>
-  field in FIELD_MAX_WIDTH && !(field in FIELD_MIN_WIDTH)
-    ? undefined
-    : FIELD_MIN_WIDTH[field] ?? DEFAULT_MIN_WIDTH;
+/** The floor for one column. Every column gets one, capped ones included — see above for why
+ * exempting the wrapping columns was what let them collapse. */
+const minWidthFor = (field: string): number => FIELD_MIN_WIDTH[field] ?? DEFAULT_MIN_WIDTH;
 /** In scope means MIGRATION_IN_SCOPE says so — **not** "isn't explicitly out".
  *
  * The same call the health tab makes, and made for the same reason: a field nobody has decided on
