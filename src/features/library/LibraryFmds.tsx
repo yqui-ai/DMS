@@ -14,6 +14,7 @@ import { ArchiveDialog, type ArchiveTarget } from '../../components/ArchiveDialo
 import { fmtDateTime } from '../../lib/format';
 import { exportFmdsAsExcel } from '../../lib/fmdZipExport';
 import { useLibraryFmds, type LibraryFmdRow } from '../../lib/queries/fmds';
+import { useFmdUsageCounts } from '../../lib/queries/scope';
 import { useLibraryPath } from '../../lib/libraryNav';
 /* Scope Register reads the same flags off the same rows — these live in one place so the two lists
    can't disagree about whether an FMD is outdated or new. This screen keeps its own layout (the
@@ -39,6 +40,8 @@ const GROUP_OPTIONS: { value: GroupBy; label: string }[] = [
 
 export function LibraryFmds() {
   const { data: fmds = [], isLoading } = useLibraryFmds();
+  // One query for the whole list — see useFmdUsageCounts.
+  const { data: usage = new Map() } = useFmdUsageCounts();
   const toast = useToast();
   const navigate = useNavigate();
   const to = useLibraryPath();
@@ -194,6 +197,35 @@ export function LibraryFmds() {
         </span>
       ),
       sortValue: (f) => f.activeVersion ?? f.latestVersion,
+    },
+    {
+      /* The reuse signal, and the thing to read before changing a document.
+       *
+       * An FMD is assigned, not owned (0045) — several subprojects may point at the same one — so
+       * "who else depends on this" is not answerable from the row itself. Counts distinct
+       * subprojects and distinct objects, because either side can repeat: the same object in two
+       * subprojects is two uses; the same subproject twice is not.
+       *
+       * Zero is shown as "Not in use" rather than "0", which reads as a measurement rather than an
+       * absence — and for a Golden or Standard template, not being assigned is the normal state
+       * rather than a problem. */
+      key: 'usedBy', header: 'Used by', width: 150,
+      sortValue: (f) => usage.get(f.id)?.subprojects ?? 0,
+      render: (f) => {
+        const u = usage.get(f.id);
+        if (!u || u.subprojects === 0) return <span className="text-muted">Not in use</span>;
+        return (
+          <span className="inline-flex flex-col leading-tight">
+            <span className="text-sm2">
+              <span className="font-semibold tabular-nums">{u.subprojects}</span>
+              {' '}subproject{u.subprojects === 1 ? '' : 's'}
+            </span>
+            <span className="text-2xs text-muted tabular-nums">
+              {u.objects} object{u.objects === 1 ? '' : 's'}
+            </span>
+          </span>
+        );
+      },
     },
     {
       // Falls back to Created when an FMD hasn't been changed yet — a brand-new FMD's most recent

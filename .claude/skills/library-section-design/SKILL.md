@@ -271,7 +271,7 @@ anything editable here.
   | `fmds` | `fmds-all`, `fmds-library`, `golden-where-used`, `standard-fmd-links`, `fmd-versions/<id>`, `fmd-version-latest/<id>` |
   | `rules` | `rules/<subprojectId>`, `rules-all`, `rules-library` |
   | `xref_tables` | `xref-tables/<subprojectId>`, `xref-tables-library`, `golden-xref-summary` |
-  | `subproject_objects` | `subproject-objects/<subprojectId>`, `scope-object-owners`, `fmd-usage`, `object-scope-usage/<migrationObjectId>`, plus the scope-graph keys |
+  | `subproject_objects` | `subproject-objects/<subprojectId>`, `scope-object-owners`, `fmd-usage`, `object-scope-usage/<migrationObjectId>`, `fmd-assignments` (prefix — covers the per-FMD hook AND the batched `fmd-assignments/counts` behind Field Mapping's **Used by** column), plus the scope-graph keys |
 
   Missing `rules-library` was a real bug (new/edited rules didn't appear in the catalogue). So was
   missing `xref-tables` on Golden XREF writes (present in the Library, absent from Rules > Value

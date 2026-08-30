@@ -123,6 +123,46 @@ export function useFmdAssignments(fmdId?: string) {
   });
 }
 
+/** How many subprojects and objects use each FMD — every assignment in one query.
+ *
+ * The per-FMD hook above answers this for one document; a list of fifteen would ask fifteen times.
+ * One read of the whole column and a group in memory instead, which is the same shape the hierarchy
+ * and plants lists use.
+ *
+ * Keyed under `fmd-assignments` on purpose: `assignFmd` already invalidates that prefix, and
+ * TanStack matches prefixes, so a new assignment refreshes this without anyone remembering to add
+ * a key. A separate key here is exactly the kind of omission that made Where-used stale before. */
+export interface FmdUsage { subprojects: number; objects: number }
+
+export function useFmdUsageCounts() {
+  return useQuery({
+    queryKey: ['fmd-assignments', 'counts'],
+    queryFn: async (): Promise<Map<string, FmdUsage>> => {
+      const { data, error } = await supabase
+        .from('subproject_objects')
+        .select('fmd_id, subproject_id, migration_object_id')
+        .not('fmd_id', 'is', null);
+      if (error) throw error;
+
+      // Distinct per FMD: the same object in two subprojects is two uses, but the same subproject
+      // twice is not. Sets rather than counters, because a row is (subproject, object) and either
+      // side can repeat.
+      const subs = new Map<string, Set<string>>();
+      const objs = new Map<string, Set<string>>();
+      for (const r of (data ?? []) as any[]) {
+        if (!subs.has(r.fmd_id)) { subs.set(r.fmd_id, new Set()); objs.set(r.fmd_id, new Set()); }
+        subs.get(r.fmd_id)!.add(r.subproject_id);
+        objs.get(r.fmd_id)!.add(r.migration_object_id);
+      }
+      const out = new Map<string, FmdUsage>();
+      for (const [fmdId, s] of subs) {
+        out.set(fmdId, { subprojects: s.size, objects: objs.get(fmdId)?.size ?? 0 });
+      }
+      return out;
+    },
+  });
+}
+
 export interface AssignableFmd {
   id: string; name: string; displayId?: string; type: string;
   /** The migration object this FMD maps. It is the KEY the list matches on — an FMD is a candidate
