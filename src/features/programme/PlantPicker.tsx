@@ -13,8 +13,8 @@ import type { PlantRow } from '../../lib/queries/plants';
  *
  * Multi-select because covering several sites is the normal case here, not an exception. */
 export function PlantPicker({ plants, selected, onChange, disabled }: {
-  /** Already narrowed to the subproject's programme by the caller — a plant is programme master
-   * data, and offering another engagement's sites is how one programme's list leaks into another. */
+  /** Every plant in the system. Not narrowed by programme, because a plant belongs to none (0057) —
+   * the same physical site is available to any wave that covers it. */
   plants: PlantRow[];
   selected: string[];
   onChange: (plantIds: string[]) => void;

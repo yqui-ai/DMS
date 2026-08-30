@@ -232,7 +232,6 @@ export function HierarchyPage() {
               canEdit={adminOf.has(pg.id)}
               statuses={statuses}
               plantsBySubproject={plantsBySubproject}
-              plantCount={allPlants.filter((pl) => pl.programId === pg.id).length}
               onDialog={setDialog}
               onArchive={setArchiving}
               onCancelRequest={withdraw}
@@ -388,15 +387,12 @@ function nodeActions(opts: {
 
 /* ────────────────────────────────────────────────────────────────────────────── program */
 
-function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, plantCount, onDialog, onArchive, onCancelRequest, onOpen, onDelete }: {
+function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, onDialog, onArchive, onCancelRequest, onOpen, onDelete }: {
   program: ProgramNode;
   canEdit: boolean;
   statuses: RefStatus[];
   /** Plant CODES per subproject id, resolved once for the whole tree rather than per tile. */
   plantsBySubproject: Map<string, string[]>;
-  /** Plants belonging to this program. They cascade on delete rather than blocking it, so the
-   * confirm names them — told, not discovered. */
-  plantCount: number;
   onDialog: (t: HierarchyTarget) => void;
   onArchive: (t: ArchiveTarget) => void;
   onCancelRequest: (requestId: string) => void;
@@ -451,7 +447,6 @@ function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, pl
                   onDelete: pg.projects.length === 0
                     ? () => onDelete({
                       level: 'PRGM', id: pg.id, label: pg.name, kind: 'program',
-                      cascades: plantCount > 0 ? `${plantCount} plant${plantCount === 1 ? '' : 's'}` : undefined,
                     })
                     : undefined,
                 })}
@@ -552,7 +547,7 @@ function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDi
               actions={nodeActions({
                 label: 'project', archiveState: pj.archiveState, archiveRequestId: pj.archiveRequestId,
                 childLabel: 'subproject',
-                onAdd: () => onDialog({ level: 'SPRJ', parentId: pj.id, parentLabel: `${pj.code} · ${pj.name}`, programId: pj.programId }),
+                onAdd: () => onDialog({ level: 'SPRJ', parentId: pj.id, parentLabel: `${pj.code} · ${pj.name}` }),
                 onEdit: () => onDialog({ level: 'PRJT', record: pj }),
                 onCancelRequest,
                 onArchive: () => onArchive({ entityType: 'project', entityId: pj.id, entityLabel: pj.name, programId: pj.programId, cascadeNote: 'its subprojects, their cycles, and all their scope and mapping work' }),
@@ -572,7 +567,7 @@ function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDi
           <p className="text-2xs text-muted">
             No subprojects yet.{' '}
             {canEdit && (
-              <button onClick={() => onDialog({ level: 'SPRJ', parentId: pj.id, parentLabel: pj.name, programId: pj.programId })} className="text-blue font-semibold hover:underline">
+              <button onClick={() => onDialog({ level: 'SPRJ', parentId: pj.id, parentLabel: pj.name })} className="text-blue font-semibold hover:underline">
                 Add one
               </button>
             )}
@@ -655,7 +650,7 @@ function SubprojectTile({ subproject: sp, programId, canEdit, statuses, plantCod
                     label: 'subproject', archiveState: sp.archiveState, archiveRequestId: sp.archiveRequestId,
                     childLabel: 'cycle',
                     onAdd: () => onDialog({ level: 'CYCL', parentId: sp.id, parentLabel: `${sp.code} · ${sp.name}` }),
-                    onEdit: () => onDialog({ level: 'SPRJ', record: sp, programId }),
+                    onEdit: () => onDialog({ level: 'SPRJ', record: sp }),
                     onCancelRequest,
                     onArchive: () => onArchive({ entityType: 'subproject', entityId: sp.id, entityLabel: sp.name, programId, cascadeNote: 'its cycles, scope, FMDs, rules and runs' }),
                     /* Cycles are the only child the tree carries. Scope rows, FMDs and rules are

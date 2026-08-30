@@ -4,7 +4,6 @@ import { useAuth } from '../auth';
 
 export interface Plant {
   id: string;
-  programId: string;
   code: string;
   name: string;
   country?: string;
@@ -25,7 +24,6 @@ export interface PlantRow extends Plant {
 
 const toPlant = (r: any): Plant => ({
   id: r.id,
-  programId: r.program_id,
   code: r.code,
   name: r.name,
   country: r.country ?? undefined,
@@ -43,13 +41,12 @@ const toPlant = (r: any): Plant => ({
  * Two flat queries joined in memory rather than one nested embed. A PostgREST embed returns null
  * for the whole nested level as soon as RLS filters any part of it, which reads as "no assignments"
  * and is indistinguishable from the truth — the trap documented at length in hierarchy.ts. */
-export function usePlants(programId?: string, includeArchived = false, enabled = true) {
+export function usePlants(includeArchived = false, enabled = true) {
   return useQuery({
-    queryKey: ['plants', programId ?? '', includeArchived],
+    queryKey: ['plants', includeArchived],
     enabled,
     queryFn: async (): Promise<PlantRow[]> => {
       let q = supabase.from('plants').select('*');
-      if (programId) q = q.eq('program_id', programId);
       if (!includeArchived) q = q.is('archived_at', null);
       const { data, error } = await q.order('code');
       if (error) throw error;
@@ -100,7 +97,7 @@ export interface PlantForm {
   city?: string;
 }
 
-export function usePlantMutations(programId?: string) {
+export function usePlantMutations() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const who = user?.email ?? 'Unknown';
@@ -116,9 +113,7 @@ export function usePlantMutations(programId?: string) {
 
   return {
     async create(form: PlantForm) {
-      if (!programId) throw new Error('No program selected.');
       const { error } = await supabase.from('plants').insert({
-        program_id: programId,
         code: form.code.trim().toUpperCase(),
         name: form.name.trim(),
         country: form.country?.trim() || null,
@@ -193,8 +188,8 @@ export function usePlantMutations(programId?: string) {
 
 /** The mutation hook wrapped for callers that want pending state. Kept separate so the plain object
  * above stays usable from anywhere without a component. */
-export function usePlantSaveMutation(programId?: string) {
-  const m = usePlantMutations(programId);
+export function usePlantSaveMutation() {
+  const m = usePlantMutations();
   return useMutation({
     mutationFn: async (args: { id?: string; form: PlantForm }) => (
       args.id ? m.update(args.id, args.form) : m.create(args.form)
