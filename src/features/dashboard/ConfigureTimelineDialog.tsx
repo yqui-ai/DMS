@@ -4,9 +4,9 @@ import clsx from 'clsx';
 import { Dialog } from '../../components/Dialog';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Field';
-import { Select } from '../../components/Select';
 import { EmptyState } from '../../components/EmptyState';
 import { useToast } from '../../components/Toast';
+import { fmtDate } from '../../lib/format';
 import { dateForInput, useHierarchy, useHierarchyMutations } from '../../lib/queries/hierarchy';
 import {
   useTimelineAdminMutations, useTimelineCategories, useTimelineEntries,
@@ -214,6 +214,15 @@ function DateCell({ label, value, freeze, onCommit }: {
 
 /* ──────────────────────────────────────────────── milestones the hierarchy has no column for */
 
+/** A group on the left, its milestones on the right.
+ *
+ * The first version stacked two unrelated forms at the top — one to add a milestone, one to add a
+ * group — with the group control wedged between the add form and the list it fed. Three things
+ * competing to be the first thing you did, and the list pushed below all of them.
+ *
+ * Groups are navigation, so they sit in a rail. Adding a milestone happens INSIDE the group it
+ * belongs to, which removes the Group dropdown entirely: the group you are looking at is the
+ * answer. Empty groups no longer spend a full row saying they are empty — the rail carries a count. */
 function Milestones({ programId }: { programId: string }) {
   const toast = useToast();
   const { data: categories = [] } = useTimelineCategories(programId);
@@ -221,127 +230,130 @@ function Milestones({ programId }: { programId: string }) {
   const { data: entries = [] } = useTimelineEntries(categoryIds);
   const mutations = useTimelineAdminMutations(programId);
 
-  const [group, setGroup] = useState('');
-  const [form, setForm] = useState({ categoryId: '', rowLabel: '', name: '', startDate: '', endDate: '' });
+  const [activeId, setActiveId] = useState('');
+  const [newGroup, setNewGroup] = useState('');
+  const [adding, setAdding] = useState({ rowLabel: '', name: '', startDate: '', endDate: '' });
+
+  // Falls back to the first group rather than showing an empty right pane before you click.
+  const active = categories.find((c) => c.id === activeId) ?? categories[0];
+  const mine = entries.filter((e) => e.categoryId === active?.id);
+  const countOf = (id: string) => entries.filter((e) => e.categoryId === id).length;
 
   const addGroup = async () => {
-    if (!group.trim()) return;
+    if (!newGroup.trim()) return;
     try {
-      await mutations.addCategory(group.trim(), categories.length + 1);
-      setGroup('');
+      await mutations.addCategory(newGroup.trim(), categories.length + 1);
+      setNewGroup('');
     } catch (err: any) {
       toast.error(err?.message ?? 'Could not add that group.');
     }
   };
 
   const add = async () => {
-    if (!form.categoryId || !form.name.trim() || !form.startDate) return;
+    if (!active || !adding.name.trim() || !adding.startDate) return;
     try {
-      await mutations.addEntry(form.categoryId, {
-        rowLabel: form.rowLabel.trim() || form.name.trim(),
-        name: form.name.trim(),
+      await mutations.addEntry(active.id, {
+        // Blank means "the programme itself" — the Gantt matches on this, and defaulting it to the
+        // milestone's own name would silently attach it to a row that does not exist.
+        rowLabel: adding.rowLabel.trim(),
+        name: adding.name.trim(),
         // A milestone is a moment; give it an end date and it becomes a phase. Same record, and the
         // Gantt draws the two differently — a star, or a bar.
-        kind: form.endDate ? 'range' : 'point',
-        startDate: form.startDate,
-        endDate: form.endDate || undefined,
+        kind: adding.endDate ? 'range' : 'point',
+        startDate: adding.startDate,
+        endDate: adding.endDate || undefined,
       });
-      setForm({ categoryId: form.categoryId, rowLabel: '', name: '', startDate: '', endDate: '' });
+      setAdding({ rowLabel: '', name: '', startDate: '', endDate: '' });
     } catch (err: any) {
       toast.error(err?.message ?? 'Could not add that milestone.');
     }
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      <p className="text-2xs text-muted">
-        For the dates the structure has no column for — a code freeze, a go/no-go, a business
-        blackout. <strong className="text-text">Applies to</strong> matches a milestone to a row on
-        the Gantt by its code or name; leave it blank to attach it to the programme.
-      </p>
+    <div className="grid grid-cols-[220px_minmax(0,1fr)] gap-5 items-start">
+      <div className="flex flex-col gap-1.5">
+        <span className="text-2xs font-semibold uppercase tracking-[.06em] text-muted px-1">Groups</span>
+        <div className="flex flex-col gap-0.5">
+          {categories.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setActiveId(c.id)}
+              className={clsx(
+                'flex items-baseline gap-2 text-left rounded px-2.5 py-1.5 transition-colors',
+                c.id === active?.id ? 'bg-blue-light text-blue-deep' : 'hover:bg-surface-2 text-text',
+              )}
+            >
+              <span className="text-sm2 truncate min-w-0 flex-1">{c.name}</span>
+              <span className="text-2xs text-muted tabular-nums shrink-0">{countOf(c.id)}</span>
+            </button>
+          ))}
+        </div>
 
-      <div className="rounded-lg border border-line p-3 flex flex-wrap items-end gap-2">
-        <Field label="Group">
-          <Select
-            value={form.categoryId}
-            onChange={(e) => setForm((f) => ({ ...f, categoryId: e.target.value }))}
-            className="w-[170px]"
+        <div className="flex items-center gap-1.5 pt-1.5 mt-1 border-t border-line">
+          <Input
+            value={newGroup}
+            placeholder="New group"
+            onChange={(e) => setNewGroup(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') addGroup(); }}
+            className="flex-1 min-w-0"
+          />
+          <button
+            type="button"
+            onClick={addGroup}
+            disabled={!newGroup.trim()}
+            title="Add group"
+            aria-label="Add group"
+            className="w-8 h-8 grid place-items-center rounded shrink-0 text-blue hover:bg-blue-light disabled:opacity-40 disabled:pointer-events-none"
           >
-            <option value="">Choose…</option>
-            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </Select>
-        </Field>
-        <Field label="Applies to">
-          <Input
-            value={form.rowLabel} placeholder="W1A, or blank"
-            onChange={(e) => setForm((f) => ({ ...f, rowLabel: e.target.value }))}
-            className="w-[130px]"
-          />
-        </Field>
-        <Field label="Name">
-          <Input
-            value={form.name} placeholder="Code freeze"
-            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            className="w-[190px]"
-          />
-        </Field>
-        <Field label="Date">
-          <Input type="date" value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} className="w-[150px]" />
-        </Field>
-        <Field label="Until (optional)">
-          <Input type="date" value={form.endDate} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} className="w-[150px]" />
-        </Field>
-        <Button
-          variant="primary"
-          onClick={add}
-          disabled={!form.categoryId || !form.name.trim() || !form.startDate}
-        >
-          <Plus size={14} /> Add
-        </Button>
+            <Plus size={15} />
+          </button>
+        </div>
       </div>
 
-      {categories.length === 0 ? (
-        <div className="flex items-end gap-2">
-          <Field label="First, name a group">
-            <Input
-              value={group} placeholder="Programme milestones"
-              onChange={(e) => setGroup(e.target.value)}
-              className="w-[240px]"
-            />
-          </Field>
-          <Button variant="secondary" onClick={addGroup} disabled={!group.trim()}>
-            <Plus size={14} /> Add group
-          </Button>
-        </div>
+      {!active ? (
+        <EmptyState
+          title="No groups yet"
+          description="Name a group on the left — Cutover, Cycles, Design &amp; build — and its milestones go inside it."
+        />
       ) : (
-        <div className="flex items-end gap-2">
-          <Field label="Add another group">
-            <Input value={group} onChange={(e) => setGroup(e.target.value)} className="w-[240px]" />
-          </Field>
-          <Button variant="secondary" onClick={addGroup} disabled={!group.trim()}>
-            <Plus size={14} /> Add group
-          </Button>
-        </div>
-      )}
+        <div className="flex flex-col gap-3">
+          <div className="flex items-baseline gap-2">
+            <span className="text-sm2 font-semibold text-text">{active.name}</span>
+            <span className="text-2xs text-muted">
+              {mine.length} milestone{mine.length === 1 ? '' : 's'}
+            </span>
+            <button
+              type="button"
+              onClick={async () => {
+                try { await mutations.removeCategory(active.id); setActiveId(''); }
+                catch (err: any) { toast.error(err?.message ?? 'Could not remove that group.'); }
+              }}
+              className="ml-auto text-2xs text-red hover:underline"
+            >
+              Remove group
+            </button>
+          </div>
 
-      {categories.map((c) => {
-        const mine = entries.filter((e) => e.categoryId === c.id);
-        return (
-          <div key={c.id} className="rounded-lg border border-line overflow-hidden">
-            <div className="px-3.5 py-2 bg-surface-3 text-2xs font-semibold uppercase tracking-[.06em] text-muted">
-              {c.name}
-            </div>
+          <div className="rounded-lg border border-line overflow-hidden">
             {mine.length === 0 ? (
-              <p className="px-3.5 py-3 text-sm2 text-muted">Nothing in this group yet.</p>
+              <p className="px-3.5 py-4 text-sm2 text-muted">Nothing here yet — add the first one below.</p>
             ) : mine.map((e) => (
-              <div key={e.id} className="flex items-center gap-3 px-3.5 py-2 border-t border-line-soft">
+              <div key={e.id} className="flex items-center gap-3 px-3.5 py-2 border-b border-line-soft last:border-b-0">
+                {/* A bar for a span, a star for a moment — the same two shapes the Gantt uses, so
+                    the list and the chart never say different things about one entry. */}
                 {e.kind === 'range'
-                  ? <span className="w-4 h-2 rounded-xs bg-blue shrink-0" />
+                  ? <span className="w-4 h-2 rounded-xs bg-blue shrink-0" title="Phase" />
                   : <Star size={13} className="text-amber-ink shrink-0" />}
                 <span className="text-sm2 min-w-0 flex-1 truncate">{e.name}</span>
-                <span className="font-mono text-2xs text-muted shrink-0">{e.rowLabel}</span>
-                <span className="text-2xs text-muted tabular-nums shrink-0">
-                  {e.startDate}{e.endDate ? ` → ${e.endDate}` : ''}
+                <span
+                  className="font-mono text-2xs text-muted shrink-0 w-[100px] truncate text-right"
+                  title={e.rowLabel || 'Programme'}
+                >
+                  {e.rowLabel || 'Programme'}
+                </span>
+                <span className="text-2xs text-muted tabular-nums shrink-0 w-[180px] text-right">
+                  {fmtDate(e.startDate)}{e.endDate ? ` → ${fmtDate(e.endDate)}` : ''}
                 </span>
                 <button
                   type="button"
@@ -358,8 +370,49 @@ function Milestones({ programId }: { programId: string }) {
               </div>
             ))}
           </div>
-        );
-      })}
+
+          {/* Inside the group, at the foot of its list — so what is being added, and where, is
+              positional rather than something a dropdown has to state. */}
+          <div className="flex flex-wrap items-end gap-2 rounded-lg bg-surface-2 border border-line p-2.5">
+            <Field label="Name">
+              <Input
+                value={adding.name} placeholder="Code freeze"
+                onChange={(e) => setAdding((f) => ({ ...f, name: e.target.value }))}
+                className="w-[200px]"
+              />
+            </Field>
+            <Field label="Applies to">
+              <Input
+                value={adding.rowLabel} placeholder="W1A — or blank"
+                onChange={(e) => setAdding((f) => ({ ...f, rowLabel: e.target.value }))}
+                className="w-[130px]"
+              />
+            </Field>
+            <Field label="Date">
+              <Input
+                type="date" value={adding.startDate}
+                onChange={(e) => setAdding((f) => ({ ...f, startDate: e.target.value }))}
+                className="w-[150px]"
+              />
+            </Field>
+            <Field label="Until — makes it a phase">
+              <Input
+                type="date" value={adding.endDate}
+                onChange={(e) => setAdding((f) => ({ ...f, endDate: e.target.value }))}
+                className="w-[150px]"
+              />
+            </Field>
+            <Button variant="primary" onClick={add} disabled={!adding.name.trim() || !adding.startDate}>
+              <Plus size={14} /> Add
+            </Button>
+          </div>
+
+          <p className="text-2xs text-muted">
+            <strong className="text-text">Applies to</strong> puts the milestone on a Gantt row,
+            matched by that row&apos;s code or name. Leave it blank and it sits on the programme.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

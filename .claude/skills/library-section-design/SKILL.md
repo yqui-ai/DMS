@@ -291,6 +291,12 @@ Don't "fix" these silently; they're recorded so the next change is an informed o
 - **Rule's "Version" column is a frozen literal.** `rules.version` is written once as `v1.0.0` at
   insert and never bumped; there is no `rule_versions` table. Building real Rule versioning was
   explicitly deferred by the user ("Rules later") — do not start it unprompted.
+- **The Golden XREF viewer follows the FMD viewer's shape**, deliberately: one version selector
+  in the header driving every tab, a Cross Reference tab at full dialog width, and a Versions tab
+  with the list and details side by side. It used to invert that — a permanent 300px version rail
+  with the structure squeezed into the remainder — so two templates read the same way, opened from
+  sibling rows of one catalogue, gave the reader two different screens. No Where-used tab: nothing
+  references a Golden XREF template yet, and an empty tab is a promise the data cannot keep.
 - **XREF has a designer + viewer for Golden only.** Standard XREF rows have no viewer; they're
   inert rows (correctly styled as such via `rowClickable`).
 - **`useAllFmds` maps a narrow column subset** (no `owner`/`aiGenerated`/`hist*`). Fine for its
