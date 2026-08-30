@@ -123,25 +123,19 @@ export function HierarchyPage() {
       <PageHeader
         title="Migration Project"
         description="Every program, project and subproject you can reach. Open a subproject to start working in it."
-        actions={
-          <>
-            {/* Only the action stays in the header. The five destinations moved to tiles below —
-                six controls crowded into this slot pushed the description into three narrow lines
-                and gave a place you GO the same weight as a thing you DO. */}
-            {/* Anyone signed in may start a program and becomes its Program Admin by doing so —
-                there is no role above a program on which to gate it. */}
-            <Button variant="primary" onClick={() => setDialog({ level: 'PRGM' })}>
-              <Plus size={14} /> New program
-            </Button>
-          </>
-        }
+        /* No actions here at all. Everything moved to the row below, which gives the description
+           its full width back — six controls in this slot had it wrapping to three narrow lines. */
       />
 
       {/* Everything programme-wide hangs off this screen rather than the area switcher, which is
           now just the three launchpad areas. These are things you do WITH the hierarchy, so they
           belong beside it — as tiles, because each one is a place you go rather than a command.
-          Above the search, because they are about the programme rather than about the list. */}
-      <div className="flex flex-wrap gap-2 mb-5">
+          Above the search, because they are about the programme rather than about the list.
+
+          Destinations left, actions right. The split is the point: everything on the left takes you
+          somewhere and everything on the right changes something, so the row reads as two groups
+          rather than seven things of equal weight. */}
+      <div className="flex flex-wrap items-center gap-2 mb-5">
         <ShortcutTile icon={LibraryIcon} label="Library" onClick={() => navigate('/library')} />
         {/* Plants are programme master data, shared by every subproject covering the site, so they
             belong here rather than inside any one wave. Assigning one to a subproject happens on
@@ -160,19 +154,27 @@ export function HierarchyPage() {
             onClick={() => navigate('/approvals')}
           />
         )}
-        {/* TEMPORARY — remove with src/lib/queries/testReset.ts before this is used for real.
-            Deliberately NOT a tile: it is not a place you go, and giving a destructive action the
-            same shape as four navigation targets is how it gets clicked by reflex. Quiet, last,
-            and separated. */}
-        {adminOf.size > 0 && (
-          <button
-            type="button"
-            onClick={() => setResetting(true)}
-            className="ml-auto self-center inline-flex items-center gap-1.5 text-2xs text-red hover:underline px-1"
-          >
-            <Eraser size={13} /> Reset test data
-          </button>
-        )}
+        <span className="ml-auto flex items-center gap-3">
+          {/* TEMPORARY — remove with src/lib/queries/testReset.ts before this is used for real.
+              Deliberately NOT a tile and NOT a button: it is neither a place you go nor something
+              you do routinely, and giving a destructive action either of those shapes is how it
+              gets clicked by reflex. Quiet text, and it sits before the primary rather than after
+              so the rightmost thing in the row is the safe one. */}
+          {adminOf.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setResetting(true)}
+              className="inline-flex items-center gap-1.5 text-2xs text-red hover:underline px-1"
+            >
+              <Eraser size={13} /> Reset test data
+            </button>
+          )}
+          {/* Anyone signed in may start a program and becomes its Program Admin by doing so —
+              there is no role above a program on which to gate it. */}
+          <Button variant="primary" onClick={() => setDialog({ level: 'PRGM' })}>
+            <Plus size={14} /> New program
+          </Button>
+        </span>
       </div>
 
       <div className="flex items-center gap-3 mb-5">
