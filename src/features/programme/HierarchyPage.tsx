@@ -29,7 +29,16 @@ type ProjectNode = ProgramNode['projects'][number];
 
 /** A record offered for deletion because it has nothing beneath it. `kind` is the word the confirm
  * uses; `level` is what `dms_delete_empty` keys on. */
-interface DeleteTarget { level: HierarchyLevel; id: string; label: string; kind: string }
+interface DeleteTarget {
+  level: HierarchyLevel;
+  id: string;
+  label: string;
+  kind: string;
+  /** What belongs to the record and will go with it — "2 plants". Not a blocker: these cascade
+   * cleanly and are the record's own master data rather than work done underneath it. Named in the
+   * confirm so it is told rather than discovered. */
+  cascades?: string;
+}
 
 /** Program → Project → Subproject.
  *
@@ -223,6 +232,7 @@ export function HierarchyPage() {
               canEdit={adminOf.has(pg.id)}
               statuses={statuses}
               plantsBySubproject={plantsBySubproject}
+              plantCount={allPlants.filter((pl) => pl.programId === pg.id).length}
               onDialog={setDialog}
               onArchive={setArchiving}
               onCancelRequest={withdraw}
@@ -255,8 +265,15 @@ export function HierarchyPage() {
         message={
           <>
             <strong>{deleting?.label}</strong> has nothing in it, so it can be removed outright
-            rather than archived. This cannot be undone — but there is nothing underneath it to
+            rather than archived. This cannot be undone — but there is no work underneath it to
             lose.
+            {deleting?.cascades && (
+              <>
+                {' '}Its <strong>{deleting.cascades}</strong> will be deleted with it — that is the
+                record&apos;s own master data rather than work done under it, so it does not block
+                the delete, but it does go.
+              </>
+            )}
           </>
         }
         onConfirm={async () => {
@@ -371,12 +388,15 @@ function nodeActions(opts: {
 
 /* ────────────────────────────────────────────────────────────────────────────── program */
 
-function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, onDialog, onArchive, onCancelRequest, onOpen, onDelete }: {
+function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, plantCount, onDialog, onArchive, onCancelRequest, onOpen, onDelete }: {
   program: ProgramNode;
   canEdit: boolean;
   statuses: RefStatus[];
   /** Plant CODES per subproject id, resolved once for the whole tree rather than per tile. */
   plantsBySubproject: Map<string, string[]>;
+  /** Plants belonging to this program. They cascade on delete rather than blocking it, so the
+   * confirm names them — told, not discovered. */
+  plantCount: number;
   onDialog: (t: HierarchyTarget) => void;
   onArchive: (t: ArchiveTarget) => void;
   onCancelRequest: (requestId: string) => void;
@@ -429,7 +449,10 @@ function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, on
                      name, so offering Delete here is a reasonable guess that cannot be wrong in a
                      way that loses anything. */
                   onDelete: pg.projects.length === 0
-                    ? () => onDelete({ level: 'PRGM', id: pg.id, label: pg.name, kind: 'program' })
+                    ? () => onDelete({
+                      level: 'PRGM', id: pg.id, label: pg.name, kind: 'program',
+                      cascades: plantCount > 0 ? `${plantCount} plant${plantCount === 1 ? '' : 's'}` : undefined,
+                    })
                     : undefined,
                 })}
               />
