@@ -56,6 +56,24 @@ export function GoldenFmdStructureView({ structure }: { structure: GoldenFmdStru
   // Runs across the whole template, not per section — see above.
   let position = 0;
 
+  /* The name column is sized to the LONGEST name in the template, not to a guessed constant.
+   *
+   * It was a flat 210px with `truncate`, which is about 29 monospace characters — and SAP-style
+   * template names run past that routinely (`LEGACY_FIELDNAME1_DESCRIPTION` is exactly 29), so the
+   * column clipped the identifiers it exists to show. Widening the constant would only move the
+   * cliff.
+   *
+   * `ch` is the unit that makes this exact rather than approximate: in a monospace face one ch IS
+   * one character, so the width is the character count. Clamped at both ends — a floor keeps the
+   * notes beside it aligned down the page when every name is short, and a ceiling stops one
+   * pathological name from pushing the notes off the screen (that one still truncates, with the
+   * full value on hover). */
+  const longestName = Math.max(
+    0,
+    ...structure.sections.flatMap((s) => s.fields.map((f) => (f.field ?? '').length)),
+  );
+  const nameWidth = `${Math.min(48, Math.max(28, longestName + 2))}ch`;
+
   return (
     <div className="rounded-lg shadow-[inset_0_0_0_1px_var(--line)] overflow-hidden">
         {structure.sections.map((section) => {
@@ -88,9 +106,14 @@ export function GoldenFmdStructureView({ structure }: { structure: GoldenFmdStru
                         </span>
                         {/* Monospace because it is a technical identifier — the same rule every
                             field, table and version reference follows across the app.
-                            Fixed width so the values beside it line up down the page instead of
-                            starting wherever the previous name happened to end. */}
-                        <span className="font-mono text-sm2 text-text shrink-0 w-[210px] truncate" title={f.field}>
+                            One width for the whole template so the notes beside it line up down the
+                            page instead of starting wherever the previous name happened to end —
+                            but a width measured from the longest name, not guessed. */}
+                        <span
+                          className="font-mono text-sm2 text-text shrink-0 truncate"
+                          style={{ width: nameWidth }}
+                          title={f.field}
+                        >
                           {f.field || '—'}
                         </span>
                         <AllowedValues note={f.description} />

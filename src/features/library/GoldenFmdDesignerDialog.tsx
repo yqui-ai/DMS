@@ -333,7 +333,10 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
                     <thead>
                       <tr>
                         <th className="w-8 bg-surface border-b border-line px-2.5 py-2" />
-                        <th className="w-[32%] text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface border-b border-line px-2.5 py-2 text-left sticky top-0">Field</th>
+                        {/* Characters, not a percentage — see the same header in
+                            GoldenXrefDesignerDialog. A percentage narrows with the dialog and a
+                            long name then scrolls inside its own input. */}
+                        <th className="w-[34ch] text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface border-b border-line px-2.5 py-2 text-left sticky top-0">Field</th>
                         <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface border-b border-line px-2.5 py-2 text-left sticky top-0">Description</th>
                         <th
                           className="w-28 text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface border-b border-line px-2.5 py-2 text-left sticky top-0"

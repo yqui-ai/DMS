@@ -17,6 +17,44 @@ const FIELD_MAX_WIDTH: Record<string, number> = {
   TRANSFORMATION_RULE: 600, TECHNICAL_RULE: 600,
   SRC_FIELD_DESC: 400, TGT_FIELD_DESC: 400,
 };
+
+/** Floor on a column's width, so a cell cannot shrink below what its value needs.
+ *
+ * Only matters while EDITING, and that is exactly when it was wrong. A read-only cell is text: the
+ * table sizes the column to it and `whitespace-nowrap` keeps it on one line. An editing cell is an
+ * `<input>` at `w-full`, which has no intrinsic width to contribute — so the column collapsed to
+ * whatever the header needed and the value inside was clipped mid-word. `BANKS` in a `SRC_FIELD`
+ * column showed as `BANKS` with the expand affordance sitting on top of it.
+ *
+ * A floor rather than a fixed width: the column still grows for a long value, it just cannot fall
+ * below a size that fits a normal one. And a floor rather than sizing the input to its content,
+ * which would make every column jump as you type.
+ *
+ * TRANSFORMATION_RULE and TECHNICAL_RULE are deliberately absent. Their content is unbounded — a
+ * technical rule can be a paragraph of SQL — so they wrap inside FIELD_MAX_WIDTH instead; giving
+ * them a generous floor as well would push every column after them off the screen. */
+const DEFAULT_MIN_WIDTH = 128;
+const FIELD_MIN_WIDTH: Record<string, number> = {
+  // SAP field and table names run to 30 characters.
+  SRC_FIELD: 176, TGT_FIELD: 176, LOAD_FIELD: 176,
+  SRC_TABLE: 152, TGT_TABLE: 152, LOAD_TABLE: 152,
+  SRC_CHECK_TABLE: 168, TGT_CHECK_TABLE: 168,
+  SRC_SYSTEM: 140, TGT_SYSTEM: 140,
+  // Descriptions wrap (they carry a FIELD_MAX_WIDTH), but still need room to be worth reading.
+  SRC_FIELD_DESC: 260, TGT_FIELD_DESC: 260,
+  // Selects: the widest option plus the browser's arrow, which is not part of the text.
+  // Both spellings: the Golden template ships this one with a space, and a programme that renames
+  // it to the underscored form should not silently lose its width.
+  MIGRATION_IN_SCOPE: 150, FIELD_CLASS: 150, 'FIELD CLASS': 150, MAPPING_TYPE: 168, LOAD_APPROACH: 168,
+  SRC_FIELD_MANDATORY: 168, TGT_FIELD_MANDATORY: 168,
+  SRC_FIELD_DATATYPE: 150, TGT_FIELD_DATATYPE: 150,
+};
+
+/** The floor for one column, or undefined for the free-text rules that must stay capped. */
+const minWidthFor = (field: string): number | undefined =>
+  field in FIELD_MAX_WIDTH && !(field in FIELD_MIN_WIDTH)
+    ? undefined
+    : FIELD_MIN_WIDTH[field] ?? DEFAULT_MIN_WIDTH;
 const CHANGED_BG = '#fef9c3';
 const REVIEW_ERROR_BG = '#fecaca';
 const REVIEW_WARNING_BG = '#fed7aa';
@@ -492,7 +530,10 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                 <th
                   key={c.field} onClick={() => toggleSort(c.field)}
                   className="text-2xs font-bold uppercase tracking-[.04em] text-text px-2.5 py-2 sticky text-center whitespace-nowrap cursor-pointer select-none z-[2]"
-                  style={{ backgroundColor: colorByKey(c.color).bg, top: bandHeight }}
+                  // The floor goes on the header as well as the cells: a table sizes a column from
+                  // every cell in it, and a minimum set only on the body rows loses to a header that
+                  // has already been measured.
+                  style={{ backgroundColor: colorByKey(c.color).bg, top: bandHeight, minWidth: minWidthFor(c.field) }}
                 >
                   {c.field}{sortField === c.field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
                 </th>
@@ -535,7 +576,11 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                           maxWidth ? 'whitespace-normal break-words text-left' : 'text-center whitespace-nowrap',
                           hasPoint && 'relative',
                         )}
-                        style={{ ...(maxWidth ? { maxWidth } : {}), backgroundColor: bg }}
+                        style={{
+                          ...(maxWidth ? { maxWidth } : {}),
+                          minWidth: minWidthFor(c.field),
+                          backgroundColor: bg,
+                        }}
                       >
                         {editing && onSaveField ? (
                           <div
