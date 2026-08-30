@@ -1,6 +1,36 @@
 import { colorByKey } from '../../lib/goldenFmdColors';
 import type { GoldenFmdStructure } from '../../types/entities';
 
+/** The note beside a field: a set of permitted values, or a sentence about it.
+ *
+ * These arrive in one free-text column, so the two are told apart by shape rather than by a flag —
+ * "Copy, Default, Transform, XREF" and "Mandatory or Optional" are lists of short tokens, while a
+ * description is prose. Splitting on commas and the word "or", then requiring every part to be
+ * short, gets that right for the cases that exist and falls back to plain text when it does not.
+ *
+ * Worth the distinction because the two mean different things to someone filling the document in:
+ * a description tells you what the field is FOR, whereas allowed values tell you what you may
+ * actually type — the second is a constraint, and constraints should look like constraints. */
+function AllowedValues({ note }: { note?: string }) {
+  if (!note?.trim()) return null;
+  const parts = note.split(/\s*,\s*|\s+or\s+/i).map((p) => p.trim()).filter(Boolean);
+  // More than one part, and every part short enough to be a value rather than a clause.
+  const isEnumeration = parts.length > 1 && parts.every((p) => p.length <= 24);
+
+  if (!isEnumeration) {
+    return <span className="text-2xs text-muted min-w-0 flex-1">{note}</span>;
+  }
+  return (
+    <span className="flex flex-wrap items-baseline gap-1 min-w-0 flex-1">
+      {parts.map((p) => (
+        <span key={p} className="font-mono text-2xs bg-surface-2 text-muted rounded-xs px-1.5 py-px">
+          {p}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 /** Read-only rendering of a Golden FMD structure snapshot — used for both the current ("Table")
  * view and any past version selected from history.
  *
@@ -23,19 +53,11 @@ export function GoldenFmdStructureView({ structure }: { structure: GoldenFmdStru
     return <p className="text-sm2 text-muted px-3.5 py-8 text-center">No sections defined.</p>;
   }
 
-  const total = structure.sections.reduce((n, s) => n + s.fields.length, 0);
   // Runs across the whole template, not per section — see above.
   let position = 0;
 
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-2xs text-muted">
-        {total} field{total === 1 ? '' : 's'} in {structure.sections.length} section
-        {structure.sections.length === 1 ? '' : 's'}, in the order they appear in a generated
-        Field Mapping.
-      </p>
-
-      <div className="rounded-lg shadow-[inset_0_0_0_1px_var(--line)] overflow-hidden">
+    <div className="rounded-lg shadow-[inset_0_0_0_1px_var(--line)] overflow-hidden">
         {structure.sections.map((section) => {
           const color = colorByKey(section.color);
           return (
@@ -65,11 +87,13 @@ export function GoldenFmdStructureView({ structure }: { structure: GoldenFmdStru
                           {position}
                         </span>
                         {/* Monospace because it is a technical identifier — the same rule every
-                            field, table and version reference follows across the app. */}
-                        <span className="font-mono text-sm2 text-text shrink-0">{f.field || '—'}</span>
-                        {f.description && (
-                          <span className="text-2xs text-muted min-w-0 flex-1">{f.description}</span>
-                        )}
+                            field, table and version reference follows across the app.
+                            Fixed width so the values beside it line up down the page instead of
+                            starting wherever the previous name happened to end. */}
+                        <span className="font-mono text-sm2 text-text shrink-0 w-[210px] truncate" title={f.field}>
+                          {f.field || '—'}
+                        </span>
+                        <AllowedValues note={f.description} />
                       </div>
                     );
                   })}
@@ -78,7 +102,6 @@ export function GoldenFmdStructureView({ structure }: { structure: GoldenFmdStru
             </div>
           );
         })}
-      </div>
     </div>
   );
 }
