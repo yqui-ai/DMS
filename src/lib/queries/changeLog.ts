@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../supabase';
+import { fmtDateTime } from '../format';
 
 export type ChangeOp = 'insert' | 'update' | 'delete';
 
@@ -136,6 +137,20 @@ function recordName(e: ChangeEntry): string {
   return `a ${entityLabel(e.entity).toLowerCase()}`;
 }
 
+/** True when `describeChange`'s sentence already says everything a diff line would.
+ *
+ * "Field Mapping assigned on SIF_CUST_EXT_2" followed by "Field Mapping: set" is the same fact
+ * twice, and repetition in a log is worse than terseness — it doubles the reading for none of the
+ * information. Every signature case below is one `describeChange` fully explains. */
+export function summaryCoversFields(e: ChangeEntry): boolean {
+  if (e.op !== 'update') return true; // inserts and deletes carry no field diff at all
+  const changed = new Set(e.fields.map((f) => f.field));
+  if (changed.has('published_at') || changed.has('scope_finalized') || changed.has('archived_at')) return true;
+  if (changed.size === 1 && (changed.has('fmd_id') || changed.has('consultant') || changed.has('etl_developer'))) return true;
+  if (changed.size === 1 && isDocumentField(e.fields[0].field)) return true;
+  return false;
+}
+
 /** One entry as a sentence a person can read.
  *
  * Built from `entity`, `op` and the field diff rather than shown straight from `summary` — see the
@@ -244,10 +259,51 @@ export function useEntityHistory(entity?: string, entityId?: string) {
  * so the same limit applies wherever a value is shown. */
 export function formatValue(v: unknown): string {
   if (v === null || v === undefined) return '—';
-  if (typeof v === 'string') return v === '' ? '—' : (looksLikeUuid(v) ? '—' : v);
+  if (typeof v === 'string') {
+    if (v === '') return '—';
+    if (looksLikeUuid(v)) return '—';
+    // Timestamps come out of JSONB as ISO strings. `2026-08-30T13:20:31.018+00:00` in an audit
+    // trail is a value nobody reads — it is the one field type where the raw form is strictly
+    // worse than the rendered one.
+    if (ISO_DATE_RE.test(v)) return fmtDateTime(v);
+    return v;
+  }
   if (typeof v === 'number' || typeof v === 'boolean') return String(v);
   const json = JSON.stringify(v);
   return json.length > 240 ? `${json.slice(0, 240)}…` : json;
+}
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+
+/** How one field's change should read: a movement, or a single word.
+ *
+ * `from → to` is right for values a person recognises, and useless for the ones they don't. A
+ * foreign key moving from null to a uuid rendered as `— → —` — a diff asserting that nothing
+ * changed, on a row whose whole point was that something did. Suppressing the uuid was correct;
+ * still drawing the arrow around the hole was not.
+ *
+ * So references report the TRANSITION rather than the values: set, cleared, changed. Same for
+ * documents, which are far too big to show. Everything else keeps the arrow. */
+export type FieldChangeShape =
+  | { kind: 'word'; word: string }
+  | { kind: 'move'; from: string; to: string };
+
+export function fieldChangeShape(field: string, from: unknown, to: unknown): FieldChangeShape {
+  const had = from !== null && from !== undefined && from !== '';
+  const has = to !== null && to !== undefined && to !== '';
+
+  if (isDocumentField(field)) return { kind: 'word', word: 'changed' };
+
+  // A reference: its value is an id, which names nothing to a reader. What matters is whether one
+  // is now there. `describeChange` already says WHICH document in the sentence above.
+  const isReference = field.endsWith('_id')
+    || (typeof from === 'string' && looksLikeUuid(from))
+    || (typeof to === 'string' && looksLikeUuid(to));
+  if (isReference) {
+    return { kind: 'word', word: has && had ? 'changed' : has ? 'set' : 'cleared' };
+  }
+
+  return { kind: 'move', from: formatValue(from), to: formatValue(to) };
 }
 
 /** Plain-English one-liners for a batch of entries, from the shared edge function.

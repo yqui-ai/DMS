@@ -13,8 +13,8 @@ import { useToast } from '../../components/Toast';
 import { fmtDateTime } from '../../lib/format';
 import { useHierarchy } from '../../lib/queries/hierarchy';
 import {
-  describeChange, entityLabel, fieldLabel, formatValue, isDocumentField, summariseChanges,
-  useChangeLog, useEntityHistory,
+  describeChange, entityLabel, fieldChangeShape, fieldLabel, formatValue, isDocumentField,
+  summariseChanges, summaryCoversFields, useChangeLog, useEntityHistory,
   type ChangeEntry, type ChangeOp,
 } from '../../lib/queries/changeLog';
 
@@ -269,7 +269,9 @@ export function ChangeLogPage() {
           {days.map(([day, items]) => (
             <section key={day}>
               <div className="flex items-baseline gap-2 mb-1.5">
-                <span className="text-2xs font-bold uppercase tracking-[.05em] text-muted">{day}</span>
+                <span className="text-2xs font-semibold uppercase tracking-[.06em] text-muted">
+                  {new Date(day).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                </span>
                 <span className="text-2xs text-muted tabular-nums">{items.length}</span>
               </div>
               <div className="rounded-lg bg-surface shadow-[inset_0_0_0_1px_var(--line)] divide-y divide-line-soft overflow-hidden">
@@ -292,14 +294,27 @@ function Row({ entry: e, aiSummary, onOpen }: {
 }) {
   const meta = OP_META[e.op];
   const Icon = meta.icon;
+  // Suppressed when the sentence already carries it — see summaryCoversFields. Repetition in a log
+  // is worse than terseness: it doubles the reading for none of the information.
+  const diff = summaryCoversFields(e) ? [] : e.fields;
+
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="w-full flex items-center gap-3 px-3.5 py-2 text-left hover:bg-blue-pale"
+      className="w-full flex items-baseline gap-3 px-3.5 py-2 text-left hover:bg-blue-pale"
     >
-      <Icon size={14} className={clsx('shrink-0', meta.className)} />
-      <Tag variant="neutral" size="sm" className="shrink-0 w-[128px] justify-center">{entityLabel(e.entity)}</Tag>
+      {/* Time first. This list is ordered by it and grouped by day, so it is the column the eye
+          runs down — and it was in the far-right 62px, which is the least scannable place a
+          primary key can sit. */}
+      <span className="text-2xs text-muted tabular-nums shrink-0 w-[42px] pt-px">
+        {new Date(e.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })}
+      </span>
+      <Icon size={14} className={clsx('shrink-0 self-start mt-0.5', meta.className)} />
+      {/* Auto width, not 128px centred. A fixed pill made "Plant" and "Archive request" occupy the
+          same slab of the row and pushed every sentence to the same far-right start. */}
+      <Tag variant="neutral" size="sm" className="shrink-0 self-start mt-px">{entityLabel(e.entity)}</Tag>
+
       <span className="min-w-0 flex-1">
         <span className="block text-sm2 text-text truncate">{aiSummary ?? describeChange(e)}</span>
         {/* When AI has rewritten the line, the recorded sentence stays visible underneath. The log
@@ -307,39 +322,35 @@ function Row({ entry: e, aiSummary, onOpen }: {
         {aiSummary && e.summary && (
           <span className="block text-2xs text-muted truncate">{e.summary}</span>
         )}
-        {/* The change itself, on the row.
-            "1 field" told you a count and nothing else, so every update needed opening to learn
-            anything — and most of them turn out to be one short value moving. Showing the move is
-            the difference between a log you scan and a log you audit. */}
-        {e.fields.length > 0 && (
-          <span className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mt-0.5">
-            {e.fields.slice(0, 3).map((f) => (
-              <span key={f.field} className="text-2xs inline-flex items-baseline gap-1 min-w-0">
-                <span className="text-muted shrink-0">{fieldLabel(f.field)}</span>
-                {isDocumentField(f.field) ? (
-                  <span className="text-muted italic">changed</span>
-                ) : (
-                  <>
-                    <span className="text-muted line-through decoration-1 truncate max-w-[160px]">
-                      {formatValue(f.from)}
-                    </span>
-                    <span className="text-muted shrink-0">→</span>
-                    <span className="text-text truncate max-w-[200px]">{formatValue(f.to)}</span>
-                  </>
-                )}
-              </span>
-            ))}
-            {e.fields.length > 3 && (
-              <span className="text-2xs text-muted">+{e.fields.length - 3} more</span>
+        {diff.length > 0 && (
+          <span className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 mt-0.5">
+            {diff.slice(0, 3).map((f, i) => {
+              const shape = fieldChangeShape(f.field, f.from, f.to);
+              return (
+                <span key={f.field} className="text-2xs inline-flex items-baseline gap-1 min-w-0">
+                  {i > 0 && <span className="text-line-strong mr-1">·</span>}
+                  <span className="text-muted shrink-0">{fieldLabel(f.field)}</span>
+                  {shape.kind === 'word' ? (
+                    <span className="text-text">{shape.word}</span>
+                  ) : (
+                    <>
+                      <span className="text-muted line-through decoration-1 truncate max-w-[150px]">{shape.from}</span>
+                      <span className="text-muted shrink-0">→</span>
+                      <span className="text-text truncate max-w-[190px]">{shape.to}</span>
+                    </>
+                  )}
+                </span>
+              );
+            })}
+            {diff.length > 3 && (
+              <span className="text-2xs text-muted">+{diff.length - 3} more</span>
             )}
           </span>
         )}
       </span>
-      <span className="text-2xs text-muted shrink-0 w-[150px] truncate text-right" title={e.actor}>
+
+      <span className="text-2xs text-muted shrink-0 max-w-[140px] truncate text-right" title={e.actor}>
         {e.actor.split('@')[0]}
-      </span>
-      <span className="text-2xs text-muted shrink-0 tabular-nums w-[62px] text-right">
-        {new Date(e.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })}
       </span>
     </button>
   );
@@ -389,10 +400,20 @@ function ChangeDetailDialog({ entry, onClose }: { entry: ChangeEntry | null; onC
                       Changed. Open the record to see the current contents — the log records that it
                       moved, not the document itself.
                     </span>
+                  ) : fieldChangeShape(f.field, f.from, f.to).kind === 'word' ? (
+                    /* A reference. Its value is an id, which names nothing to a reader, so the
+                       transition is the whole of what can be said here — the same rule the row
+                       above uses, from the same helper, so the two cannot disagree. */
+                    <span className="min-w-0 flex-1 text-sm2">
+                      <span className="text-text">
+                        {(fieldChangeShape(f.field, f.from, f.to) as { word: string }).word}
+                      </span>
+                      <span className="text-muted"> — the value is an internal reference, not something to show.</span>
+                    </span>
                   ) : (
                     <span className="min-w-0 flex-1 flex flex-col gap-0.5 text-sm2">
                       <span className="text-muted line-through decoration-1 break-words">{formatValue(f.from)}</span>
-                      <span className="text-text font-semibold break-words">{formatValue(f.to)}</span>
+                      <span className="text-text break-words">{formatValue(f.to)}</span>
                     </span>
                   )}
                 </div>
