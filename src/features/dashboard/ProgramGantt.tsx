@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Snowflake, Star } from 'lucide-react';
 import clsx from 'clsx';
 import { EmptyState } from '../../components/EmptyState';
@@ -10,6 +10,12 @@ import {
 /** Rail width. Wide enough for a wave name plus the two or three legend lines under it, and fixed
  * so every row's bar starts on the same edge — the alignment is what makes the chart scannable. */
 const RAIL = 220;
+
+/** Below this many pixels per month column, 'JAN' no longer fits and the labels run into each
+ * other. Measured rather than guessed at a breakpoint: the column width depends on the SPAN as much
+ * as the viewport, so a three-year chart collides on a wide screen while a one-quarter chart is
+ * perfectly readable on a narrow one. A media query would get both of those wrong. */
+const MIN_PX_FOR_MONTH_NAME = 34;
 
 /** Glyph and colour per marker kind, used by the chart AND by the legend above it, so a symbol
  * cannot appear on the chart in a colour the legend does not explain. */
@@ -43,6 +49,20 @@ export function ProgramGantt({ programId, highlightSubprojectId, span, showWeekB
   const { program, rows, autoSpan, isLoading } = useProgramTimeline(programId, highlightSubprojectId);
   const window = span ?? autoSpan;
 
+  /* The plotted track's width in pixels, watched rather than sampled once — the dialog and the page
+     both resize, and a width read at mount is wrong the moment either does. A callback ref rather
+     than useRef + useEffect because the track does not exist on the first render (the chart returns
+     an empty state while loading), and an effect with [] deps would never see it appear. */
+  const [trackWidth, setTrackWidth] = useState(0);
+  const observer = useRef<ResizeObserver | null>(null);
+  const trackRef = useCallback((node: HTMLDivElement | null) => {
+    observer.current?.disconnect();
+    if (!node) return;
+    setTrackWidth(node.getBoundingClientRect().width);
+    observer.current = new ResizeObserver(([entry]) => setTrackWidth(entry.contentRect.width));
+    observer.current.observe(node);
+  }, []);
+
   const total = window ? Math.max(1, daysBetween(window.from, window.to)) : 1;
 
   /** Position as a PERCENTAGE, not pixels. The track then fits whatever width it is given instead
@@ -58,7 +78,7 @@ export function ProgramGantt({ programId, highlightSubprojectId, span, showWeekB
    * the year said once over its months rather than repeated in every column label. */
   const { months, years } = useMemo(() => {
     if (!window) return { months: [], years: [] as { label: string; left: number; width: number }[] };
-    const months: { key: string; label: string; left: number; width: number; year: number }[] = [];
+    const months: { key: string; label: string; short: string; left: number; width: number; year: number }[] = [];
     const cursor = new Date(window.from);
     while (cursor <= window.to) {
       const startOfMonth = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
@@ -68,6 +88,9 @@ export function ProgramGantt({ programId, highlightSubprojectId, span, showWeekB
       months.push({
         key: `${startOfMonth.getFullYear()}-${startOfMonth.getMonth()}`,
         label: startOfMonth.toLocaleDateString(undefined, { month: 'short' }).toUpperCase(),
+        // Zero-padded so every column is the same two characters wide — '1' beside '10' reads as a
+        // ragged scale, and the padding is what lets the labels stay centred under narrow columns.
+        short: String(startOfMonth.getMonth() + 1).padStart(2, '0'),
         left, width: Math.max(0, right - left),
         year: startOfMonth.getFullYear(),
       });
@@ -125,6 +148,12 @@ export function ProgramGantt({ programId, highlightSubprojectId, span, showWeekB
     );
   }
 
+  /* Named months while they fit, two-digit numbers once they do not. Before the track has been
+     measured `trackWidth` is 0, which reads as "not narrow" and shows names — the honest default,
+     since a first paint at the wider label settles to the narrower one rather than the reverse. */
+  const perMonth = months.length > 0 ? trackWidth / months.length : 0;
+  const numericMonths = perMonth > 0 && perMonth < MIN_PX_FOR_MONTH_NAME;
+
   const today = new Date();
   const todayPct = inWindow(today) ? pct(today) : null;
 
@@ -177,7 +206,7 @@ export function ProgramGantt({ programId, highlightSubprojectId, span, showWeekB
       {/* Month scale. The year sits above its own months rather than being repeated in each label. */}
       <div className="flex border-b border-line bg-surface-2">
         <div className="shrink-0 border-r border-line" style={{ width: RAIL }} />
-        <div className="relative flex-1">
+        <div className="relative flex-1" ref={trackRef}>
           <div className="relative h-4">
             {years.map((y) => (
               <span
@@ -193,10 +222,17 @@ export function ProgramGantt({ programId, highlightSubprojectId, span, showWeekB
             {months.map((m) => (
               <span
                 key={m.key}
-                className="absolute inset-y-0 flex items-center justify-center overflow-hidden text-2xs tracking-[.06em] text-muted border-l border-line"
+                className={clsx(
+                  'absolute inset-y-0 flex items-center justify-center overflow-hidden text-2xs text-muted border-l border-line',
+                  // Letter-spacing is what pushes 'JAN' over the edge of a narrow column, so the
+                  // numeric form drops it and takes tabular figures instead — every label then
+                  // occupies exactly the same width and centres cleanly.
+                  numericMonths ? 'tabular-nums' : 'tracking-[.06em]',
+                )}
                 style={{ left: `${m.left}%`, width: `${m.width}%` }}
+                title={`${m.label} ${m.year}`}
               >
-                {m.label}
+                {numericMonths ? m.short : m.label}
               </span>
             ))}
           </div>
