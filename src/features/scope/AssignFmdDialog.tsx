@@ -31,10 +31,33 @@ export function AssignFmdDialog({ object, currentFmdId, busy, onAssign, onGenera
   const { data: candidates = [], isLoading } = useAssignableFmds(object?.id, object?.objectId);
   const [picked, setPicked] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [seededFor, setSeededFor] = useState<string | null>(null);
+
+  /* Reset the pick when the dialog is pointed at a different object.
+   *
+   * This is rendered unconditionally from the register and controlled by a nullable `object`, so it
+   * never unmounts between rows and `picked` survived the switch. Choosing an FMD for SIF_CUSTOMER_2
+   * and then opening SIF_CUST_EXT_TH left the old id selected: the candidate list was empty ("No
+   * Field Mapping exists for this object yet"), but `selection` was still truthy, so Assign was
+   * enabled and wrote the previous object's document to this one. */
+  if (object && object.id !== seededFor) {
+    setSeededFor(object.id);
+    setPicked(null);
+    setQuery('');
+  }
 
   if (!object) return null;
 
-  const selection = picked ?? currentFmdId ?? null;
+  /* Only ever an FMD that is actually offered for THIS object.
+   *
+   * The reset above fixes the cause; this makes the class of bug unable to reach the database at
+   * all. A selection is valid only if it is in the loaded candidate list, so no future state slip
+   * can assign a document that was never on screen. `currentFmdId` is exempt because an already
+   * assigned FMD is legitimately shown as current even when the candidate query does not return it
+   * — but it is never a NEW assignment, since Assign is disabled while selection === currentFmdId. */
+  const isOffered = (id: string | null) => !!id && candidates.some((c) => c.id === id);
+  const rawSelection = picked ?? currentFmdId ?? null;
+  const selection = isOffered(rawSelection) || rawSelection === currentFmdId ? rawSelection : null;
   const none = !isLoading && candidates.length === 0;
 
   // Searches the object ident too, not just the name. The ident is what ties an FMD to the object
@@ -72,9 +95,12 @@ export function AssignFmdDialog({ object, currentFmdId, busy, onAssign, onGenera
           <Button variant={none ? 'ai' : 'quiet'} disabled={busy} onClick={onGenerate}>
             <Sparkles size={14} /> Generate a new one
           </Button>
+          {/* `isOffered`, not just `selection`: assigning is only ever valid for a document this
+              object was actually offered. Re-checked at the click as well as in the disable, so a
+              selection cannot survive the list changing underneath it. */}
           <Button
-            variant="primary" disabled={busy || !selection || selection === currentFmdId}
-            onClick={() => { if (selection) { onAssign(selection); onClose(); } }}
+            variant="primary" disabled={busy || !isOffered(selection) || selection === currentFmdId}
+            onClick={() => { if (isOffered(selection) && selection !== currentFmdId) { onAssign(selection); onClose(); } }}
           >
             {busy ? 'Assigning…' : 'Assign'}
           </Button>

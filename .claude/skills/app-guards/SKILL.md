@@ -136,6 +136,34 @@ same version for no benefit the user could see.
   a removal by another route, so the name input is `readOnly` in place rather than rejected on save
   — finding out at save time costs every edit made after it.
 
+## 2b. Dialogs that act on a target — reset, and validate against what's on screen
+
+Every dialog in this app is **rendered unconditionally** and controlled by a nullable target prop
+(`object`, `target`, `entry`, `fmd`). That is the convention and it stays — but it means the
+component **never unmounts between targets**, so any `useState` inside it survives the switch.
+
+**Two rules, and the second is the one that matters.**
+
+1. **Re-seed every piece of per-target state when the target changes.** Either a `useEffect` keyed
+   on the target's id (`AddReviewPointDialog`, `GenerateFmdDialog`) or a render-time
+   `if (target.id !== seededFor)` reset (`AssignFmdDialog`, `PlantDialog`, `AssignPlantsDialog`).
+   Not doing this shows the previous record's values against the new one's name.
+
+2. **Validate the selection against the currently loaded options before writing it.** The reset is
+   the cause; this is the backstop. A selection is only actionable if it is in the list this target
+   was actually offered — check it in the button's `disabled` **and** again in its `onClick`, so a
+   selection cannot survive the list changing underneath it.
+
+This is not hypothetical. `AssignFmdDialog` held `picked` across targets: choosing an FMD for
+`SIF_CUSTOMER_2`, closing, then opening `SIF_CUST_EXT_TH` left the old id selected. That object's
+candidate list was empty — the dialog said *"No Field Mapping exists for this object yet"* — and
+Assign was still enabled, so it wrote `FMD_PROJX_SIF_CUSTOMER_2` onto an unrelated object. A wrong
+foreign key, written silently, from a dialog that was simultaneously telling the user there was
+nothing to assign.
+
+Anything that writes a foreign key from a user selection gets rule 2. A state bug should not be
+able to reach the database.
+
 ## 3. Input validation
 
 One function decides what a value may be, so the editor and the review can never disagree:
