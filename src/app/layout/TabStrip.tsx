@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
-import * as icons from 'lucide-react';
 import clsx from 'clsx';
+import { navIcon } from './navIcons';
 
 export interface TabStripItem {
   /** A precondition the section must meet before this tab appears at all. */
@@ -10,8 +10,6 @@ export interface TabStripItem {
   icon?: string;
   to: string;
 }
-
-const toPascal = (s: string) => s.split('-').map((p) => p[0].toUpperCase() + p.slice(1)).join('');
 
 /** Per-screen tab strip. `to` is relative to the current route (empty string = index tab).
  *
@@ -24,7 +22,7 @@ export function TabStrip({ items, basePath }: { items: TabStripItem[]; basePath:
   return (
     <div className="flex items-center gap-1 flex-wrap border-b border-line mb-4">
       {items.map((item) => {
-        const Icon = item.icon ? (icons as any)[toPascal(item.icon)] : undefined;
+        const Icon = navIcon(item.icon);
         const to = item.to ? `${basePath}/${item.to}` : basePath;
         return (
           <NavLink

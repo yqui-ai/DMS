@@ -60,7 +60,10 @@ export function LibraryHome() {
   ] satisfies Catalogue[]).filter((c) => canView(role, c.screen));
 
   return (
-    <div className="max-w-[1120px]">
+    // `mx-auto w-full` to match Migration Project, Archive and the Change Log — the measure was
+    // already right, but without centring it hugged the left edge with half a wide monitor empty
+    // beside it, which is what made this one screen look unfinished next to its siblings.
+    <div className="max-w-[1120px] mx-auto w-full">
       <PageHeader
         title="Library"
         description="Program-wide catalogues — everything that exists across every subproject you can see."

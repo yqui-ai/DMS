@@ -1,53 +1,77 @@
+import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-dom';
 import { AppShell, LaunchpadShell } from './layout/AppShell';
-import { LaunchpadPage } from '../features/launchpad/LaunchpadPage';
-import { AdministrationPage } from '../features/launchpad/AdministrationPage';
-import { MigrationStatusPage } from '../features/launchpad/MigrationStatusPage';
-import { ArchiveApprovalsPage } from '../features/launchpad/ArchiveApprovalsPage';
-import { ChangeLogPage } from '../features/launchpad/ChangeLogPage';
-import { ArchivePage } from '../features/launchpad/ArchivePage';
+// Static: the shell's own furniture, not screens. These render on every route, so deferring them
+// would only add a waterfall.
 import { TabbedSection } from './layout/TabbedSection';
 import { ScreenGate } from './layout/ScreenGate';
 import { Placeholder } from '../components/Placeholder';
 import { MIGRATION_TABS } from './nav';
 import type { TabStripItem } from './layout/TabStrip';
-import { HierarchyPage } from '../features/programme/HierarchyPage';
-import { ProgramSettingsPage } from '../features/programme/ProgramSettingsPage';
-import { ProgramAdminPage } from '../features/programme/ProgramAdminPage';
-import { ScopeErd } from '../features/scope/ScopeErd';
-import { ScopeRegister } from '../features/scope/ScopeRegister';
-import { ScopeWizard } from '../features/scope/ScopeWizard';
-import { RulesOverview } from '../features/rules/RulesOverview';
-import { RulesRegister } from '../features/rules/RulesRegister';
-import { ValueMapping } from '../features/rules/ValueMapping';
-import { UnmappedValues } from '../features/rules/UnmappedValues';
-import { ConnectionsPage } from '../features/connections/ConnectionsPage';
-import { CutoverPage } from '../features/cutover/CutoverPage';
-import { RunsRegister } from '../features/runs/RunsRegister';
-import { RunDetailModal } from '../features/runs/RunDetailModal';
-import { StagingArea } from '../features/staging/StagingArea';
-import { MigrationOverview } from '../features/staging/MigrationOverview';
-import { ProfilingPage } from '../features/staging/ProfilingPage';
-import { PipelineStages } from '../features/staging/PipelineStages';
-import { PromotionsPage } from '../features/governance/PromotionsPage';
-import { JobMonitorPage } from '../features/governance/JobMonitorPage';
-import { LibraryHome } from '../features/library/LibraryHome';
-import { LibraryObjects } from '../features/library/LibraryObjects';
-import { LibraryRules } from '../features/library/LibraryRules';
-import { LibraryFmds } from '../features/library/LibraryFmds';
-import { LibraryXref } from '../features/library/LibraryXref';
-import { FmdRoute, ObjectRoute, XrefRoute } from '../features/library/LibraryDeepViews';
-import { DashboardPage } from '../features/dashboard/DashboardPage';
-import { SearchPage } from '../features/search/SearchPage';
-import { MyProfilePage } from '../features/profile/MyProfilePage';
-import { MyWorkPage } from '../features/mywork/MyWorkPage';
-import { QualityOverview } from '../features/quality/QualityOverview';
-import { QualityDimensions } from '../features/quality/QualityDimensions';
-import { DqChecksPhase } from '../features/quality/DqChecksPhase';
-import { ReconciliationPage } from '../features/quality/ReconciliationPage';
-import { FalloutPage } from '../features/quality/FalloutPage';
-import { ReferenceDataOverview } from '../features/referenceData/ReferenceDataOverview';
-import { CheckTablesPage } from '../features/referenceData/CheckTablesPage';
+
+/** `React.lazy` wants a module whose default export is the component; every screen here is a named
+ * export. Rather than adding a default export to sixty files (and two ways to import each of them),
+ * this adapts the named one at the boundary.
+ *
+ * Why lazy at all: every screen was statically imported, so the whole app — ReactFlow, all four
+ * Library catalogues, every wizard and dialog — arrived in a single 1.9 MB chunk before the login
+ * form could render. Splitting per route means opening the app downloads the shell and the screen
+ * you asked for, and nothing else. The rest arrives when navigated to, which is also when the
+ * browser can cache it usefully. */
+function lazyNamed<K extends string, M extends Record<K, ComponentType<any>>>(
+  load: () => Promise<M>,
+  name: K,
+): LazyExoticComponent<M[K]> {
+  // Props are preserved through M[K] rather than widened to `unknown` — several routes pass props
+  // at the element (DqChecksPhase's `phase`/`emptyLabel`), and a helper that erased them would
+  // turn a compile-time contract into a runtime surprise.
+  return lazy(async () => ({ default: (await load())[name] }));
+}
+const LaunchpadPage = lazyNamed(() => import('../features/launchpad/LaunchpadPage'), 'LaunchpadPage');
+const AdministrationPage = lazyNamed(() => import('../features/launchpad/AdministrationPage'), 'AdministrationPage');
+const MigrationStatusPage = lazyNamed(() => import('../features/launchpad/MigrationStatusPage'), 'MigrationStatusPage');
+const ArchiveApprovalsPage = lazyNamed(() => import('../features/launchpad/ArchiveApprovalsPage'), 'ArchiveApprovalsPage');
+const ChangeLogPage = lazyNamed(() => import('../features/launchpad/ChangeLogPage'), 'ChangeLogPage');
+const ArchivePage = lazyNamed(() => import('../features/launchpad/ArchivePage'), 'ArchivePage');
+const HierarchyPage = lazyNamed(() => import('../features/programme/HierarchyPage'), 'HierarchyPage');
+const ProgramAdminPage = lazyNamed(() => import('../features/programme/ProgramAdminPage'), 'ProgramAdminPage');
+const PlantsPage = lazyNamed(() => import('../features/programme/PlantsPage'), 'PlantsPage');
+const ScopeErd = lazyNamed(() => import('../features/scope/ScopeErd'), 'ScopeErd');
+const ScopeRegister = lazyNamed(() => import('../features/scope/ScopeRegister'), 'ScopeRegister');
+const ScopeWizard = lazyNamed(() => import('../features/scope/ScopeWizard'), 'ScopeWizard');
+const RulesOverview = lazyNamed(() => import('../features/rules/RulesOverview'), 'RulesOverview');
+const RulesRegister = lazyNamed(() => import('../features/rules/RulesRegister'), 'RulesRegister');
+const ValueMapping = lazyNamed(() => import('../features/rules/ValueMapping'), 'ValueMapping');
+const UnmappedValues = lazyNamed(() => import('../features/rules/UnmappedValues'), 'UnmappedValues');
+const ConnectionsPage = lazyNamed(() => import('../features/connections/ConnectionsPage'), 'ConnectionsPage');
+const CutoverPage = lazyNamed(() => import('../features/cutover/CutoverPage'), 'CutoverPage');
+const RunsRegister = lazyNamed(() => import('../features/runs/RunsRegister'), 'RunsRegister');
+const RunDetailModal = lazyNamed(() => import('../features/runs/RunDetailModal'), 'RunDetailModal');
+const StagingArea = lazyNamed(() => import('../features/staging/StagingArea'), 'StagingArea');
+const MigrationOverview = lazyNamed(() => import('../features/staging/MigrationOverview'), 'MigrationOverview');
+const ProfilingPage = lazyNamed(() => import('../features/staging/ProfilingPage'), 'ProfilingPage');
+const PipelineStages = lazyNamed(() => import('../features/staging/PipelineStages'), 'PipelineStages');
+const PromotionsPage = lazyNamed(() => import('../features/governance/PromotionsPage'), 'PromotionsPage');
+const JobMonitorPage = lazyNamed(() => import('../features/governance/JobMonitorPage'), 'JobMonitorPage');
+const LibraryHome = lazyNamed(() => import('../features/library/LibraryHome'), 'LibraryHome');
+const LibraryObjects = lazyNamed(() => import('../features/library/LibraryObjects'), 'LibraryObjects');
+const LibraryRules = lazyNamed(() => import('../features/library/LibraryRules'), 'LibraryRules');
+const LibraryFmds = lazyNamed(() => import('../features/library/LibraryFmds'), 'LibraryFmds');
+const LibraryXref = lazyNamed(() => import('../features/library/LibraryXref'), 'LibraryXref');
+const FmdRoute = lazyNamed(() => import('../features/library/LibraryDeepViews'), 'FmdRoute');
+const ObjectRoute = lazyNamed(() => import('../features/library/LibraryDeepViews'), 'ObjectRoute');
+const XrefRoute = lazyNamed(() => import('../features/library/LibraryDeepViews'), 'XrefRoute');
+const DashboardPage = lazyNamed(() => import('../features/dashboard/DashboardPage'), 'DashboardPage');
+const SearchPage = lazyNamed(() => import('../features/search/SearchPage'), 'SearchPage');
+const MyProfilePage = lazyNamed(() => import('../features/profile/MyProfilePage'), 'MyProfilePage');
+const MyWorkPage = lazyNamed(() => import('../features/mywork/MyWorkPage'), 'MyWorkPage');
+const QualityOverview = lazyNamed(() => import('../features/quality/QualityOverview'), 'QualityOverview');
+const QualityDimensions = lazyNamed(() => import('../features/quality/QualityDimensions'), 'QualityDimensions');
+const DqChecksPhase = lazyNamed(() => import('../features/quality/DqChecksPhase'), 'DqChecksPhase');
+const ReconciliationPage = lazyNamed(() => import('../features/quality/ReconciliationPage'), 'ReconciliationPage');
+const FalloutPage = lazyNamed(() => import('../features/quality/FalloutPage'), 'FalloutPage');
+const ReferenceDataOverview = lazyNamed(() => import('../features/referenceData/ReferenceDataOverview'), 'ReferenceDataOverview');
+const CheckTablesPage = lazyNamed(() => import('../features/referenceData/CheckTablesPage'), 'CheckTablesPage');
 
 /** Design > Scope's tabs. Starred appear only after the scope is finalized.
  *
@@ -132,6 +156,9 @@ export const router = createBrowserRouter([
       { path: '/approvals', element: <ArchiveApprovalsPage /> },
       { path: '/archive', element: <ArchivePage /> },
       { path: '/changes', element: <ChangeLogPage /> },
+      // Programme master data, so it sits beside the hierarchy rather than inside a subproject —
+      // two waves covering plant 1010 have to be talking about the same 1010.
+      { path: '/plants', element: <PlantsPage /> },
       // The Library and Connections OUTSIDE a subproject live here, not in AppShell. The sidebar
       // navigates within a subproject; with none open it could only show the two groups that have
       // standalone fallbacks, so it rendered as a half-empty rail of unrelated links. Their nested
@@ -152,7 +179,6 @@ export const router = createBrowserRouter([
       {
         path: 'pg/:programId',
         children: [
-          { path: 'settings', element: <ScreenGate screen="programSettings"><ProgramSettingsPage /></ScreenGate> },
           { path: 'admin', element: <ScreenGate screen="programAdmin"><ProgramAdminPage /></ScreenGate> },
           {
             path: 'sp/:subprojectId',
@@ -251,7 +277,6 @@ export const router = createBrowserRouter([
               // connections. What is preserved here is the URL context: the sidebar, breadcrumb and
               // subproject switcher all keep working, and Back returns to where you were.
               { path: 'admin', element: <ScreenGate screen="programAdmin"><ProgramAdminPage /></ScreenGate> },
-              { path: 'settings', element: <ScreenGate screen="programSettings"><ProgramSettingsPage /></ScreenGate> },
               { path: 'connections', element: <ScreenGate screen="connections"><ConnectionsPage /></ScreenGate> },
             ],
           },

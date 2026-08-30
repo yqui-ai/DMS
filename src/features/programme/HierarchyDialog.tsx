@@ -9,6 +9,8 @@ import { useToast } from '../../components/Toast';
 import { fmtDateTime } from '../../lib/format';
 import { dateForInput, LEVELS, useHierarchyMutations, useRefStatus, type HierarchyForm } from '../../lib/queries/hierarchy';
 import { useAssignablePeople } from '../../lib/queries/people';
+import { usePlants, usePlantMutations, useSubprojectPlants } from '../../lib/queries/plants';
+import { PlantPicker } from './PlantPicker';
 import type { HierarchyLevel, HierarchyRecord } from '../../types/entities';
 
 /** What each level asks for beyond the shared code/name/status/dates. */
@@ -39,6 +41,9 @@ export interface HierarchyTarget {
   parentId?: string;
   /** Shown in the dialog subtitle so it is obvious what this is being created under. */
   parentLabel?: string;
+  /** The programme this record belongs to. Only used at SPRJ, to offer that programme's plants —
+   * a plant is programme master data, and another engagement's sites must not be selectable here. */
+  programId?: string;
 }
 
 const EMPTY: HierarchyForm = { code: '', name: '' };
@@ -70,6 +75,21 @@ export function HierarchyDialog({ target, onClose }: { target: HierarchyTarget |
     enabled: level === 'PRGM',
   });
 
+  /* Plants are part of the subproject form rather than a separate action: which sites a wave covers
+     is part of what the wave IS, so it is decided when the wave is created. A second dialog meant a
+     subproject could exist for days with no site attached and nothing ever asking for one. */
+  const { data: allPlants = [] } = usePlants(target?.programId, false, level === 'SPRJ');
+  const { data: plantIdsBySubproject } = useSubprojectPlants(level === 'SPRJ');
+  const [plantIds, setPlantIds] = useState<string[]>([]);
+  const { setSubprojectPlants } = usePlantMutations(target?.programId);
+
+  useEffect(() => {
+    if (!target) return;
+    // Seeded from the saved assignment when editing, empty when creating. Runs in the same effect
+    // as the rest of the form so a reopened dialog never shows the previous record's plants.
+    setPlantIds(target.record ? (plantIdsBySubproject?.get(target.record.id) ?? []) : []);
+  }, [target, plantIdsBySubproject]);
+
   useEffect(() => {
     if (!target) return;
     const r = target.record;
@@ -95,8 +115,18 @@ export function HierarchyDialog({ target, onClose }: { target: HierarchyTarget |
   const save = async () => {
     if (!target || !level) return;
     try {
+      let newId: string | undefined;
       if (editing) await update.mutateAsync({ level, id: target.record!.id, form });
-      else await create.mutateAsync({ level, parentId: target.parentId, form });
+      else newId = await create.mutateAsync({ level, parentId: target.parentId, form });
+
+      // Second write, deliberately: plants live in their own table, and there is no transaction
+      // across two PostgREST calls. Ordered so the subproject exists first — a failure here leaves
+      // a saved subproject with no plants, which reopening this same form fixes, rather than links
+      // pointing at a row that was never created.
+      const subprojectId = target.record?.id ?? newId;
+      if (level === 'SPRJ' && subprojectId) {
+        await setSubprojectPlants(subprojectId, plantIds);
+      }
       toast.success(`${label} ${editing ? 'saved' : 'created'}.`);
       onClose();
     } catch (err: any) {
@@ -194,6 +224,15 @@ export function HierarchyDialog({ target, onClose }: { target: HierarchyTarget |
                 </Field>
               ))}
             </div>
+          )}
+
+          {level === 'SPRJ' && (
+            <Field
+              label="Plants covered"
+              hint="Scope and Field Mappings are shared across every plant on this subproject."
+            >
+              <PlantPicker plants={allPlants} selected={plantIds} onChange={setPlantIds} disabled={busy} />
+            </Field>
           )}
 
           {/* Read-only, and shown rather than hidden: the GUID is what other systems key on, and the

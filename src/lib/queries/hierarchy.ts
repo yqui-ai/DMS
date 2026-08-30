@@ -232,12 +232,21 @@ export function useHierarchyMutations() {
       // guid, status default, created_by and created_at are all set by the trigger in 0037 —
       // deliberately not sent from here, so a client cannot forge an identity or an audit stamp.
       //
-      // No `.select()`. Reading the row back would make the insert depend on the SELECT policy as
-      // well, and a policy that decides visibility by looking the row up cannot see a row that is
-      // still being written (see migration 0039). Nothing here uses the returned row — the
-      // invalidation below refetches the list — so asking for it only adds a way to fail.
+      // A SUBPROJECT reads its row back; nothing else does. Reading back makes the insert depend on
+      // the SELECT policy too, and a policy that decides visibility by looking the row up cannot see
+      // a row still being written. `subprojects` is the one level where that was fixed: 0039
+      // replaced its self-referential policy with `can_see_subproject(id, project_id)`, which judges
+      // the row from its own keys, expressly so `INSERT ... RETURNING` works. The caller needs the
+      // new id to attach plants in the same save — the alternative is finding the row again by code,
+      // which races anyone creating the same code elsewhere.
+      if (level === 'SPRJ') {
+        const { data, error } = await supabase.from(table).insert(row).select('id').single();
+        if (error) throw error;
+        return data?.id as string;
+      }
       const { error } = await supabase.from(table).insert(row);
       if (error) throw error;
+      return undefined;
     },
     onSuccess: invalidate,
   });

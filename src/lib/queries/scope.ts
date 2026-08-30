@@ -362,6 +362,12 @@ export function useScopeMutations(subprojectId: string) {
     await queryClient.invalidateQueries({ queryKey: ['dependency-check', subprojectId] });
     await queryClient.invalidateQueries({ queryKey: ['scope-dependencies', subprojectId] });
     await queryClient.invalidateQueries({ queryKey: ['missing-prereqs', subprojectId] });
+    // `setAssignee` writes consultant / etl_developer on this same table, and this cache is what
+    // `useScopeObjectOwners` reads. Leaving it stale meant assigning yourself as an object's
+    // consultant did not make you its owner anywhere it mattered: the FMD viewer kept Publish
+    // disabled (canPublish reads isOwner from here) until the 30s staleTime expired or the page
+    // was reloaded. Not keyed by subproject — the query fetches every subproject at once.
+    await queryClient.invalidateQueries({ queryKey: ['scope-object-owners'] });
   };
 
   return {
@@ -448,6 +454,11 @@ export function useScopeMutations(subprojectId: string) {
       if (error) throw error;
       await queryClient.invalidateQueries({ queryKey: ['assignable-fmds', migrationObjectId] });
       await queryClient.invalidateQueries({ queryKey: ['fmd-assignments'] });
+      // Where-used is derived from exactly this column, so an assignment that doesn't clear these
+      // leaves the FMD's Where-used tab reporting the previous answer — which is the surface people
+      // check to decide whether an FMD is safe to change.
+      await queryClient.invalidateQueries({ queryKey: ['fmd-usage'] });
+      await queryClient.invalidateQueries({ queryKey: ['object-scope-usage', migrationObjectId] });
       await invalidate();
     },
     /** Renumbers many objects in one round-trip.

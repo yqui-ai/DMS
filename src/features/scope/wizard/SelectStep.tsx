@@ -452,6 +452,9 @@ function StandardPanel({ objects, candidates, subprojectId }: {
         onBack={goBackDetail}
         // Reading the object to decide whether to migrate it, not authoring a document from it.
         allowGenerateFmd={false}
+        // Deliberately NOT scope-restricted, unlike the register and the ERD tab. This is the step
+        // where the scope is being decided, and the prerequisites you most need to see are exactly
+        // the ones that are not in it yet — hiding them would hide the reason to add them.
       />
     </div>
   );

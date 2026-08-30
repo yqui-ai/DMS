@@ -15,14 +15,17 @@ import { fmtDateTime } from '../../lib/format';
 import { exportFmdsAsExcel } from '../../lib/fmdZipExport';
 import { useLibraryFmds, type LibraryFmdRow } from '../../lib/queries/fmds';
 import { useLibraryPath } from '../../lib/libraryNav';
-import { isFmdSeen } from '../../lib/fmdSeen';
+/* Scope Register reads the same flags off the same rows — these live in one place so the two lists
+   can't disagree about whether an FMD is outdated or new. This screen keeps its own layout (the
+   recency flags sit by the name, the version and Draft tag in the Version column); only the rules
+   are shared. */
+import { isFmdOutdated, fmdOutdatedReason, isNewFmd, isNewVersion } from '../../components/FmdStatusTags';
 import { useToast } from '../../components/Toast';
 import { GoldenFmdDesignerDialog } from './GoldenFmdDesignerDialog';
 import { ConvertHistoricalFmdWizard } from './ConvertHistoricalFmdWizard';
 
 const CLASS_OPTIONS = ['Global', 'Local'];
 const TYPE_OPTIONS = ['Standard', 'Golden', 'Custom'];
-const NEW_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 type GroupBy = 'none' | 'type' | 'reference';
 /** Read as "Group: <value>", matching the filters beside it ("Class: All"). The old labels each
@@ -34,23 +37,6 @@ const GROUP_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: 'reference', label: 'Group: Scope' },
 ];
 
-/** Two recency flags, and a row shows at most one of them: "New" for an FMD that has only ever had
- * its first version, "New Version" once a later version goes live. They're deliberately exclusive —
- * an FMD can't simultaneously be new and have a newer version than the one it was created with.
- * "New" also clears as soon as the row is opened, rather than sitting until the window expires. */
-const isRecent = (at?: string) => !!at && Date.now() - new Date(at).getTime() < NEW_WINDOW_MS;
-
-/** The FMD itself is new — it has never had a second version, so there is nothing to call a "new
- * version" of. `changedAt` is only populated once a second version exists, which is exactly the
- * test for "this is still the original". */
-const isNewFmd = (f: LibraryFmdRow) =>
-  !f.changedAt && isRecent(f.createdAt) && !isFmdSeen(f.id, f.latestVersionId);
-
-/** A later version of an existing FMD went live recently. Mutually exclusive with isNewFmd by
- * construction — an FMD that has never changed can't have published a *new* version — so a row
- * never carries both flags. */
-const isNewVersion = (f: LibraryFmdRow) =>
-  !!f.changedAt && isRecent(f.activePublishedAt);
 export function LibraryFmds() {
   const { data: fmds = [], isLoading } = useLibraryFmds();
   const toast = useToast();
@@ -170,8 +156,8 @@ export function LibraryFmds() {
           {isNewVersion(f) && <Tag variant="success" size="sm" className="shrink-0">New Version</Tag>}
           {/* The flag, not the number it's behind. "Needs re-syncing" is actionable in a list;
               "the template is on v1.0.2" is a detail you only need once you've opened it. */}
-          {(f.goldenOutdated || f.standardRefOutdated) && (
-            <Tag variant="warn" size="sm" className="shrink-0" title={f.goldenOutdated ? 'Behind the Golden FMD template' : 'Behind the object\'s Standard FMD'}>
+          {isFmdOutdated(f) && (
+            <Tag variant="warn" size="sm" className="shrink-0" title={fmdOutdatedReason(f)}>
               Outdated
             </Tag>
           )}

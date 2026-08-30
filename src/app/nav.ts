@@ -18,7 +18,6 @@ export const NAV_GROUPS: NavGroup[] = [
   { title: 'MY WORK', items: [{ key: 'myWork', label: 'My Work', icon: 'inbox', to: 'my-work' }] },
   { title: 'PROJECT', items: [
     { key: 'dashboard', label: 'Dashboard', icon: 'layout-dashboard', to: 'dashboard' },
-    { key: 'programSettings', label: 'Program Settings', icon: 'settings', to: 'settings', standalone: (programId) => (programId ? `/pg/${programId}/settings` : undefined) },
     { key: 'programAdmin', label: 'Program Admin', icon: 'shield-check', to: 'admin', standalone: (programId) => programId ? `/pg/${programId}/admin` : undefined },
   ]},
   { title: 'DESIGN', items: [

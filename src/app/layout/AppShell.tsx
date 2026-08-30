@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { Suspense, useState, type ReactNode } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { HeaderBar } from './HeaderBar';
@@ -7,6 +7,16 @@ import { useAuth } from '../../lib/auth';
 import { LoginPage } from '../../features/auth/LoginPage';
 
 /** Signed-in or nothing. Shared by both shells so the launchpad can't become a way in. */
+/** What a route shows while its chunk is in flight.
+ *
+ * Deliberately a bare centred line rather than a skeleton of the page: the shell (sidebar, header,
+ * breadcrumb) is already painted around it, so the only thing missing is the screen body, and a
+ * skeleton that guesses at a layout it doesn't know is more distracting than a word. On a warm
+ * cache this is never seen — the chunk resolves in the same frame. */
+function RouteFallback() {
+  return <div className="flex-1 grid place-items-center py-16 text-sm2 text-muted">Loading…</div>;
+}
+
 function AuthGate({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) {
@@ -30,7 +40,9 @@ export function LaunchpadShell() {
           {/* Library standalone lives here now, and it is two levels deep — it still needs the
               way back. Renders nothing on the areas that are their own root. */}
           <Breadcrumb />
-          <Outlet />
+          <Suspense fallback={<RouteFallback />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </AuthGate>
@@ -56,7 +68,9 @@ export function AppShell() {
                 Rendered here, not inside PageHeader, because the tabbed sections build their own
                 title block and would otherwise be the only screens without one. */}
             <Breadcrumb />
-            <Outlet />
+            <Suspense fallback={<RouteFallback />}>
+              <Outlet />
+            </Suspense>
           </main>
         </div>
       </div>

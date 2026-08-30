@@ -223,6 +223,11 @@ export function useGoldenXrefMutations() {
   const invalidate = () => Promise.all([
     queryClient.invalidateQueries({ queryKey: ['xref-tables-library'] }),
     queryClient.invalidateQueries({ queryKey: ['golden-xref-summary'] }),
+    // The per-subproject list reads the same table and was the one cache a Golden XREF write never
+    // cleared, so a newly created Golden XREF was absent from Rules > Value Mapping while being
+    // present in the Library. This is the third key the library-section-design skill names for
+    // `xref_tables`; it was the only one missing.
+    queryClient.invalidateQueries({ queryKey: ['xref-tables'] }),
   ]);
 
   return {

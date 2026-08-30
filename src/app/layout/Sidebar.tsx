@@ -1,14 +1,13 @@
 import { Link, NavLink, useParams } from 'react-router-dom';
-import * as icons from 'lucide-react';
-const { ChevronsLeft, ChevronsRight } = icons;
+import { ChevronsLeft, ChevronsRight } from 'lucide-react';
 import clsx from 'clsx';
+import { FALLBACK_NAV_ICON, navIcon } from './navIcons';
 import { NAV_GROUPS, type NavItem } from '../nav';
 import { canView, SCOPE_GATED } from '../../lib/rbac';
 import { useCurrentRole } from '../../lib/queries/memberships';
 import { useDefaultProgram, useSubproject } from '../../lib/queries/programme';
 import type { ScreenKey } from '../../types/entities';
 
-const toPascal = (s: string) => s.split('-').map((p) => p[0].toUpperCase() + p.slice(1)).join('');
 
 /** Nested (/pg/:programId/sp/:subprojectId/...) whenever a project is open, so items with a
  * `standalone` fallback (Library, Program Admin) never kick the user out of their current
@@ -80,7 +79,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 <div className="px-3.5 mb-1 text-2xs font-bold uppercase tracking-[.05em] text-nav-muted">{group.title}</div>
               )}
               {visibleItems.map((item) => {
-                const Icon = (icons as any)[toPascal(item.icon)] ?? icons.Circle;
+                const Icon = navIcon(item.icon) ?? FALLBACK_NAV_ICON;
                 return (
                   <NavLink
                     key={item.key}

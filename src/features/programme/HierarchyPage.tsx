@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Archive, ArrowRight, History, CheckCircle2, Clock, Library as LibraryIcon, Package, Pencil, Plus, ShieldCheck, Undo2 } from 'lucide-react';
+import { Archive, ArrowRight, Eraser, Factory, History, CheckCircle2, Clock, Library as LibraryIcon, Package, Pencil, Plus, ShieldCheck, Undo2 } from 'lucide-react';
 import clsx from 'clsx';
 import { PageHeader } from '../../components/PageHeader';
 import { Button } from '../../components/Button';
@@ -17,6 +17,8 @@ import {
 } from '../../lib/queries/hierarchy';
 import { adminProgramIds, useMyMemberships } from '../../lib/queries/launchpad';
 import { HierarchyDialog, type HierarchyTarget } from './HierarchyDialog';
+import { usePlants, useSubprojectPlants } from '../../lib/queries/plants';
+import { ResetTestDataDialog } from './ResetTestDataDialog';
 import { LEVEL_ICON, statusVariant } from './hierarchyLevels';
 import type { HierarchyLevel, RefStatus } from '../../types/entities';
 
@@ -43,6 +45,7 @@ export function HierarchyPage() {
   const [query, setQuery] = useState('');
   const [dialog, setDialog] = useState<HierarchyTarget | null>(null);
   const [archiving, setArchiving] = useState<ArchiveTarget | null>(null);
+  const [resetting, setResetting] = useState(false);
   const toast = useToast();
   const { cancel } = useArchiveMutations();
 
@@ -58,6 +61,23 @@ export function HierarchyPage() {
   };
 
   const adminOf = useMemo(() => new Set(adminProgramIds(memberships)), [memberships]);
+
+  /* Plants are shown on every subproject tile, so both queries run once here and the resolved
+     codes are handed down. Fetching per tile would be one request per subproject on a page that
+     routinely renders dozens. */
+  const { data: allPlants = [] } = usePlants();
+  const { data: plantIdsBySubproject } = useSubprojectPlants();
+
+  const plantsBySubproject = useMemo(() => {
+    const codeById = new Map(allPlants.map((p) => [p.id, p.code]));
+    const out = new Map<string, string[]>();
+    for (const [subprojectId, plantIds] of plantIdsBySubproject ?? []) {
+      // A plant the user cannot see is skipped rather than rendered as a raw uuid — RLS hiding a
+      // row is not something to surface as a broken-looking code.
+      out.set(subprojectId, plantIds.flatMap((id) => codeById.get(id) ?? []).sort());
+    }
+    return out;
+  }, [allPlants, plantIdsBySubproject]);
 
   /** Requests waiting on a role this person holds. An approver who is never told is an approval
    * that never happens, and the archive sits Pending forever. */
@@ -111,6 +131,13 @@ export function HierarchyPage() {
             <Button variant="secondary" onClick={() => navigate('/library')}>
               <LibraryIcon size={14} /> Library
             </Button>
+            {/* Plants are programme master data, shared by every subproject that covers the site,
+                so they belong beside the hierarchy rather than inside any one wave. Assigning a
+                plant to a subproject happens on the subproject itself — this is where the list of
+                sites is maintained. */}
+            <Button variant="secondary" onClick={() => navigate('/plants')}>
+              <Factory size={14} /> Plant Maintenance
+            </Button>
             <Button variant="secondary" onClick={() => navigate('/archive')}>
               <Archive size={14} /> Archive
             </Button>
@@ -130,6 +157,14 @@ export function HierarchyPage() {
                     {waitingOnMe}
                   </span>
                 )}
+              </Button>
+            )}
+            {/* TEMPORARY — remove with src/lib/queries/testReset.ts before this is used for real.
+                Only offered to someone who administers a program, and it still asks for the
+                program code typed out before it deletes anything. */}
+            {adminOf.size > 0 && (
+              <Button variant="dangerGhost" onClick={() => setResetting(true)}>
+                <Eraser size={14} /> Reset test data
               </Button>
             )}
             {/* Anyone signed in may start a program and becomes its Program Admin by doing so —
@@ -179,6 +214,7 @@ export function HierarchyPage() {
               program={pg}
               canEdit={adminOf.has(pg.id)}
               statuses={statuses}
+              plantsBySubproject={plantsBySubproject}
               onDialog={setDialog}
               onArchive={setArchiving}
               onCancelRequest={withdraw}
@@ -191,6 +227,13 @@ export function HierarchyPage() {
       <HierarchyDialog target={dialog} onClose={() => setDialog(null)} />
 
       <ArchiveDialog target={archiving} onClose={() => setArchiving(null)} />
+
+      <ResetTestDataDialog
+        open={resetting}
+        programs={programs.filter((p) => adminOf.has(p.id)).map((p) => ({ id: p.id, code: p.code, name: p.name }))}
+        onClose={() => setResetting(false)}
+      />
+
     </div>
   );
 }
@@ -242,10 +285,12 @@ function nodeActions(opts: {
 
 /* ────────────────────────────────────────────────────────────────────────────── program */
 
-function ProgramSection({ program: pg, canEdit, statuses, onDialog, onArchive, onCancelRequest, onOpen }: {
+function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, onDialog, onArchive, onCancelRequest, onOpen }: {
   program: ProgramNode;
   canEdit: boolean;
   statuses: RefStatus[];
+  /** Plant CODES per subproject id, resolved once for the whole tree rather than per tile. */
+  plantsBySubproject: Map<string, string[]>;
   onDialog: (t: HierarchyTarget) => void;
   onArchive: (t: ArchiveTarget) => void;
   onCancelRequest: (requestId: string) => void;
@@ -316,6 +361,7 @@ function ProgramSection({ program: pg, canEdit, statuses, onDialog, onArchive, o
               project={pj}
               canEdit={canEdit}
               statuses={statuses}
+              plantsBySubproject={plantsBySubproject}
               onDialog={onDialog}
               onArchive={onArchive}
               onCancelRequest={onCancelRequest}
@@ -331,16 +377,26 @@ function ProgramSection({ program: pg, canEdit, statuses, onDialog, onArchive, o
 /* ────────────────────────────────────────────────────────────────────────────── project */
 
 /** A grouping, not a card — projects organise subprojects, they are not something you open. */
-function ProjectGroup({ project: pj, canEdit, statuses, onDialog, onArchive, onCancelRequest, onOpen }: {
+function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDialog, onArchive, onCancelRequest, onOpen }: {
   project: ProjectNode;
   canEdit: boolean;
   statuses: RefStatus[];
+  plantsBySubproject: Map<string, string[]>;
   onDialog: (t: HierarchyTarget) => void;
   onArchive: (t: ArchiveTarget) => void;
   onCancelRequest: (requestId: string) => void;
   onOpen: (subprojectId: string) => void;
 }) {
   const Icon = LEVEL_ICON.PRJT;
+
+  /** A project's plants are the union of its subprojects', DERIVED here rather than stored on the
+   * project. Storing the same fact at two levels is the trap this schema has hit before: the moment
+   * a subproject's plants change, a stored project-level list is wrong and nothing says so. */
+  const projectPlants = useMemo(() => {
+    const all = new Set<string>();
+    for (const sp of pj.subprojects) for (const code of plantsBySubproject.get(sp.id) ?? []) all.add(code);
+    return [...all].sort();
+  }, [pj.subprojects, plantsBySubproject]);
 
   return (
     <div className="py-4 first:pt-1 last:pb-1">
@@ -352,6 +408,20 @@ function ProjectGroup({ project: pj, canEdit, statuses, onDialog, onArchive, onC
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-md font-bold text-text">{pj.name}</h3>
             <StatusTag level="PRJT" code={pj.status} statuses={statuses} archiveState={pj.archiveState} />
+            {/* Read-only by design: the codes are here because they say what the project covers,
+                but the place to change them is the subproject that actually carries them. */}
+            {projectPlants.length > 0 && (
+              <span
+                className="flex items-center gap-1 text-2xs text-muted"
+                title={`Covers ${projectPlants.length} plant${projectPlants.length === 1 ? '' : 's'}, across its subprojects`}
+              >
+                <Factory size={11} className="shrink-0" />
+                {projectPlants.slice(0, 4).map((code) => (
+                  <span key={code} className="font-mono text-blue-deep bg-blue-light rounded-xs px-1 py-px">{code}</span>
+                ))}
+                {projectPlants.length > 4 && <span>+{projectPlants.length - 4}</span>}
+              </span>
+            )}
           </div>
           <IdLine code={pj.code} />
         </div>
@@ -363,7 +433,7 @@ function ProjectGroup({ project: pj, canEdit, statuses, onDialog, onArchive, onC
               actions={nodeActions({
                 label: 'project', archiveState: pj.archiveState, archiveRequestId: pj.archiveRequestId,
                 childLabel: 'subproject',
-                onAdd: () => onDialog({ level: 'SPRJ', parentId: pj.id, parentLabel: `${pj.code} · ${pj.name}` }),
+                onAdd: () => onDialog({ level: 'SPRJ', parentId: pj.id, parentLabel: `${pj.code} · ${pj.name}`, programId: pj.programId }),
                 onEdit: () => onDialog({ level: 'PRJT', record: pj }),
                 onCancelRequest,
                 onArchive: () => onArchive({ entityType: 'project', entityId: pj.id, entityLabel: pj.name, programId: pj.programId, cascadeNote: 'its subprojects, their cycles, and all their scope and mapping work' }),
@@ -380,7 +450,7 @@ function ProjectGroup({ project: pj, canEdit, statuses, onDialog, onArchive, onC
           <p className="text-2xs text-muted">
             No subprojects yet.{' '}
             {canEdit && (
-              <button onClick={() => onDialog({ level: 'SPRJ', parentId: pj.id, parentLabel: pj.name })} className="text-blue font-semibold hover:underline">
+              <button onClick={() => onDialog({ level: 'SPRJ', parentId: pj.id, parentLabel: pj.name, programId: pj.programId })} className="text-blue font-semibold hover:underline">
                 Add one
               </button>
             )}
@@ -394,10 +464,11 @@ function ProjectGroup({ project: pj, canEdit, statuses, onDialog, onArchive, onC
                 programId={pj.programId}
                 canEdit={canEdit}
                 statuses={statuses}
+                plantCodes={plantsBySubproject.get(sp.id) ?? []}
                 onOpen={() => onOpen(sp.id)}
                 onDialog={onDialog}
                 onArchive={onArchive}
-              onCancelRequest={onCancelRequest}
+                onCancelRequest={onCancelRequest}
               />
             ))}
           </div>
@@ -411,12 +482,15 @@ function ProjectGroup({ project: pj, canEdit, statuses, onDialog, onArchive, onC
 
 /** The only level you can work inside, so the only one rendered as a destination. The whole tile is
  * the click target; the overflow menu stops propagation so administering never navigates. */
-function SubprojectTile({ subproject: sp, programId, canEdit, statuses, onOpen, onDialog, onArchive, onCancelRequest }: {
+function SubprojectTile({ subproject: sp, programId, canEdit, statuses, plantCodes, onOpen, onDialog, onArchive, onCancelRequest }: {
   subproject: SubprojectNode;
   /** The program the subproject sits in — an archive request is scoped by program. */
   programId: string;
   canEdit: boolean;
   statuses: RefStatus[];
+  /** Codes of the plants this subproject covers, already resolved. Passed down rather than looked
+   * up per tile: one query for the whole tree, not one per subproject. */
+  plantCodes: string[];
   onOpen: () => void;
   onDialog: (t: HierarchyTarget) => void;
   onArchive: (t: ArchiveTarget) => void;
@@ -457,7 +531,7 @@ function SubprojectTile({ subproject: sp, programId, canEdit, statuses, onOpen, 
                     label: 'subproject', archiveState: sp.archiveState, archiveRequestId: sp.archiveRequestId,
                     childLabel: 'cycle',
                     onAdd: () => onDialog({ level: 'CYCL', parentId: sp.id, parentLabel: `${sp.code} · ${sp.name}` }),
-                    onEdit: () => onDialog({ level: 'SPRJ', record: sp }),
+                    onEdit: () => onDialog({ level: 'SPRJ', record: sp, programId }),
                     onCancelRequest,
                     onArchive: () => onArchive({ entityType: 'subproject', entityId: sp.id, entityLabel: sp.name, programId, cascadeNote: 'its cycles, scope, FMDs, rules and runs' }),
                   }),
@@ -470,6 +544,22 @@ function SubprojectTile({ subproject: sp, programId, canEdit, statuses, onOpen, 
         <dl className="flex flex-col gap-1.5 text-2xs">
           {/* The one date that is operational rather than planning — people chase this. */}
           <Stat label="FMD freeze" value={sp.freezeDate ? fmtDate(sp.freezeDate) : 'Not set'} dim={!sp.freezeDate} />
+          {/* The sites this wave covers. Same treatment as Cycles because they are the same kind
+              of fact — a short list of codes that says what this subproject is. Plants are what a
+              wave is usually defined BY, so leaving them to a menu nobody opens would hide the
+              answer to the first question anyone asks about it. */}
+          <div className="flex items-baseline gap-2">
+            <dt className="text-muted w-[72px] shrink-0">Plants</dt>
+            <dd className="flex flex-wrap gap-1 min-w-0">
+              {plantCodes.length === 0
+                ? <span className="text-muted">None assigned</span>
+                : plantCodes.map((code) => (
+                  <span key={code} className="font-mono text-2xs bg-blue-light text-blue-deep rounded-xs px-1.5 py-px">
+                    {code}
+                  </span>
+                ))}
+            </dd>
+          </div>
           <div className="flex items-baseline gap-2">
             <dt className="text-muted w-[72px] shrink-0">Cycles</dt>
             <dd className="flex flex-wrap gap-1 min-w-0">
