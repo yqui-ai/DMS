@@ -78,46 +78,86 @@ export function ChangeLogPage() {
     return { programName, projectName, subprojectName, projectOfSubproject };
   }, [programs]);
 
-  const kindOptions = useMemo(
-    () => [...new Set(entries.map((e) => entityLabel(e.entity)))].sort(),
-    [entries],
-  );
-  /** Only what the log actually contains — a filter listing programmes with no entries is a list of
-   * dead ends. Derived from the entries, then named through the hierarchy. */
-  const optionsFrom = (ids: (string | undefined)[]) => [...new Set(ids.filter(Boolean) as string[])];
-  const programOptions = useMemo(() => optionsFrom(entries.map((e) => e.programId)), [entries]);
-  const subprojectOptions = useMemo(() => optionsFrom(entries.map((e) => e.subprojectId)), [entries]);
-  const projectOptions = useMemo(
-    () => optionsFrom(entries.map((e) => (e.subprojectId ? scope.projectOfSubproject.get(e.subprojectId) : undefined))),
-    [entries, scope],
-  );
-  const actorOptions = useMemo(() => [...new Set(entries.map((e) => e.actor))].sort(), [entries]);
-
-  /** The sentinel for entries that belong to no subproject — programme settings, roles, users,
-   * plants, the Golden FMD. Without it the only way to see them is to clear every filter, which is
-   * exactly the "where did the settings changes go" question this filter exists to answer. */
+  /** Entries whose subproject belongs to none — programme settings, roles, users, plants, the
+   * Golden FMD. Without a value of its own, the only way to see them is to clear every filter,
+   * which is exactly the "where did the settings changes go" question this filter answers. */
   const PROGRAM_WIDE = '__program_wide__';
+  /** A subproject the log names but the hierarchy no longer contains, because it was deleted. The
+   * log outlives the record on purpose — that is what append-only means — so its entries need
+   * somewhere to sit. Every unresolvable id collapses to this one option rather than becoming a
+   * row of identical "Unknown subproject" entries you cannot tell apart. */
+  const GONE = '__deleted__';
 
-  const shown = useMemo(() => {
+  /** One entry's value for each facet, computed once so the filter and the option lists agree. */
+  const facetsOf = (e: ChangeEntry) => {
+    const projectId = e.subprojectId ? scope.projectOfSubproject.get(e.subprojectId) : undefined;
+    return {
+      program: e.programId ? (scope.programName.has(e.programId) ? e.programId : GONE) : undefined,
+      project: e.subprojectId ? (projectId ?? GONE) : undefined,
+      subproject: e.subprojectId
+        ? (scope.subprojectName.has(e.subprojectId) ? e.subprojectId : GONE)
+        : PROGRAM_WIDE,
+      kind: entityLabel(e.entity),
+      op: OP_META[e.op].label,
+      actor: e.actor,
+    };
+  };
+
+  /** Does one entry pass the current filters, optionally ignoring one of them?
+   *
+   * The `except` argument is what makes the filters co-dependent. A facet's own selection must not
+   * narrow its own option list — otherwise choosing one programme would leave the Program dropdown
+   * showing only that programme, with no way to see or pick another. Every OTHER filter does
+   * narrow it, which is the behaviour being asked for. */
+  const passes = (e: ChangeEntry, except?: 'program' | 'project' | 'subproject' | 'kind' | 'op' | 'actor') => {
+    const f = facetsOf(e);
     const q = query.trim().toLowerCase();
-    return entries.filter((e) => {
-      const projectId = e.subprojectId ? scope.projectOfSubproject.get(e.subprojectId) : undefined;
-      const subprojectKey = e.subprojectId ?? PROGRAM_WIDE;
-      return (
-        (kinds.length === 0 || kinds.includes(entityLabel(e.entity)))
-        && (programIds.length === 0 || (!!e.programId && programIds.includes(e.programId)))
-        && (projectIds.length === 0 || (!!projectId && projectIds.includes(projectId)))
-        && (subprojectIds.length === 0 || subprojectIds.includes(subprojectKey))
-        && (ops.length === 0 || ops.includes(OP_META[e.op].label))
-        && (actors.length === 0 || actors.includes(e.actor))
-        && (!q
-          || (e.summary ?? '').toLowerCase().includes(q)
-          || (aiSummaries[e.id] ?? '').toLowerCase().includes(q)
-          || e.actor.toLowerCase().includes(q)
-          || entityLabel(e.entity).toLowerCase().includes(q))
-      );
-    });
-  }, [entries, query, kinds, programIds, projectIds, subprojectIds, ops, actors, aiSummaries, scope]);
+    return (
+      (except === 'kind' || kinds.length === 0 || kinds.includes(f.kind))
+      && (except === 'program' || programIds.length === 0 || (!!f.program && programIds.includes(f.program)))
+      && (except === 'project' || projectIds.length === 0 || (!!f.project && projectIds.includes(f.project)))
+      && (except === 'subproject' || subprojectIds.length === 0 || subprojectIds.includes(f.subproject))
+      && (except === 'op' || ops.length === 0 || ops.includes(f.op))
+      && (except === 'actor' || actors.length === 0 || actors.includes(f.actor))
+      && (!q
+        || (e.summary ?? '').toLowerCase().includes(q)
+        || (aiSummaries[e.id] ?? '').toLowerCase().includes(q)
+        || e.actor.toLowerCase().includes(q)
+        || entityLabel(e.entity).toLowerCase().includes(q))
+    );
+  };
+
+  const shown = useMemo(
+    () => entries.filter((e) => passes(e)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [entries, query, kinds, programIds, projectIds, subprojectIds, ops, actors, aiSummaries, scope],
+  );
+
+  /** Options for one facet: the values still reachable given every OTHER filter.
+   *
+   * Anything currently selected is kept in the list even when it is no longer reachable — a
+   * selection you cannot see is a selection you cannot undo, and the filter would look empty while
+   * silently excluding everything. */
+  const optionsFor = (
+    facet: 'program' | 'project' | 'subproject' | 'kind' | 'op' | 'actor',
+    selected: string[],
+  ) => {
+    const available = new Set<string>();
+    for (const e of entries) {
+      if (!passes(e, facet)) continue;
+      const v = facetsOf(e)[facet];
+      if (v) available.add(v);
+    }
+    for (const s of selected) available.add(s);
+    return [...available];
+  };
+
+  const programOptions = useMemo(() => optionsFor('program', programIds), [entries, query, kinds, programIds, projectIds, subprojectIds, ops, actors, scope]); // eslint-disable-line react-hooks/exhaustive-deps
+  const projectOptions = useMemo(() => optionsFor('project', projectIds), [entries, query, kinds, programIds, projectIds, subprojectIds, ops, actors, scope]); // eslint-disable-line react-hooks/exhaustive-deps
+  const subprojectOptions = useMemo(() => optionsFor('subproject', subprojectIds), [entries, query, kinds, programIds, projectIds, subprojectIds, ops, actors, scope]); // eslint-disable-line react-hooks/exhaustive-deps
+  const kindOptions = useMemo(() => optionsFor('kind', kinds).sort(), [entries, query, kinds, programIds, projectIds, subprojectIds, ops, actors, scope]); // eslint-disable-line react-hooks/exhaustive-deps
+  const opOptions = useMemo(() => optionsFor('op', ops), [entries, query, kinds, programIds, projectIds, subprojectIds, ops, actors, scope]); // eslint-disable-line react-hooks/exhaustive-deps
+  const actorOptions = useMemo(() => optionsFor('actor', actors).sort(), [entries, query, kinds, programIds, projectIds, subprojectIds, ops, actors, scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Grouped by day. A flat list of 300 timestamps gives the eye nothing to hold on to, and "when"
    * is half of what anyone comes here for. */
@@ -179,13 +219,13 @@ export function ChangeLogPage() {
         {programOptions.length > 1 && (
           <MultiSelectFilter
             label="Program" options={programOptions} selected={programIds} onChange={setProgramIds}
-            formatOption={(id) => scope.programName.get(id) ?? 'Unknown program'}
+            formatOption={(id) => (id === GONE ? 'Deleted program' : scope.programName.get(id) ?? id)}
           />
         )}
         {projectOptions.length > 1 && (
           <MultiSelectFilter
             label="Project" options={projectOptions} selected={projectIds} onChange={setProjectIds}
-            formatOption={(id) => scope.projectName.get(id) ?? 'Unknown project'}
+            formatOption={(id) => (id === GONE ? 'Deleted project' : scope.projectName.get(id) ?? id)}
           />
         )}
         {subprojectOptions.length > 0 && (
@@ -194,19 +234,20 @@ export function ChangeLogPage() {
             /* PROGRAM_WIDE is offered alongside the real subprojects rather than as a separate
                control: "which subproject" and "the ones belonging to none" are the same question,
                and settings, roles, users, plants and the Golden FMD all live in that answer. */
-            options={[...subprojectOptions, PROGRAM_WIDE]}
+            options={subprojectOptions}
             selected={subprojectIds} onChange={setSubprojectIds}
-            formatOption={(id) => (id === PROGRAM_WIDE
-              ? 'Program-wide (settings, users, plants)'
-              : scope.subprojectName.get(id) ?? 'Unknown subproject')}
+            formatOption={(id) => (
+              id === PROGRAM_WIDE ? 'Program-wide (settings, users, plants)'
+                : id === GONE ? 'Deleted subproject'
+                  : scope.subprojectName.get(id) ?? id)}
           />
         )}
         {kindOptions.length > 1 && (
           <MultiSelectFilter label="Record" options={kindOptions} selected={kinds} onChange={setKinds} />
         )}
-        <MultiSelectFilter
-          label="Action" options={['Created', 'Changed', 'Deleted']} selected={ops} onChange={setOps}
-        />
+        {opOptions.length > 1 && (
+          <MultiSelectFilter label="Action" options={opOptions} selected={ops} onChange={setOps} />
+        )}
         {actorOptions.length > 1 && (
           <MultiSelectFilter
             label="Person" options={actorOptions} selected={actors} onChange={setActors}
@@ -266,12 +307,34 @@ function Row({ entry: e, aiSummary, onOpen }: {
         {aiSummary && e.summary && (
           <span className="block text-2xs text-muted truncate">{e.summary}</span>
         )}
+        {/* The change itself, on the row.
+            "1 field" told you a count and nothing else, so every update needed opening to learn
+            anything — and most of them turn out to be one short value moving. Showing the move is
+            the difference between a log you scan and a log you audit. */}
+        {e.fields.length > 0 && (
+          <span className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mt-0.5">
+            {e.fields.slice(0, 3).map((f) => (
+              <span key={f.field} className="text-2xs inline-flex items-baseline gap-1 min-w-0">
+                <span className="text-muted shrink-0">{fieldLabel(f.field)}</span>
+                {isDocumentField(f.field) ? (
+                  <span className="text-muted italic">changed</span>
+                ) : (
+                  <>
+                    <span className="text-muted line-through decoration-1 truncate max-w-[160px]">
+                      {formatValue(f.from)}
+                    </span>
+                    <span className="text-muted shrink-0">→</span>
+                    <span className="text-text truncate max-w-[200px]">{formatValue(f.to)}</span>
+                  </>
+                )}
+              </span>
+            ))}
+            {e.fields.length > 3 && (
+              <span className="text-2xs text-muted">+{e.fields.length - 3} more</span>
+            )}
+          </span>
+        )}
       </span>
-      {e.fields.length > 0 && (
-        <span className="text-2xs text-muted shrink-0 tabular-nums">
-          {e.fields.length} field{e.fields.length === 1 ? '' : 's'}
-        </span>
-      )}
       <span className="text-2xs text-muted shrink-0 w-[150px] truncate text-right" title={e.actor}>
         {e.actor.split('@')[0]}
       </span>
