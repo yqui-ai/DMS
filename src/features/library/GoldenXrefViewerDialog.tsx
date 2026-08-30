@@ -6,12 +6,11 @@ import { Select } from '../../components/Select';
 import { Tag } from '../../components/Tag';
 import { useGoldenXrefMutations, useXrefVersions, type LibraryXrefRow } from '../../lib/queries/rules';
 import { GoldenFmdStructureView } from './GoldenFmdStructureView';
-import { XrefHealthTab } from './xref/XrefHealthTab';
 import { XrefDraftTab } from './xref/XrefDraftTab';
-import { XrefReviewTab } from './xref/XrefReviewTab';
+import { XrefVersionsTab } from './xref/XrefVersionsTab';
 import { XrefWhereUsedTab } from './xref/XrefWhereUsedTab';
 
-type Tab = 'structure' | 'health' | 'draft' | 'versions' | 'where-used';
+type Tab = 'structure' | 'draft' | 'versions' | 'where-used';
 
 /** Read-only view of the (singleton) Golden XREF — shaped exactly like the Golden FMD viewer.
  *
@@ -20,17 +19,21 @@ type Tab = 'structure' | 'health' | 'draft' | 'versions' | 'where-used';
  * way, opened from sibling rows of the same catalogue, gave the reader two different screens — and
  * the one that showed the actual content gave it the smaller half.
  *
- * So it follows the contract in the library-section-design skill, the one the FMD viewer already
- * keeps: ONE version selector in the header driving every tab, and the same five tabs answering the
- * same five questions.
+ * So it follows the contract in the library-section-design skill, the one the GOLDEN FMD viewer
+ * already keeps: ONE version selector in the header driving every tab, and the same tabs.
  *
  *   · Cross Reference — the selected version's fields, at full dialog width.
- *   · Health          — can this template do its job. Always the LATEST version, so the header
- *                       selector hides while it is open.
  *   · Draft           — present only while an unpublished draft exists, and the only place Publish
  *                       lives, exactly as on the FMD.
- *   · Versions & Review — the selected version's facts beside the review of the template.
+ *   · Versions        — the selected version's facts, plus Compare versions…
  *   · Where used      — which tables were built from this template and which have fallen behind.
+ *
+ * **No Health or Review tab here.** Both are things you ask about a document being built for a
+ * subproject — is it complete, what do we think of it — and the Golden template is neither: it is
+ * what those documents are generated FROM. They belong to the non-Golden XREF viewer, which does
+ * not exist yet; `XrefHealthTab` and `XrefReviewTab` are written and waiting for it (see the note
+ * at the top of each). Mounting them here made the Golden XREF viewer carry two tabs its FMD
+ * counterpart deliberately does not have.
  *
  * Editing is still only ever through the "Golden XREF" toolbar button / GoldenXrefDesignerDialog. */
 export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow | null; onClose: () => void }) {
@@ -78,9 +81,8 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
      and a permanently-present tab reading "no draft" is a tab nobody ever needs to click. */
   const TABS = [
     { key: 'structure' as const, label: 'Cross Reference' },
-    { key: 'health' as const, label: 'Health' },
     ...(hasDraft ? [{ key: 'draft' as const, label: 'Draft' }] : []),
-    { key: 'versions' as const, label: 'Versions & Review' },
+    { key: 'versions' as const, label: 'Versions' },
     { key: 'where-used' as const, label: 'Where used' },
   ];
 
@@ -111,9 +113,9 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
 
             {/* One selector for the whole dialog, matching the FMD viewer — every tab that renders
                 a version renders whatever is picked here, so there is a single answer to which
-                version is on screen. Hidden on the tabs that do not read it: Health always measures
-                the latest, Draft is by definition the draft, and Where used compares against the
-                latest published one. A selector that visibly does nothing is worse than none. */}
+                version is on screen. Hidden on the tabs that do not read it: Draft is by definition
+                the draft, and Where used compares against the latest published one. A selector that
+                visibly does nothing is worse than none. */}
             {versions.length > 0 && (tab === 'structure' || tab === 'versions') && (
               <label className="flex items-center gap-1.5 text-2xs text-muted shrink-0 -mt-[5px]">
                 Version
@@ -141,16 +143,10 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
               ) : (
                 <p className="text-sm2 text-muted py-8 text-center">No structure recorded for this version.</p>
               )
-            ) : tab === 'health' ? (
-              <XrefHealthTab
-                versions={versions}
-                selectedId={selected?.id}
-                onOpenDraft={() => setTab('draft')}
-              />
             ) : tab === 'draft' ? (
               <XrefDraftTab versions={versions} onPublish={publish} publishing={publishing} />
             ) : tab === 'versions' ? (
-              <XrefReviewTab xref={xref} versions={versions} selected={selected} />
+              <XrefVersionsTab xref={xref} versions={versions} selected={selected} />
             ) : (
               <XrefWhereUsedTab goldenId={xref.id} latestPublished={latestPublished} />
             )}

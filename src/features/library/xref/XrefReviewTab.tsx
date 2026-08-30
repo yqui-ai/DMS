@@ -14,7 +14,19 @@ import { useXrefReviewMutations, useXrefReviewPoints, type XrefReviewPoint } fro
 import type { LibraryXrefRow } from '../../../lib/queries/rules';
 import type { XrefVersion } from '../../../types/entities';
 
-/** The selected version's facts, beside the review of the template.
+/** ⚠ NOT MOUNTED YET — for the non-Golden XREF viewer, which does not exist.
+ *
+ * Removed from the Golden XREF viewer for the reason the FMD makes the same split: its Versions tab
+ * is labelled "Versions & Review" only for CUSTOM FMDs. A review is something you write about a
+ * document being built for a subproject; the Golden template is what those are generated from, and
+ * it has the designer's change comments instead. The Golden viewer now renders `XrefVersionsTab`
+ * (details only); this is what a Standard XREF's viewer will render.
+ *
+ * The backing table and queries (`xref_review_points`, migration 0060, `queries/xrefReview.ts`) are
+ * live — they were kept when this tab was unmounted, so wiring this up later needs no schema work.
+ *
+ * ── What it does ─────────────────────────────────────────────────────────────────────────────
+ * The selected version's facts, beside the review of the template.
  *
  * Mirrors the FMD's Versions & Review tab: version details on the left, review points on the right,
  * both in the shared `Pane` so their headers sit on one baseline. The FMD has a third pane for the

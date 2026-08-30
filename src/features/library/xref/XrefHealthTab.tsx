@@ -34,8 +34,19 @@ function Group({ label, note, children }: { label: string; note?: string; childr
   );
 }
 
-/** Whether the Golden XREF template can do its job — and, when a draft is open, the one button that
- * releases it.
+/** ⚠ NOT MOUNTED YET — for the non-Golden XREF viewer, which does not exist.
+ *
+ * This was briefly a tab on the Golden XREF viewer and was removed: health is a question about a
+ * document being built for a subproject, not about the template those documents are generated from,
+ * and the Golden FMD viewer has no Health tab for exactly the same reason. It is kept rather than
+ * deleted because Standard XREF tables — which can now be built from the template, and so have a
+ * structure worth grading — are getting a viewer, and this is what it will render.
+ *
+ * `analyseXrefStructure` and its tests in `src/lib/xrefHealth.ts` are live and used by the Draft and
+ * Compare surfaces, so the logic underneath this is exercised even while the component is not.
+ *
+ * ── What it does ─────────────────────────────────────────────────────────────────────────────
+ * Whether an XREF template can do its job — and, when a draft is open, a route to the Draft tab.
  *
  * Shaped after the FMD's health tab on purpose: the same metric strip, the same fail-first checks
  * list with the passing ones folded, the same coloured panel for the one thing with an action

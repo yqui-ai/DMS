@@ -293,35 +293,36 @@ Don't "fix" these silently; they're recorded so the next change is an informed o
 - **Rule's "Version" column is a frozen literal.** `rules.version` is written once as `v1.0.0` at
   insert and never bumped; there is no `rule_versions` table. Building real Rule versioning was
   explicitly deferred by the user ("Rules later") — do not start it unprompted.
-- **The Golden XREF viewer carries the FMD viewer's full tab set** (`GoldenXrefViewerDialog`,
-  components under `src/features/library/xref/`). One version selector in the header, and five tabs
-  answering the FMD's five questions:
+- **The Golden XREF viewer mirrors the GOLDEN FMD viewer's tab set** (`GoldenXrefViewerDialog`,
+  components under `src/features/library/xref/`) — which is *not* the full FMD set. One version
+  selector in the header, and four tabs:
 
   | Tab | XREF behaviour |
   |---|---|
   | Cross Reference | The selected version's fields, full dialog width. |
-  | Health | `XrefHealthTab` + `src/lib/xrefHealth.ts`. Always the **latest** version. |
   | Draft | `XrefDraftTab`. Present only while a draft exists, and **the only place Publish lives**. |
-  | Versions & Review | `XrefReviewTab` — version details beside review points. |
+  | Versions | `XrefVersionsTab` — version details, plus Compare versions… |
   | Where used | `XrefWhereUsedTab` — tables built from the template, and which are behind. |
 
-  The header selector is hidden on Health, Draft and Where used, because none of them read it —
-  Health always measures the latest, Draft *is* the draft, Where used compares against the latest
-  published. A selector that visibly does nothing is worse than none.
+  The header selector is hidden on Draft and Where used, because neither reads it — Draft *is* the
+  draft, Where used compares against the latest published. A selector that visibly does nothing is
+  worse than none.
 
-  What each tab measures differs from the FMD's of necessity, and the differences are deliberate:
-  - **Health** checks whether the template is *capable*, not how complete a document is: two columns
-    minimum, unique and non-blank field names, no empty sections, descriptions present, ever
-    published. `diffXrefStructures` also powers **Compare versions…**, which reads and never writes.
+  **Health and Review are NOT Golden tabs.** Both ask about a document being built for a subproject
+  — is it complete, what do we think of it — and the Golden template is what those documents are
+  generated *from*. The FMD draws the same line: the Golden FMD viewer has no Health tab, and its
+  Versions tab is labelled "Versions & Review" only for Custom FMDs. `XrefHealthTab` and
+  `XrefReviewTab` are written and **deliberately unmounted**, waiting for a non-Golden XREF viewer;
+  each carries a ⚠ header saying so. Do not wire them into the Golden viewer.
+
+  Where the remaining tabs differ from the FMD's, the differences are deliberate:
   - **Draft** shows a *diff against the live version*, not a checklist of pending changes. An FMD
     draft is individually-selectable cell edits; an XREF draft is a whole structure saved by the
     designer, so there is nothing to select between and checkboxes would offer a choice the model
     cannot honour. It reuses `diffXrefStructures`, so it and Compare can never disagree.
-  - **Review** has **no Auto review (AI) pane**. That review reads mapping data — a rule per row, a
-    source and a target — and a template has none. Points anchor to `(section_id, field)` with both
-    nullable, so a point can be about one field or the whole template; they attach to the TABLE, not
-    a version, so the list is deliberately not filtered by the header selector. Anyone may raise,
-    reply and resolve — RLS already decides who reaches the template; ownership gates *changing* it.
+  - **`src/lib/xrefHealth.ts` is live even though its tab is not** — `flattenXref` and
+    `diffXrefStructures` back Draft and Compare, and the module's 15 tests cover them.
+    `analyseXrefStructure` is the part currently awaiting the non-Golden viewer.
   - **Where used** only became answerable in `0060`, which added
     `xref_tables.based_on_golden_version_id`. **Build from Golden** (`useBuildXrefFromGolden`) is
     what writes it, so most rows start as "Never built" — a different state from "Outdated", and
