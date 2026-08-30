@@ -9,7 +9,7 @@
     "typecheck": "tsc -b && node scripts/check-edge-functions.mjs",
     "check:functions": "node scripts/check-edge-functions.mjs",
     "lint": "oxlint",
-    "test": "tsx src/lib/fmdDraft.test.ts && tsx src/lib/scopeGraph.test.ts && tsx src/lib/changeLogText.test.ts && tsx src/lib/hierarchyForm.test.ts",
+    "test": "tsx src/lib/fmdDraft.test.ts && tsx src/lib/scopeGraph.test.ts && tsx src/lib/changeLogText.test.ts && tsx src/lib/hierarchyForm.test.ts && tsx src/lib/xrefHealth.test.ts",
     "preview": "vite preview",
     "seed:build": "node scripts/build-seed.mjs",
     "seed:load-structures": "node scripts/load-dmc-structures-fields.mjs"

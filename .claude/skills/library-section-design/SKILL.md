@@ -294,7 +294,17 @@ Don't "fix" these silently; they're recorded so the next change is an informed o
 - **The Golden XREF viewer follows the FMD viewer's shape**, deliberately: one version selector
   in the header driving every tab, a Cross Reference tab at full dialog width, and a Versions tab
   showing the version details at full width with **no version list** — the header dropdown is the
-  selector, and a list beside it is a second one for the same thing. It used to invert that — a
+  selector, and a list beside it is a second one for the same thing. A **Health** tab sits between
+  them, shaped after `FmdHealthTab`: same metric strip, same fail-first checks list with the passing
+  ones folded, same single coloured panel for the one thing with a button on it. It measures the
+  **latest** version and the header hides the version selector while it is open, exactly as the FMD
+  tab does. What it measures differs of necessity — the FMD grades a mapping document (rows, rules,
+  effort, findings); a Golden XREF is the template, so `src/lib/xrefHealth.ts` checks whether the
+  template is *capable*: two columns minimum, unique field names, no blank names, no empty sections,
+  descriptions present, and whether it has ever been published. `diffXrefStructures` powers
+  **Compare versions…**, which reads and never writes — there is no XREF equivalent of
+  `SyncGoldenFmdDialog` because nothing is generated from a Golden XREF yet, and a rename is
+  reported honestly as a removal plus an addition rather than guessed at. It used to invert that — a
   permanent 300px version rail with the structure squeezed into the remainder — so two templates
   read the same way, opened from sibling rows of one catalogue, gave the reader two different
   screens. The details pane is built from the **shared** `Fact`/`Group`/`By` in

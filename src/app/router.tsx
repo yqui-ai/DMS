@@ -25,8 +25,63 @@ function lazyNamed<K extends string, M extends Record<K, ComponentType<any>>>(
   // Props are preserved through M[K] rather than widened to `unknown` — several routes pass props
   // at the element (DqChecksPhase's `phase`/`emptyLabel`), and a helper that erased them would
   // turn a compile-time contract into a runtime surprise.
-  return lazy(async () => ({ default: (await load())[name] }));
+  return lazy(async () => {
+    try {
+      const mod = await load();
+      clearReloadGuard();
+      return { default: mod[name] };
+    } catch (err) {
+      if (isStaleChunk(err) && takeReloadGuard()) {
+        window.location.reload();
+        // Never resolves. The page is being replaced, and resolving to anything here would flash
+        // a screen for the instant before it goes.
+        return new Promise<{ default: M[K] }>(() => {});
+      }
+      throw err;
+    }
+  });
 }
+
+/* ── Surviving a deploy with the tab already open ────────────────────────────────────────────
+   Every route above is a separate chunk, named by content hash. A deploy replaces all of them, so
+   a tab opened before it is holding an index.html whose chunks no longer exist on the server: the
+   app keeps working until you navigate somewhere you have not been yet, and that route then dies on
+   a 404 with "Failed to fetch dynamically imported module". It is not a stale cache the user can
+   reason about — the app was working a second ago — and it lands them on a raw router error page.
+
+   Reloading picks up the current index.html and the navigation completes. Done once and guarded, so
+   a chunk that is genuinely broken (rather than merely superseded) fails visibly instead of putting
+   the tab in a reload loop; the guard clears on the next successful load, so the NEXT deploy gets
+   its own single retry. */
+const RELOAD_KEY = 'dms:chunk-reload';
+
+/** sessionStorage throws outright in some privacy modes, so every access is guarded. Losing the
+ * flag degrades to "no auto-reload", never to a loop. */
+const session = (fn: (s: Storage) => void) => {
+  try { fn(window.sessionStorage); } catch { /* storage unavailable — skip the guard entirely */ }
+};
+
+const clearReloadGuard = () => session((s) => s.removeItem(RELOAD_KEY));
+
+/** True if a reload has not already been tried. Claims the attempt in the same step, so two routes
+ * failing at once cannot both reload. */
+const takeReloadGuard = (): boolean => {
+  let allowed = false;
+  session((s) => {
+    if (s.getItem(RELOAD_KEY)) return;
+    s.setItem(RELOAD_KEY, '1');
+    allowed = true;
+  });
+  return allowed;
+};
+
+/** A missing chunk, as opposed to an exception thrown by the module's own top-level code — that one
+ * would survive a reload, and retrying it would just cost the user their page state. Browsers word
+ * it differently enough that this matches on the shared fragments. */
+const isStaleChunk = (err: unknown): boolean => {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(msg);
+};
 const LaunchpadPage = lazyNamed(() => import('../features/launchpad/LaunchpadPage'), 'LaunchpadPage');
 const AdministrationPage = lazyNamed(() => import('../features/launchpad/AdministrationPage'), 'AdministrationPage');
 const MigrationStatusPage = lazyNamed(() => import('../features/launchpad/MigrationStatusPage'), 'MigrationStatusPage');

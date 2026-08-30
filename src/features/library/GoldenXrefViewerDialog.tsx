@@ -9,8 +9,9 @@ import { Button } from '../../components/Button';
 import { By, Fact, Group } from './fmd/versionFacts';
 import { useGoldenXrefMutations, useXrefVersions, type LibraryXrefRow } from '../../lib/queries/rules';
 import { GoldenFmdStructureView } from './GoldenFmdStructureView';
+import { XrefHealthTab } from './xref/XrefHealthTab';
 
-type Tab = 'structure' | 'versions';
+type Tab = 'structure' | 'health' | 'versions';
 
 /** Read-only view of the (singleton) Golden XREF — shaped exactly like the Golden FMD viewer.
  *
@@ -94,6 +95,7 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
             <div className="flex items-center gap-1">
               {([
                 { key: 'structure', label: 'Cross Reference' },
+                { key: 'health', label: 'Health' },
                 { key: 'versions', label: 'Versions' },
               ] as const).map((t) => (
                 <button
@@ -109,9 +111,11 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
               ))}
             </div>
 
-            {/* One selector for the whole dialog, matching the FMD viewer. Both tabs render
-                whatever is picked here, so there is a single answer to which version is on screen. */}
-            {versions.length > 0 && (
+            {/* One selector for the whole dialog, matching the FMD viewer — every tab that renders
+                a version renders whatever is picked here, so there is a single answer to which
+                version is on screen. Hidden on Health, which always measures the latest: a selector
+                that visibly does nothing is worse than no selector. */}
+            {versions.length > 0 && tab !== 'health' && (
               <label className="flex items-center gap-1.5 text-2xs text-muted shrink-0 -mt-[5px]">
                 Version
                 <Select
@@ -140,6 +144,13 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
               ) : (
                 <p className="text-sm2 text-muted py-8 text-center">No structure recorded for this version.</p>
               )
+            ) : tab === 'health' ? (
+              <XrefHealthTab
+                versions={versions}
+                selectedId={selected?.id}
+                onPublish={publish}
+                publishing={publishing}
+              />
             ) : (
               /* Full width, and NO version list.
                  The header dropdown is the single version selector — a list pane beside it was a
@@ -147,7 +158,20 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
                  and what the library-section-design skill says not to reintroduce. Rendered with
                  the same Fact/Group primitives as that pane rather than a lookalike, so the two
                  cannot drift again. */
-              <Pane title="Version details" bodyClassName="p-3.5">
+              <Pane
+                title="Version details"
+                bodyClassName="p-3.5"
+                actions={
+                  /* Offered only on the draft itself, never on a published version you happened to
+                     select. Publishing releases the open draft — attaching the button to a frozen
+                     v1.0.0 would suggest it re-releases that, which is not what it does. */
+                  isDraft && (
+                    <Button size="sm" onClick={publish} disabled={publishing}>
+                      {publishing ? 'Publishing…' : 'Publish this draft'}
+                    </Button>
+                  )
+                }
+              >
                 {selected ? (
                   <div className="flex flex-col gap-3">
                     <div className="flex items-center gap-1.5">
