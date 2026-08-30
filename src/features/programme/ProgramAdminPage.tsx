@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import clsx from 'clsx';
 import { PageHeader } from '../../components/PageHeader';
 import { UsersTab } from './UsersTab';
@@ -31,7 +31,20 @@ type TabKey = (typeof TABS)[number]['key'];
  * pattern as the Library screens. */
 export function ProgramAdminPage() {
   const { programId } = useParams();
-  const [tab, setTab] = useState<TabKey>('users');
+  /* `?tab=` opens a specific tab, so another screen can link AT a setting rather than at this page
+     plus a sentence telling you which tab to go and find. The Dashboard's "Configure timeline"
+     uses it. Falls back to Users when the parameter is missing or names a tab that does not exist,
+     rather than showing an empty body for a typo in a URL. */
+  const [params, setParams] = useSearchParams();
+  const requested = params.get('tab');
+  const [tab, setTabState] = useState<TabKey>(
+    TABS.some((t) => t.key === requested) ? (requested as TabKey) : 'users',
+  );
+  // Written back to the URL so the open tab survives a reload and can be linked to or shared.
+  const setTab = (next: TabKey) => {
+    setTabState(next);
+    setParams(next === 'users' ? {} : { tab: next }, { replace: true });
+  };
 
   return (
     <div>
