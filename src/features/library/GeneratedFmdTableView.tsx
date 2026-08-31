@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
-import { Check, ChevronLeft, ChevronRight, Columns3, Eye, EyeOff, Maximize2, MessageSquare, Pencil, Plus, Type } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Columns3, Eye, EyeOff, Factory, Maximize2, MessageSquare, Pencil, Plus, Type } from 'lucide-react';
 import { Dialog } from '../../components/Dialog';
 import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import { useDismiss } from '../../components/useDismiss';
@@ -68,6 +68,11 @@ const minWidthFor = (field: string): number => FIELD_MIN_WIDTH[field] ?? DEFAULT
  * is not a field being migrated. Treating blanks as in-scope would let the filter show rows that
  * still need a decision as though they were settled, which is exactly the group most worth seeing. */
 const isInScope = (row: Record<string, string>) => scopeOf(row.MIGRATION_IN_SCOPE) === 'in';
+
+/** The columns a plant can override. Only these two: a plant differs in HOW a value is produced,
+ * never in what the source or target field is — a different target column is a different mapping,
+ * not the same one done differently. */
+const PLANT_RULE_FIELDS = new Set(['TRANSFORMATION_RULE', 'TECHNICAL_RULE']);
 
 const CHANGED_BG = '#fef9c3';
 const REVIEW_ERROR_BG = '#fecaca';
@@ -248,7 +253,7 @@ function GridCell({ column, value, onSave }: {
   );
 }
 
-export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, reviewFindingsByTable, onOpenField, onAddReviewPoint, reviewPointCellsByTable, reviewPointRowsByTable, onAddContent, canEdit = false, onSaveField }: {
+export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, reviewFindingsByTable, onOpenField, onAddReviewPoint, reviewPointCellsByTable, reviewPointRowsByTable, onAddContent, onOpenPlantRules, plantRuleCountsByTable, canEdit = false, onSaveField }: {
   columns: GeneratedColumn[]; tables: GeneratedTable[];
   /** structureId -> rowKey -> changed field names, vs. the previous version — yellow-highlights
    * exactly the cells that changed since then. Undefined/absent means "nothing to compare against
@@ -283,6 +288,15 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
   reviewPointRowsByTable?: Map<string, Map<string, { total: number; open: number }>>;
   /** Opens the add-field/row/structure dialog. Omitted where the FMD cannot be edited. */
   onAddContent?: () => void;
+  /** Opens the per-plant rules dialog for one row. Omitted where the FMD covers no plants — a
+   * single-plant subproject has nothing for a rule to differ between. */
+  onOpenPlantRules?: (structureId: string, rowIndex: number) => void;
+  /** rowKey -> how many plants override that row's rule, for the marker on the rule cells. */
+  /** structureId -> rowKey -> how many plants override that row's rule. Keyed by structure like the
+   * review-point maps, because a rowKey is only unique WITHIN a structure — two structures can each
+   * carry a row for the same source/target pair, and a flat map would show one's overrides on the
+   * other's row. */
+  plantRuleCountsByTable?: Map<string, Map<string, number>>;
 }) {
   const [activeTableId, setActiveTableId] = useState<string | null>(tables[0]?.structureId ?? null);
   const [tabLabelMode, setTabLabelMode] = useState<'ident' | 'description'>('ident');
@@ -367,6 +381,7 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
   const reviewFindings = reviewFindingsByTable?.get(activeTable?.structureId ?? '');
   const reviewPointCells = reviewPointCellsByTable?.get(activeTable?.structureId ?? '');
   const reviewPointRows = reviewPointRowsByTable?.get(activeTable?.structureId ?? '');
+  const plantRuleCounts = plantRuleCountsByTable?.get(activeTable?.structureId ?? '');
   /** The gutter exists only when this FMD has review points at all — an always-present empty
    * column is 28px of nothing on every row of every document that has never been reviewed. */
   const showPointGutter = !!reviewPointRowsByTable;
@@ -652,7 +667,7 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                 <tr
                   key={i}
                   onDoubleClick={onOpenField && !editing ? () => onOpenField(activeTable.structureId, originalIndex) : undefined}
-                  className={clsx(onOpenField && !editing && 'cursor-default select-none')}
+                  className={clsx('group/row', onOpenField && !editing && 'cursor-default select-none')}
                 >
                   {showPointGutter && (() => {
                     const points = reviewPointRows?.get(rk);
@@ -730,6 +745,38 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                             )}
                           </div>
                         ) : row[c.field]}
+
+                        {/* Per-plant rules, on the two columns a plant can differ in.
+                            One control doing both jobs: it OPENS the dialog, and when overrides
+                            exist it is always visible and carries the count — so "some plants
+                            differ here" is discoverable without hovering every rule in the grid,
+                            which is the only way a difference like this ever gets noticed. With no
+                            overrides it stays a hover affordance, because a permanent icon on every
+                            rule cell of a 200-row FMD is noise. */}
+                        {onOpenPlantRules && PLANT_RULE_FIELDS.has(c.field) && (() => {
+                          const overrides = plantRuleCounts?.get(rk) ?? 0;
+                          return (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onOpenPlantRules(activeTable.structureId, originalIndex); }}
+                              aria-label="Rules by plant"
+                              title={overrides > 0
+                                ? `${overrides} plant${overrides === 1 ? '' : 's'} override this rule — open to view or edit`
+                                : 'Set a different rule for individual plants'}
+                              className={clsx(
+                                'ml-1.5 align-middle inline-flex items-center gap-0.5 shrink-0',
+                                overrides > 0
+                                  ? 'text-amber-ink'
+                                  : 'opacity-0 group-hover/row:opacity-100 focus:opacity-100 text-muted hover:text-blue',
+                              )}
+                            >
+                              <Factory size={11} />
+                              {overrides > 0 && (
+                                <span className="text-[9px] font-bold tabular-nums leading-none">{overrides}</span>
+                              )}
+                            </button>
+                          );
+                        })()}
+
                         {/* Folded-corner marker: this cell already carries a review point. */}
                         {hasPoint && (
                           <span

@@ -13,6 +13,7 @@ import { useCurrentRole } from '../../lib/queries/memberships';
 import { useDefaultProgram } from '../../lib/queries/programme';
 import { DRAFT_VERSION, DRAFT_VERSION_ID, draftOverlayVersion, nextPublishedVersion, useEditFmdField, useFmdVersions, useGoldenFmdSummary, useFmdUsage, useGoldenWhereUsed, useHistoricalSiblings, useLatestFmdVersion, usePublishFmdVersion, type LibraryFmdRow } from '../../lib/queries/fmds';
 import { useFmdFieldNotes, useFmdFieldNoteMutations } from '../../lib/queries/fmdFieldNotes';
+import { useFmdPlantRules } from '../../lib/queries/fmdPlantRules';
 import { useMigrationObjects, useScopeObjectOwners, scopeOwnerKey, type ScopeAssignment } from '../../lib/queries/scope';
 import { usePlants, useSubprojectPlants } from '../../lib/queries/plants';
 import { diffTablesByStructure, rowKey, summariseVersionChange } from '../../lib/rowDiff';
@@ -31,6 +32,7 @@ import { FmdDraftTab } from './fmd/FmdDraftTab';
 import { FmdReviewTab } from './fmd/FmdReviewTab';
 import { FmdHealthTab } from './fmd/FmdHealthTab';
 import { AddFmdContentDialog } from './fmd/AddFmdContentDialog';
+import { PlantRulesDialog } from './fmd/PlantRulesDialog';
 import type { MappingReviewFinding } from '../../types/entities';
 
 type Tab = 'mapping' | 'draft' | 'versions' | 'health' | 'whereUsed';
@@ -81,6 +83,9 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
      generated reference and a Golden one is the template, so neither is somewhere to bolt an
      object-specific column onto. */
   const [addingContent, setAddingContent] = useState(false);
+  /* Which row's per-plant rules are open. Holds the row's identity rather than its index: the grid
+     can be sorted or filtered under the dialog, and an index would then point at a different row. */
+  const [plantRuleTarget, setPlantRuleTarget] = useState<{ structureId: string; structureIdent?: string; rowKey: string; rowLabel: string; transformation?: string; technical?: string } | null>(null);
   const { publish: publishVersion } = usePublishFmdVersion();
   const { saveField } = useEditFmdField(fmd?.id ?? '');
   const { review: reviewMapping, save: saveMappingReview, setAddressed } = useMappingReview();
@@ -106,6 +111,18 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
   const { data: goldenSummary } = useGoldenFmdSummary(!!fmd);
   const { data: goldenLatest } = useLatestFmdVersion(fmd?.goldenOutdated ? goldenSummary?.id : undefined);
   const { data: fieldNotes = [] } = useFmdFieldNotes(fmd?.id);
+  const { data: plantRules = [] } = useFmdPlantRules(fmd?.id);
+  /** Override counts per structure, for the grid's rule-cell marker. Keyed by structure because a
+   * rowKey is only unique within one — see the prop's own note. */
+  const plantRuleCountsByTable = useMemo(() => {
+    const byTable = new Map<string, Map<string, number>>();
+    for (const r of plantRules) {
+      const byRow = byTable.get(r.structureId) ?? new Map<string, number>();
+      byRow.set(r.rowKey, (byRow.get(r.rowKey) ?? 0) + 1);
+      byTable.set(r.structureId, byRow);
+    }
+    return byTable.size > 0 ? byTable : undefined;
+  }, [plantRules]);
   const fieldNoteMutations = useFmdFieldNoteMutations(fmd?.id ?? '');
   /** Raising and replying to review points is open to anyone with access to the FMD — review is a
    * collaborative act, and RLS already limits who can reach the FMD at all. Ownership gates
@@ -369,10 +386,11 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
    * A Standard or Golden FMD is programme-wide and has no placement at all; saying "Program-wide"
    * is the whole answer for those, and inventing a hierarchy for them would be a lie. */
   const fmdPlants = fmd.subprojectId ? (subprojectPlants.get(fmd.subprojectId) ?? []) : [];
-  const plantLabels = fmdPlants
+  /** The plant RECORDS, in catalogue order — what the per-plant rules dialog lists. */
+  const fmdPlantRecords = fmdPlants
     .map((id) => plants.find((p) => p.id === id))
-    .filter((p): p is NonNullable<typeof p> => !!p)
-    .map((p) => p.code);
+    .filter((p): p is NonNullable<typeof p> => !!p);
+  const plantLabels = fmdPlantRecords.map((p) => p.code);
 
   const placementSubtitle = fmd.subprojectId
     ? [fmd.programName, fmd.projectName, fmd.subprojectName].filter(Boolean).join(' › ')
@@ -655,6 +673,22 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
                         reviewPointCellsByTable={reviewPointCellsByTable}
                         reviewPointRowsByTable={reviewPointRowsByTable}
                         onAddContent={isCustomFmd && canEditSelected ? () => setAddingContent(true) : undefined}
+                        /* Offered only where a rule COULD differ: a Custom FMD (the only kind tied
+                           to a subproject) whose subproject covers more than one plant. With one
+                           plant there is nothing to differ between, and the control would be an
+                           invitation to record a distinction that cannot exist. */
+                        onOpenPlantRules={isCustomFmd && fmdPlants.length > 1 ? (structureId, rowIndex) => {
+                          const t = selected!.sheets.generatedTables!.find((x) => x.structureId === structureId);
+                          const r = t?.rows[rowIndex];
+                          if (!t || !r) return;
+                          setPlantRuleTarget({
+                            structureId, structureIdent: t.structureIdent,
+                            rowKey: rowKey(r, rowIndex),
+                            rowLabel: r.SRC_FIELD || r.TGT_FIELD || `Row ${rowIndex + 1}`,
+                            transformation: r.TRANSFORMATION_RULE, technical: r.TECHNICAL_RULE,
+                          });
+                        } : undefined}
+                        plantRuleCountsByTable={plantRuleCountsByTable}
                         onAddReviewPoint={(structureId, rowIndex, field) => {
                           const t = selected!.sheets.generatedTables!.find((x) => x.structureId === structureId);
                           const r = t?.rows[rowIndex];
@@ -786,6 +820,23 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
         tables={latest?.sheets.generatedTables ?? []}
         activeStructureId={openField?.structureId}
         onClose={() => setAddingContent(false)}
+      />
+
+      <PlantRulesDialog
+        open={!!plantRuleTarget}
+        fmdId={fmd.id}
+        structureId={plantRuleTarget?.structureId ?? ''}
+        structureIdent={plantRuleTarget?.structureIdent}
+        rowKey={plantRuleTarget?.rowKey ?? ''}
+        rowLabel={plantRuleTarget?.rowLabel ?? ''}
+        baseTransformation={plantRuleTarget?.transformation}
+        baseTechnical={plantRuleTarget?.technical}
+        plants={fmdPlantRecords}
+        rules={plantRules}
+        // Same gate as editing the mapping: an override IS the mapping for that plant, so it is
+        // the owner's call, not anyone's who can see the document.
+        canEdit={canEditSelected}
+        onClose={() => setPlantRuleTarget(null)}
       />
 
       <AddReviewPointDialog
