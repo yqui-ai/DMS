@@ -198,9 +198,21 @@ export function useApplyGoldenSync(fmdId: string) {
       if (draftReadError) throw draftReadError;
       const pending = ((fmdRow?.draft as FmdDraft | null)?.pendingChanges ?? []);
 
-      const { mappingReview: _l, mappingReviews: _r, pendingChanges: _p, ...carried } = base;
+      /* `changeLog` is pulled out with the reviews, because a version's log belongs to THAT version.
+         Spreading `base` carried it forward, so a sync that forked a new row off the published one
+         opened its Draft tab showing every edit made to the version before it — twenty-seven
+         already-published changes listed under "Already in this version", on a draft whose only
+         actual change was the sync. It is the same trap draftOverlayVersion documents and clears on
+         the overlay path; this fork had it too.
+
+         Folding into an EXISTING unpublished row is the opposite case: that row's log is its own
+         record of what has been done to it since it was forked, and dropping it would erase real
+         history, so it is put back below. */
+      const { mappingReview: _l, mappingReviews: _r, pendingChanges: _p, changeLog: baseChangeLog, ...carried } = base;
+      const foldingIntoDraft = !!newest && !newest.published_at;
       const sheets = {
         ...carried,
+        ...(foldingIntoDraft && baseChangeLog?.length ? { changeLog: baseChangeLog } : {}),
         generatedColumns: plan.nextColumns,
         generatedTables: pending.length ? applyPendingChanges(nextTables, pending) : nextTables,
       };

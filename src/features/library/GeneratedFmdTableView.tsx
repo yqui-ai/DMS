@@ -582,7 +582,7 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
               {/* The gutter has no section — it is not a field of the document, it is a note about
                   one. Left blank in the band so it reads as a margin rather than as a column of
                   some section it does not belong to. */}
-              {showPointGutter && <th className="sticky top-0 bg-surface-3 w-8" aria-hidden />}
+              {showPointGutter && <th className="sticky top-0 bg-surface-3 w-9" aria-hidden />}
               {runs.map((run, i) => (
                 <th
                   key={i} colSpan={run.span}
@@ -596,12 +596,11 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
             <tr>
               {showPointGutter && (
                 <th
-                  className="sticky bg-surface-3 w-8 z-[2] px-0"
+                  className="sticky bg-surface-3 w-9 z-[2] px-0"
                   style={{ top: bandHeight }}
+                  aria-label="Review points"
                   title="Rows carrying a review point"
-                >
-                  <MessageSquare size={12} className="text-muted mx-auto" />
-                </th>
+                />
               )}
               {visibleColumns.map((c) => (
                 <th
@@ -641,24 +640,44 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                   {showPointGutter && (() => {
                     const points = reviewPointRows?.get(rk);
                     return (
-                      <td className="border-t border-line-soft px-0 align-middle w-8">
+                      /* A left EDGE STRIPE plus an outline icon, not a filled glyph.
+                         `fill="currentColor"` on a speech bubble at 12px is a solid blob — it read
+                         as a dark square rather than as a comment, and the two states differed only
+                         by how dark that square was. The stripe is what makes a row with open points
+                         findable while scanning the edge of the grid (the same device the health
+                         checks use for severity), and the icon then only has to name what the stripe
+                         means. Open work is amber; a thread where everything is resolved keeps a
+                         quiet outline and no stripe — the record of why a mapping looks the way it
+                         does stays findable without reading as outstanding. */
+                      <td
+                        className={clsx(
+                          'border-t border-line-soft px-0 align-middle w-9 border-l-[3px]',
+                          points && points.open > 0 ? 'border-l-amber-ink bg-amber-bg/60' : 'border-l-transparent',
+                        )}
+                      >
                         {points && (
-                          /* Two states, because "someone commented" and "someone is waiting on you"
-                             are different facts. An open actionable point is amber and solid; a
-                             thread where everything is resolved stays visible but recedes, since
-                             the record of why a mapping looks the way it does is worth keeping
-                             findable without it reading as outstanding work. */
                           <span
-                            className="flex justify-center"
+                            className="flex items-center justify-center gap-px"
                             title={points.open > 0
                               ? `${points.open} open review point${points.open === 1 ? '' : 's'} on this field${points.total > points.open ? ` (${points.total} in total)` : ''}`
                               : `${points.total} review point${points.total === 1 ? '' : 's'}, all resolved`}
                           >
                             <MessageSquare
                               size={12}
-                              className={points.open > 0 ? 'text-amber-ink' : 'text-muted/50'}
-                              fill={points.open > 0 ? 'currentColor' : 'none'}
+                              strokeWidth={2.25}
+                              className={points.open > 0 ? 'text-amber-ink' : 'text-muted/60'}
                             />
+                            {/* The count only when it adds something. "1" beside an icon that
+                                already means "there is a point here" is a character of noise on
+                                every marked row. */}
+                            {points.total > 1 && (
+                              <span className={clsx(
+                                'text-[9px] font-bold tabular-nums leading-none',
+                                points.open > 0 ? 'text-amber-ink' : 'text-muted/60',
+                              )}>
+                                {points.total}
+                              </span>
+                            )}
                           </span>
                         )}
                       </td>

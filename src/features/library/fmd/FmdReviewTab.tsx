@@ -462,11 +462,11 @@ function VersionDetailsPane({ fmd, selected, owner, etlDeveloper, objectIdent, c
               <Fact label="Approved by"><By who={selected.approvedBy} at={selected.approvedAt} /></Fact>
             )}
             {fmd.createdBy && <Fact label="Created by"><By who={fmd.createdBy} at={fmd.createdAt} /></Fact>}
-            {/* The newest version's edit — so it only tells you something you can't already see when
-                you're reading an older one. */}
-            {fmd.changedBy && fmd.changedAt !== selected.createdAt && (
-              <Fact label="Last modified"><By who={fmd.changedBy} at={fmd.changedAt} /></Fact>
-            )}
+            {/* No "Last modified" row. It reported the FMD's newest edit while "Modified by" above
+                reports the selected version's — so on the version you are almost always reading,
+                the newest one, they are the same person and the same act stated twice. Which
+                version was touched last is what the version selector and the Versions list are
+                for. */}
           </Group>
 
           {/* Stable attributes of the document rather than of this release. Class and Reference used
