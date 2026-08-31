@@ -397,6 +397,13 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
   /** The reorder gutter appears only while editing: it is a control, and a read-only viewer should
    * not carry a column of buttons nobody can press. */
   const showReorderGutter = !!onReorderRows && editing;
+  /* One narrow column per icon, rather than a stack inside one.
+   *
+   * Drag and delete sat on top of each other in a single 36px cell, which read as a smudge of grey
+   * marks down the left edge and gave each a target half a row tall. They are unrelated actions and
+   * they now get a column each: 24px, one icon, vertically centred like every other cell. */
+  const showRemoveGutter = !!onRemoveRow && editing;
+  const gutterCount = (showReorderGutter ? 1 : 0) + (showRemoveGutter ? 1 : 0) + (showPointGutter ? 1 : 0);
   /** How many rows the template says are NOT being migrated. Counted before the filter so the
    * button can say what it would hide, and so "0 out of scope" can disable it rather than offering
    * a toggle that does nothing. */
@@ -643,8 +650,9 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
               {/* The gutter has no section — it is not a field of the document, it is a note about
                   one. Left blank in the band so it reads as a margin rather than as a column of
                   some section it does not belong to. */}
-              {showReorderGutter && <th className="sticky top-0 bg-surface-3 w-9" aria-hidden />}
-              {showPointGutter && <th className="sticky top-0 bg-surface-3 w-9" aria-hidden />}
+              {Array.from({ length: gutterCount }, (_, i) => (
+                <th key={`band-gutter-${i}`} className="sticky top-0 bg-surface-3 w-6" aria-hidden />
+              ))}
               {runs.map((run, i) => (
                 <th
                   key={i} colSpan={run.span}
@@ -658,21 +666,19 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
             <tr>
               {showReorderGutter && (
                 <th
-                  className="sticky bg-surface-3 w-9 z-[2] px-0"
+                  className="sticky bg-surface-3 w-6 z-[2] px-0"
                   style={{ top: bandHeight }}
-                  aria-label="Reorder rows"
+                  aria-label="Reorder"
                   title={rowsInDocumentOrder
-                    ? 'Move a row up or down'
+                    ? 'Drag a field to move it'
                     : 'Clear the sort and the scope filter to reorder — the order on screen is not the document order'}
                 />
               )}
+              {showRemoveGutter && (
+                <th className="sticky bg-surface-3 w-6 z-[2] px-0" style={{ top: bandHeight }} aria-label="Remove" title="Remove a field" />
+              )}
               {showPointGutter && (
-                <th
-                  className="sticky bg-surface-3 w-9 z-[2] px-0"
-                  style={{ top: bandHeight }}
-                  aria-label="Review points"
-                  title="Rows carrying a review point"
-                />
+                <th className="sticky bg-surface-3 w-6 z-[2] px-0" style={{ top: bandHeight }} aria-label="Review points" title="Rows carrying a review point" />
               )}
               {visibleColumns.map((c) => (
                 <th
@@ -690,7 +696,7 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
           </thead>
           <tbody>
             {processedRows.length === 0 && (
-              <tr><td colSpan={visibleColumns.length + (showPointGutter ? 1 : 0) + (showReorderGutter ? 1 : 0)} className="px-2.5 py-6 text-center text-muted text-sm2">No rows.</td></tr>
+              <tr><td colSpan={visibleColumns.length + gutterCount} className="px-2.5 py-6 text-center text-muted text-sm2">No rows.</td></tr>
             )}
             {processedRows.map((row, i) => {
               // Keyed on the row's position in the DOCUMENT, not in this render. rowKey falls back
@@ -724,8 +730,7 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                        same gesture for the same act, so knowing one teaches the other. The row is
                        the drop target (see the <tr> above); the handle is only what starts it, so
                        an ordinary click still lands in the cell underneath. */
-                    <td className="border-t border-line-soft px-0 align-middle w-9 text-center">
-                      <span className="inline-flex flex-col items-center">
+                    <td className="border-t border-line-soft px-0 align-middle w-6 text-center">
                       <span
                         draggable={rowsInDocumentOrder && !reordering}
                         onDragStart={() => setDragRow(originalIndex)}
@@ -737,33 +742,35 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                         className={clsx(
                           'inline-flex',
                           rowsInDocumentOrder && !reordering
-                            ? 'cursor-grab active:cursor-grabbing text-muted hover:text-blue'
-                            : 'text-muted/30 cursor-not-allowed',
+                            ? 'cursor-grab active:cursor-grabbing text-muted/60 hover:text-blue'
+                            : 'text-muted/25 cursor-not-allowed',
                         )}
                       >
                         <GripVertical size={13} />
                       </span>
-                      {onRemoveRow && (
-                        /* Under the handle rather than beside it: the gutter is 36px, and two
-                           controls side by side there are two targets nobody can hit. Confirmation
-                           is the caller's — removing a row is a shape change that publishes as a
-                           version, so it is not something to do on a mis-click. */
-                        <button
-                          type="button"
-                          aria-label="Remove this field"
-                          title="Remove this field from the FMD"
-                          disabled={reordering}
-                          onClick={() => onRemoveRow(
-                            activeTable.structureId,
-                            originalIndex,
-                            row.SRC_FIELD || row.TGT_FIELD || `Row ${originalIndex + 1}`,
-                          )}
-                          className="mt-0.5 text-muted/60 hover:text-red disabled:opacity-30 disabled:pointer-events-none"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      )}
-                      </span>
+                    </td>
+                  )}
+
+                  {showRemoveGutter && onRemoveRow && (
+                    /* Its own column. Confirmation is the caller's — removing a row is a shape
+                       change that publishes as a version, so it is not something to do on a
+                       mis-click. Muted until hovered, then red: destructive, but not shouting it
+                       on every row of a two-hundred-row grid. */
+                    <td className="border-t border-line-soft px-0 align-middle w-6 text-center">
+                      <button
+                        type="button"
+                        aria-label="Remove this field"
+                        title="Remove this field from the FMD"
+                        disabled={reordering}
+                        onClick={() => onRemoveRow(
+                          activeTable.structureId,
+                          originalIndex,
+                          row.SRC_FIELD || row.TGT_FIELD || `Row ${originalIndex + 1}`,
+                        )}
+                        className="inline-flex text-muted/40 hover:text-red disabled:opacity-30 disabled:pointer-events-none"
+                      >
+                        <Trash2 size={12} />
+                      </button>
                     </td>
                   )}
                   {showPointGutter && (() => {
@@ -775,7 +782,7 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                          that is binary: is there a conversation on this row. Colour carries the
                          only other distinction worth making, open versus settled, and the count
                          lives in the tooltip where it costs nothing. */
-                      <td className="border-t border-line-soft px-0 align-middle w-9">
+                      <td className="border-t border-line-soft px-0 align-middle w-6">
                         {points && (
                           <span
                             className="flex items-center justify-center"
