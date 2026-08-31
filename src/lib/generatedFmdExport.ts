@@ -241,8 +241,16 @@ export async function buildGeneratedFmdBuffer(meta: GeneratedFmdMeta, columns: G
       .select('mandatory, req:migration_objects!object_dependencies_requires_object_id_fkey(object_id, description, category, component)')
       .eq('migration_object_id', meta.migrationObjectUuid);
 
-    if (depsData && depsData.length > 0) {
-      const deps = [...depsData]
+    /* The sheet is ALWAYS written when the FMD has a migration object — never skipped for having
+       nothing to report.
+
+       It used to be built only when `depsData.length > 0`, so an object with no prerequisites
+       recorded produced a workbook with no Dependencies tab and no diagram at all. That is
+       indistinguishable from the feature being broken: the reader has no way to tell "this object
+       depends on nothing" from "the export lost it", and the second is what people reasonably
+       assume. An empty sheet that says so costs one tab and answers the question. */
+    {
+      const deps = [...(depsData ?? [])]
         .map((d: any) => ({
           requiresIdent: d.req.object_id as string, requiresDescription: d.req.description as string | undefined,
           requiresCategory: d.req.category as string | undefined, requiresComponent: d.req.component as string | undefined,
@@ -263,6 +271,13 @@ export async function buildGeneratedFmdBuffer(meta: GeneratedFmdMeta, columns: G
       });
       depSheet.getRow(1).height = 20;
 
+      if (deps.length === 0) {
+        // Said in the sheet rather than left blank. A single empty grid reads as a failed export.
+        const none = depSheet.getCell(2, 1);
+        none.value = 'No prerequisites recorded for this object.';
+        none.font = { italic: true, color: { argb: 'FF6B7280' } };
+      }
+
       deps.forEach((d, i) => {
         const row = i + 2;
         depSheet.getCell(row, 1).value = d.requiresIdent;
@@ -274,7 +289,9 @@ export async function buildGeneratedFmdBuffer(meta: GeneratedFmdMeta, columns: G
         depCell.font = { bold: true, color: { argb: d.mandatory ? 'FFA81409' : 'FF6B7280' } };
       });
 
-      const diagramTopRow = deps.length + 4;
+      // Drawn either way. With no prerequisites it is a single node — which is a real answer about
+      // the object, not an empty picture.
+      const diagramTopRow = Math.max(deps.length, 1) + 4;
       const titleCell = depSheet.getCell(diagramTopRow, 1);
       titleCell.value = 'Dependency Diagram';
       titleCell.font = { bold: true, size: 12 };
