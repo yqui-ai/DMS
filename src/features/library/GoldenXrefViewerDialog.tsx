@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { ExternalLink } from 'lucide-react';
-import { Dialog } from '../../components/Dialog';
+import { DocumentShell } from '../../components/DocumentShell';
 import { useToast } from '../../components/Toast';
 import { Select } from '../../components/Select';
 import { Tag } from '../../components/Tag';
@@ -39,7 +39,12 @@ type Tab = 'structure' | 'draft' | 'versions' | 'where-used';
  * counterpart deliberately does not have.
  *
  * Editing is still only ever through the "Golden XREF" toolbar button / GoldenXrefDesignerDialog. */
-export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow | null; onClose: () => void }) {
+export function GoldenXrefViewerDialog({ xref, onClose, asPage }: {
+  xref: LibraryXrefRow | null;
+  onClose: () => void;
+  /** Rendered as its own page rather than over the catalogue — see DocumentShell. */
+  asPage?: boolean;
+}) {
   const { data: versions = [], isLoading } = useXrefVersions(xref?.id);
   const mutations = useGoldenXrefMutations();
   const toast = useToast();
@@ -93,7 +98,14 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
   if (!xref) return null;
 
   return (
-    <Dialog open={!!xref} onClose={onClose} title={xref.name} size="win">
+    <DocumentShell
+      asPage={asPage}
+      open={!!xref}
+      onClose={onClose}
+      title={xref.name}
+      backTo={to('xref')}
+      backLabel="Back to Cross Reference"
+    >
       {isLoading ? (
         <p className="text-sm2 text-muted">Loading…</p>
       ) : (
@@ -125,13 +137,16 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
                 else, and an in-app full-screen mode would not change that — it still occupies the
                 one window. The address already exists (this view is a route); this makes it
                 reachable without copying the URL out of the bar. */}
-            <Button
+            {/* Hidden in page mode: you are already in that tab, and a button offering
+                to open one more of the same document is an invitation to lose track of which is
+                which. */}
+            {!asPage && <Button
               variant="quiet" size="sm"
-              onClick={() => window.open(`${window.location.origin}${to('xref', xref.id)}`, '_blank', 'noopener')}
+              onClick={() => window.open(`${window.location.origin}${to('view')}/xref/${xref.id}`, '_blank', 'noopener')}
               title="Open this XREF in a new browser tab, so you can keep it open while using other screens"
             >
               <ExternalLink size={14} /> New tab
-            </Button>
+            </Button>}
             {versions.length > 0 && (tab === 'structure' || tab === 'versions') && (
               <label className="flex items-center gap-1.5 text-2xs text-muted">
                 Version
@@ -170,6 +185,6 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
           </div>
         </div>
       )}
-    </Dialog>
+    </DocumentShell>
   );
 }

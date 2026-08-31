@@ -44,7 +44,7 @@ select
   coalesce(
     string_agg(
       t.tgname || ' — ' ||
-      case t.tgenabled when 'O' then 'enabled' when 'D' then 'DISABLED' else 'enabled (' || t.tgenabled || ')' end ||
+      case t.tgenabled when 'O' then 'enabled' when 'D' then 'DISABLED' else 'enabled (' || t.tgenabled::text || ')' end ||
       case when (t.tgtype & 2) <> 0 then ', before' else ', AFTER (wrong — too late to reject)' end ||
       case when (t.tgtype & 1) <> 0 then ', per row' else ', PER STATEMENT (wrong)' end ||
       case when (t.tgtype & 16) <> 0 then ', on update' else ', NOT on update (wrong)' end,
@@ -144,7 +144,7 @@ select
     when count(*) = 0 then 'xref_tables.based_on_golden_version_id has no foreign key'
     when min(confdeltype) = 'n' then 'set null — deleting a template version orphans the pointer, not the table'
     when min(confdeltype) = 'c' then 'CASCADE — deleting a template version would DELETE the tables built from it'
-    else 'unexpected on-delete action: ' || min(confdeltype)
+    else 'unexpected on-delete action: ' || min(confdeltype)::text
   end
 from pg_constraint con
 join pg_class c on c.oid = con.conrelid

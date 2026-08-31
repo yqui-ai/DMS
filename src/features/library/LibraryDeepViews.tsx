@@ -69,3 +69,44 @@ export function XrefRoute() {
 
   return <GoldenXrefViewerDialog xref={xref} onClose={() => navigate(to('xref'))} />;
 }
+
+/* ── The same two views as PAGES ──────────────────────────────────────────────────────────────
+ *
+ * Mounted outside their catalogue rather than through its `<Outlet />`, so nothing renders behind
+ * them. That is the entire difference: same component, same tabs, same state — only the frame
+ * changes, because a "full screen mode" built as a second copy of the viewer would be a second copy
+ * to keep in step.
+ *
+ * These are what the New tab button opens. In a tab of its own a modal makes no sense: it would
+ * float over a catalogue nobody navigated to, above a close button that reveals a screen they never
+ * asked for. The document IS the page here, under the app's header, with a link back to its
+ * catalogue instead of a dismiss.
+ *
+ * `onClose` still goes to the catalogue — the unsaved-changes guard funnels through it, so it has to
+ * lead somewhere sensible even though no close button is rendered.
+ */
+
+export function FmdPageRoute() {
+  const { fmdId } = useParams();
+  const navigate = useNavigate();
+  const to = useLibraryPath();
+  const { data: fmds = [] } = useLibraryFmds();
+  const fmd = fmds.find((f) => f.id === fmdId) ?? null;
+
+  useEffect(() => {
+    if (fmd) markFmdSeen(fmd.id, fmd.latestVersionId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fmd?.id, fmd?.latestVersionId]);
+
+  return <FmdVersionHistoryDialog fmd={fmd} asPage onClose={() => navigate(to('fmds'))} />;
+}
+
+export function XrefPageRoute() {
+  const { xrefId } = useParams();
+  const navigate = useNavigate();
+  const to = useLibraryPath();
+  const { data: tables = [] } = useLibraryXrefTables();
+  const xref = tables.find((t) => t.id === xrefId) ?? null;
+
+  return <GoldenXrefViewerDialog xref={xref} asPage onClose={() => navigate(to('xref'))} />;
+}

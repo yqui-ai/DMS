@@ -116,6 +116,8 @@ const LibraryXref = lazyNamed(() => import('../features/library/LibraryXref'), '
 const FmdRoute = lazyNamed(() => import('../features/library/LibraryDeepViews'), 'FmdRoute');
 const ObjectRoute = lazyNamed(() => import('../features/library/LibraryDeepViews'), 'ObjectRoute');
 const XrefRoute = lazyNamed(() => import('../features/library/LibraryDeepViews'), 'XrefRoute');
+const FmdPageRoute = lazyNamed(() => import('../features/library/LibraryDeepViews'), 'FmdPageRoute');
+const XrefPageRoute = lazyNamed(() => import('../features/library/LibraryDeepViews'), 'XrefPageRoute');
 const DashboardPage = lazyNamed(() => import('../features/dashboard/DashboardPage'), 'DashboardPage');
 const SearchPage = lazyNamed(() => import('../features/search/SearchPage'), 'SearchPage');
 const MyProfilePage = lazyNamed(() => import('../features/profile/MyProfilePage'), 'MyProfilePage');
@@ -189,6 +191,11 @@ const LIBRARY_ROUTES: RouteObject[] = [
     children: [{ path: ':fmdId', element: <FmdRoute /> }],
   },
   { path: 'rules', element: <ScreenGate screen="catalogRules"><LibraryRules /></ScreenGate> },
+  /* The same FMD and XREF views as PAGES, for the New tab button.
+     Siblings of the catalogues rather than children of them: a child would render through the
+     list's <Outlet />, which is exactly the modal-over-a-list arrangement these exist to avoid. */
+  { path: 'view/fmd/:fmdId', element: <ScreenGate screen="catalogFmds"><FmdPageRoute /></ScreenGate> },
+  { path: 'view/xref/:xrefId', element: <ScreenGate screen="catalogXref"><XrefPageRoute /></ScreenGate> },
   {
     path: 'xref',
     element: <ScreenGate screen="catalogXref"><LibraryXref /></ScreenGate>,

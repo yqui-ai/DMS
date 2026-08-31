@@ -18,7 +18,7 @@ select
   coalesce(
     string_agg(
       t.tgname || ' — ' ||
-      case t.tgenabled when 'O' then 'enabled' when 'D' then 'DISABLED' else 'enabled (' || t.tgenabled || ')' end,
+      case t.tgenabled when 'O' then 'enabled' when 'D' then 'DISABLED' else 'enabled (' || t.tgenabled::text || ')' end,
       '; '),
     'no trigger on subproject_plants runs subproject_plants_unique_per_project') as detail
 from pg_trigger t

@@ -3,7 +3,7 @@ import { Select } from '../../components/Select';
 import { Button } from '../../components/Button';
 import clsx from 'clsx';
 import { Download, ExternalLink, Sparkles } from 'lucide-react';
-import { Dialog } from '../../components/Dialog';
+import { DocumentShell } from '../../components/DocumentShell';
 import { useUnsavedGate } from '../../components/useUnsavedGate';
 import { Tag } from '../../components/Tag';
 import { useToast } from '../../components/Toast';
@@ -59,7 +59,12 @@ const SHEET_LABEL: Record<SheetKey, string> = { source: 'Source', target: 'Targe
  *  - Anything else: its sibling plants from the same tracked source file, if it was AI-converted
  *    (useHistoricalSiblings) — a manually-generated FMD with no tracked source just shows a message
  *    explaining there's nothing to find, rather than hiding the tab. */
-export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow | null; onClose: () => void }) {
+export function FmdVersionHistoryDialog({ fmd, onClose, asPage }: {
+  fmd: LibraryFmdRow | null;
+  onClose: () => void;
+  /** Rendered as its own page rather than over the catalogue — see DocumentShell. */
+  asPage?: boolean;
+}) {
   const toast = useToast();
   const to = useLibraryPath();
   const { data: versions = [], isLoading } = useFmdVersions(fmd?.id);
@@ -528,7 +533,15 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
   };
 
   return (
-    <Dialog open={!!fmd} onClose={gate(onClose)} title={fmd.name} subtitle={placementSubtitle} size="win">
+    <DocumentShell
+      asPage={asPage}
+      open={!!fmd}
+      onClose={gate(onClose)}
+      title={fmd.name}
+      subtitle={placementSubtitle}
+      backTo={to('fmds')}
+      backLabel="Back to Field Mapping"
+    >
       {unsavedGate}
       <div className="h-full flex flex-col">
         {/* items-END, not center: the active tab marks itself with a border that has to sit ON
@@ -621,13 +634,16 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
                 rest of the app beside it. The address already exists (every Library deep view is a
                 route); this is the affordance that makes it reachable without copying the URL out
                 of the bar. */}
-            <Button
+            {/* Hidden in page mode: you are already in that tab, and a button offering
+                to open one more of the same document is an invitation to lose track of which is
+                which. */}
+            {!asPage && <Button
               variant="quiet" size="sm"
-              onClick={() => window.open(`${window.location.origin}${to('fmds', fmd.id)}`, '_blank', 'noopener')}
+              onClick={() => window.open(`${window.location.origin}${to('view')}/fmd/${fmd.id}`, '_blank', 'noopener')}
               title="Open this FMD in a new browser tab, so you can keep it open while using other screens"
             >
               <ExternalLink size={14} /> New tab
-            </Button>
+            </Button>}
             <Button variant="quiet" size="sm" onClick={handleExport} disabled={exporting || !selected || (!isGoldenStructure && !isGenerated)}>
               <Download size={14} /> {exporting ? 'Exporting…' : 'Export to Excel'}
             </Button>
@@ -862,6 +878,6 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
           await fieldNoteMutations.add(pointTarget.structureId, pointTarget.rowKey, tagVal, body, pointTarget.field);
         }}
       />
-    </Dialog>
+    </DocumentShell>
   );
 }
