@@ -11,7 +11,7 @@ import { useAuth } from '../../lib/auth';
 import { canPublish } from '../../lib/rbac';
 import { useCurrentRole } from '../../lib/queries/memberships';
 import { useDefaultProgram } from '../../lib/queries/programme';
-import { DRAFT_VERSION, DRAFT_VERSION_ID, draftOverlayVersion, nextPublishedVersion, useEditFmdField, useFmdVersions, useGoldenFmdSummary, useFmdUsage, useGoldenWhereUsed, useHistoricalSiblings, useLatestFmdVersion, usePublishFmdVersion, type LibraryFmdRow } from '../../lib/queries/fmds';
+import { DRAFT_VERSION, DRAFT_VERSION_ID, draftOverlayVersion, nextPublishedVersion, useEditFmdField, useFmdVersions, useGoldenFmdSummary, useFmdUsage, useGoldenWhereUsed, useHistoricalSiblings, useLatestFmdVersion, usePublishFmdVersion, useAddFmdContent, type LibraryFmdRow } from '../../lib/queries/fmds';
 import { useFmdFieldNotes, useFmdFieldNoteMutations } from '../../lib/queries/fmdFieldNotes';
 import { useFmdPlantRules } from '../../lib/queries/fmdPlantRules';
 import { useMigrationObjects, useScopeObjectOwners, scopeOwnerKey, type ScopeAssignment } from '../../lib/queries/scope';
@@ -95,6 +95,7 @@ export function FmdVersionHistoryDialog({ fmd, onClose, asPage }: {
   const [plantRuleTarget, setPlantRuleTarget] = useState<{ structureId: string; structureIdent?: string; rowKey: string; rowLabel: string; transformation?: string; technical?: string } | null>(null);
   const { publish: publishVersion } = usePublishFmdVersion();
   const { saveField } = useEditFmdField(fmd?.id ?? '');
+  const { reorderColumns } = useAddFmdContent(fmd?.id ?? '');
   const { review: reviewMapping, save: saveMappingReview, setAddressed } = useMappingReview();
   const { user } = useAuth();
   const isCustomFmd = fmd?.type === 'Custom';
@@ -705,6 +706,11 @@ export function FmdVersionHistoryDialog({ fmd, onClose, asPage }: {
                         reviewPointCellsByTable={reviewPointCellsByTable}
                         reviewPointRowsByTable={reviewPointRowsByTable}
                         onAddContent={isCustomFmd && canEditSelected ? () => setAddingContent(true) : undefined}
+                        /* Custom only. Order is presentation, and a Custom FMD is the only kind
+                           whose presentation is its own — a Standard FMD is the programme-wide
+                           reference every Custom aligns to, so reordering it would move the
+                           columns under documents that never asked. */
+                        onReorderColumns={isCustomFmd && canEditSelected ? reorderColumns : undefined}
                         /* Offered only where a rule COULD differ: a Custom FMD (the only kind tied
                            to a subproject) whose subproject covers more than one plant. With one
                            plant there is nothing to differ between, and the control would be an

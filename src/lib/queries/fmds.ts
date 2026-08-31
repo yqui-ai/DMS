@@ -900,6 +900,39 @@ export function useAddFmdContent(fmdId: string) {
      * Rows are added by editing; a structure arrives empty because there is nothing to derive its
      * contents from. The ident is what the grid tabs and every export sheet name key on, so it is
      * uppercased and checked for collisions here rather than producing two tabs with one name. */
+    /** Reorders this document's columns.
+     *
+     * Order is presentation, not definition — which is exactly why it belongs here while ADDING a
+     * column does not. The Golden template decides what columns an FMD has; a Custom FMD, built for
+     * one object in one subproject, can decide what order its own reader sees them in. Nothing about
+     * what the document contains changes, so no other FMD is affected and no regeneration is due.
+     *
+     * The row objects are untouched: a row is keyed by field name, and JS object key order is not
+     * what the grid or the export reads. `generatedColumns` IS the order, everywhere — grid, Excel
+     * export, field-level view — so moving entries in that one array moves all three together.
+     *
+     * Still a draft version, like the other shape changes: a pending change is a cell edit and
+     * cannot express "the columns moved". */
+    async reorderColumns(fields: string[]): Promise<void> {
+      const { current, sheets, tables, pending } = await openDraft();
+      const columns = sheets.generatedColumns ?? [];
+
+      const byField = new Map(columns.map((c) => [c.field, c]));
+      const next = fields.flatMap((f) => byField.get(f) ?? []);
+      // Anything the caller did not name keeps its place at the end rather than being dropped. A
+      // reorder that silently loses a column would be a data change wearing a layout change's
+      // clothes — and the caller is a UI list that can go stale mid-edit.
+      for (const c of columns) if (!fields.includes(c.field)) next.push(c);
+      if (next.length !== columns.length) throw new Error('That reorder would change which columns exist.');
+
+      await write(
+        current as any, sheets,
+        { ...sheets, generatedColumns: next, generatedTables: tables },
+        'Reordered columns',
+        pending.length > 0,
+      );
+    },
+
     async addStructure(ident: string, description?: string): Promise<void> {
       const name = ident.trim().toUpperCase();
       if (!name) throw new Error('Give the structure a name.');
