@@ -5,13 +5,14 @@ import clsx from 'clsx';
 import { Download, ExternalLink, Sparkles } from 'lucide-react';
 import { DocumentShell } from '../../components/DocumentShell';
 import { useUnsavedGate } from '../../components/useUnsavedGate';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Tag } from '../../components/Tag';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../lib/auth';
 import { canPublish } from '../../lib/rbac';
 import { useCurrentRole } from '../../lib/queries/memberships';
 import { useDefaultProgram } from '../../lib/queries/programme';
-import { DRAFT_VERSION, DRAFT_VERSION_ID, draftOverlayVersion, nextPublishedVersion, useEditFmdField, useFmdVersions, useGoldenFmdSummary, useFmdUsage, useGoldenWhereUsed, useHistoricalSiblings, useLatestFmdVersion, usePublishFmdVersion, useAddFmdContent, type LibraryFmdRow } from '../../lib/queries/fmds';
+import { DRAFT_VERSION, DRAFT_VERSION_ID, draftOverlayVersion, nextPublishedVersion, useEditFmdField, useFmdVersions, useGoldenFmdSummary, useFmdUsage, useGoldenWhereUsed, useHistoricalSiblings, useLatestFmdVersion, usePublishFmdVersion, useAddFmdContent, useStandardFmdLinks, type LibraryFmdRow } from '../../lib/queries/fmds';
 import { useFmdFieldNotes, useFmdFieldNoteMutations } from '../../lib/queries/fmdFieldNotes';
 import { useFmdPlantRules } from '../../lib/queries/fmdPlantRules';
 import { useMigrationObjects, useScopeObjectOwners, scopeOwnerKey, type ScopeAssignment } from '../../lib/queries/scope';
@@ -95,7 +96,11 @@ export function FmdVersionHistoryDialog({ fmd, onClose, asPage }: {
   const [plantRuleTarget, setPlantRuleTarget] = useState<{ structureId: string; structureIdent?: string; rowKey: string; rowLabel: string; transformation?: string; technical?: string } | null>(null);
   const { publish: publishVersion } = usePublishFmdVersion();
   const { saveField } = useEditFmdField(fmd?.id ?? '');
-  const { reorderRows } = useAddFmdContent(fmd?.id ?? '');
+  const { reorderRows, removeRow } = useAddFmdContent(fmd?.id ?? '');
+  /* Removing a row is a shape change that publishes as a version, so it asks first. Holds the
+     label as well as the position: a confirm that cannot name what it is about to delete is a
+     confirm nobody reads. */
+  const [removingRow, setRemovingRow] = useState<{ structureId: string; rowIndex: number; label: string } | null>(null);
   const { review: reviewMapping, save: saveMappingReview, setAddressed } = useMappingReview();
   const { user } = useAuth();
   const isCustomFmd = fmd?.type === 'Custom';
@@ -115,6 +120,14 @@ export function FmdVersionHistoryDialog({ fmd, onClose, asPage }: {
   const { data: scopeOwners = new Map<string, ScopeAssignment>() } = useScopeObjectOwners(!!fmd);
   /** The FMD's object, from the catalogue this dialog already loaded — see FmdWhereUsedTab. */
   const usageObject = objects.find((o) => o.id === fmd?.migrationObjectId);
+
+  /* The object's Standard FMD, so a removed field can be restored from it rather than retyped.
+     Only for a Custom FMD — a Standard has no standard above it to draw from. */
+  const { data: standardLinks = [] } = useStandardFmdLinks();
+  const standardFmdId = isCustomFmd
+    ? standardLinks.find((l) => l.migrationObjectId === fmd?.migrationObjectId)?.fmdId
+    : undefined;
+  const { data: standardLatest } = useLatestFmdVersion(standardFmdId);
 
   const { data: goldenSummary } = useGoldenFmdSummary(!!fmd);
   const { data: goldenLatest } = useLatestFmdVersion(fmd?.goldenOutdated ? goldenSummary?.id : undefined);
@@ -320,7 +333,13 @@ export function FmdVersionHistoryDialog({ fmd, onClose, asPage }: {
       const table = tables.find((t) => t.structureId === f.structureId);
       if (!table) continue;
       const byRow = byTable.get(f.structureId) ?? new Map<string, Map<string, ReviewCellFinding>>();
-      table.rows.forEach((row, i) => {
+      /* Only the rows this run actually saw. A column-level finding says "blank in all 157 rows" —
+         a statement about the 157 that existed when it ran. Painting it onto a row added afterwards
+         marks a brand-new field as a defect the review never examined, which is what happens the
+         moment you add one. Reviews saved before rowCounts existed have no count and keep the old
+         behaviour rather than silently losing their highlights. */
+      const reviewed = activeReview?.rowCounts?.[f.structureId] ?? table.rows.length;
+      table.rows.slice(0, reviewed).forEach((row, i) => {
         const rk = rowKey(row, i);
         const byField = byRow.get(rk) ?? new Map<string, ReviewCellFinding>();
         // A per-row finding on the same cell is more specific, so it wins.
@@ -708,6 +727,7 @@ export function FmdVersionHistoryDialog({ fmd, onClose, asPage }: {
                         reviewPointRowsByTable={reviewPointRowsByTable}
                         onAddContent={isCustomFmd && canEditSelected ? () => setAddingContent(true) : undefined}
                         onReorderRows={isCustomFmd && canEditSelected ? reorderRows : undefined}
+                        onRemoveRow={isCustomFmd && canEditSelected ? (structureId, rowIndex, label) => setRemovingRow({ structureId, rowIndex, label }) : undefined}
                         /* Offered only where a rule COULD differ: a Custom FMD (the only kind tied
                            to a subproject) whose subproject covers more than one plant. With one
                            plant there is nothing to differ between, and the control would be an
@@ -859,8 +879,27 @@ export function FmdVersionHistoryDialog({ fmd, onClose, asPage }: {
         open={addingContent}
         fmdId={fmd.id}
         tables={latest?.sheets.generatedTables ?? []}
+        standardTables={standardLatest?.sheets.generatedTables}
         activeStructureId={openField?.structureId}
         onClose={() => setAddingContent(false)}
+      />
+
+      <ConfirmDialog
+        open={!!removingRow}
+        title="Remove this field?"
+        message={removingRow
+          ? `${removingRow.label} will be removed from this FMD. It publishes as a new version, and the field can be restored later from the object's Standard FMD — any review points raised on it stay, marked as no longer in this version.`
+          : ''}
+        confirmLabel="Remove"
+        destructive
+        onConfirm={async () => {
+          const t = removingRow;
+          setRemovingRow(null);
+          if (!t) return;
+          try { await removeRow(t.structureId, t.rowIndex); toast.success(`${t.label} removed.`); }
+          catch (err: any) { toast.error(err.message ?? 'Could not remove that row.'); }
+        }}
+        onCancel={() => setRemovingRow(null)}
       />
 
       <PlantRulesDialog

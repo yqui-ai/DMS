@@ -20,7 +20,7 @@ export {
   DRAFT_VERSION, DRAFT_VERSION_ID, applyPendingChanges, draftOverlayVersion, nextPublishedVersion, bumpVersion,
 } from '../fmdDraft';
 import { DRAFT_VERSION, DRAFT_VERSION_ID, applyPendingChanges, bumpVersion, nextPublishedVersion } from '../fmdDraft';
-import { CUSTOM_FIELD_TYPE } from '../goldenFmdRequiredFields';
+import { CUSTOM_FIELD_TYPE, STANDARD_FIELD_TYPE } from '../goldenFmdRequiredFields';
 
 
 export function useAllFmds() {
@@ -997,23 +997,82 @@ export function useAddFmdContent(fmdId: string) {
     },
 
     /** Appends an empty row to one structure, so a custom field has somewhere to be filled in. */
-    async addRow(structureId: string): Promise<void> {
+    /** Appends a row. Blank by default, or seeded from the object's Standard FMD.
+     *
+     * `seed` is how a predefined field is put back. Removing a row from a Custom FMD is a normal
+     * thing to do — the wave does not migrate that field — and so is changing your mind, and
+     * retyping SRC_FIELD, its description, its data type and its length from memory is both tedious
+     * and how a Custom FMD drifts from the standard it was generated from. A seeded row carries
+     * `FIELD_TYPE: Standard`, because it IS the standard field: only a row nobody predefined is
+     * Custom. */
+    async addRow(structureId: string, seed?: Record<string, string>): Promise<void> {
       const { current, sheets, tables, pending } = await openDraft();
       const target = tables.find((t) => t.structureId === structureId);
       if (!target) throw new Error('Could not locate that structure.');
 
-      const blank: Record<string, string> = {};
-      for (const c of sheets.generatedColumns ?? []) blank[c.field] = '';
-      blank.FIELD_TYPE = CUSTOM_FIELD_TYPE;
+      const row: Record<string, string> = {};
+      // Keyed off the document's own columns, so a seed from a Standard FMD with a different shape
+      // contributes only the fields this document actually has.
+      for (const c of sheets.generatedColumns ?? []) row[c.field] = seed?.[c.field] ?? '';
+      row.FIELD_TYPE = seed ? STANDARD_FIELD_TYPE : CUSTOM_FIELD_TYPE;
 
       const nextTables: GeneratedTable[] = tables.map((t) => (
-        t.structureId !== structureId ? t : { ...t, rows: [...t.rows, blank] }
+        t.structureId !== structureId ? t : { ...t, rows: [...t.rows, row] }
       ));
 
       await write(
         current as any, sheets,
         { ...sheets, generatedTables: nextTables },
-        `Added a custom field row to ${target.structureIdent}`,
+        seed
+          ? `Restored ${seed.SRC_FIELD || seed.TGT_FIELD || 'a standard field'} to ${target.structureIdent}`
+          : `Added a custom field row to ${target.structureIdent}`,
+        pending.length > 0,
+      );
+    },
+
+    /** Removes one row.
+     *
+     * The stored review is remapped exactly as a reorder does, and for the same reason: a finding
+     * pins `rowIndex`, so deleting row 3 leaves every finding after it pointing one row too far —
+     * silently, because an index is always a valid index. Findings ON the deleted row are dropped;
+     * they describe something that no longer exists.
+     *
+     * Review POINTS are deliberately not deleted. They are keyed by the content-based `row_key`, so
+     * a point on the removed row becomes orphaned rather than destroyed — and the review pane
+     * already renders those as "not in this version", which is exactly right: somebody raised a
+     * question about this mapping, and the mapping being gone is the answer they need to see, not a
+     * reason to erase the question. */
+    async removeRow(structureId: string, rowIndex: number): Promise<void> {
+      const { current, sheets, tables, pending } = await openDraft();
+      const target = tables.find((t) => t.structureId === structureId);
+      if (!target?.rows[rowIndex]) throw new Error('That row is no longer where it was — reopen the FMD and try again.');
+
+      const rows = target.rows.filter((_, i) => i !== rowIndex);
+
+      const remap = (review?: MappingReview): MappingReview | undefined => (review && {
+        ...review,
+        findings: review.findings.filter((f) => !(f.structureId === structureId && f.rowIndex === rowIndex))
+          .map((f) => (
+            // -1 belongs to the structure, not a row, and must not be shifted into a real index.
+            f.structureId === structureId && f.rowIndex > rowIndex
+              ? { ...f, rowIndex: f.rowIndex - 1 }
+              : f
+          )),
+        rowCounts: review.rowCounts && {
+          ...review.rowCounts,
+          [structureId]: Math.max(0, (review.rowCounts[structureId] ?? rows.length + 1) - 1),
+        },
+      });
+
+      await write(
+        current as any, sheets,
+        {
+          ...sheets,
+          generatedTables: tables.map((t) => (t.structureId === structureId ? { ...t, rows } : t)),
+          mappingReview: remap(sheets.mappingReview),
+          mappingReviews: sheets.mappingReviews?.map((r) => remap(r)!),
+        },
+        `Removed a row from ${target.structureIdent}`,
         pending.length > 0,
       );
     },

@@ -277,6 +277,16 @@ export interface MappingReview {
    * carrying nothing across loses the list of what was flagged, which is the thing you are working
    * from while you fix it. Derived on read in `draftOverlayVersion`, never stored. */
   inheritedFrom?: { versionId: string; version: string };
+  /** structureId -> how many rows that structure held when this review ran.
+   *
+   * A COLUMN-level finding ("MAPPING_TYPE is blank in all 157 in-scope rows") is painted onto every
+   * cell of its column, which is the only way it has anywhere to point. But a row added AFTER the
+   * review inherited that paint too — a brand-new field arrived already marked as a defect by a run
+   * that never saw it. This is how the highlight knows where the review's knowledge ends.
+   *
+   * Absent on reviews saved before it existed; those fall back to painting every row, which is the
+   * behaviour they already had. */
+  rowCounts?: Record<string, number>;
 }
 
 /** A note/comment on one specific field mapping (structure + row identity, not a version — see

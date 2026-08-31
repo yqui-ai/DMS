@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
-import { Check, ChevronLeft, ChevronRight, Columns3, Eye, EyeOff, Factory, GripVertical, Maximize2, MessageSquare, Pencil, Plus, Type } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Columns3, Eye, EyeOff, Factory, GripVertical, Maximize2, MessageSquare, Pencil, Plus, Trash2, Type } from 'lucide-react';
 import { Dialog } from '../../components/Dialog';
 import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import { useDismiss } from '../../components/useDismiss';
@@ -253,7 +253,7 @@ function GridCell({ column, value, onSave }: {
   );
 }
 
-export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, reviewFindingsByTable, onOpenField, onAddReviewPoint, reviewPointCellsByTable, reviewPointRowsByTable, onAddContent, onReorderRows, onOpenPlantRules, plantRuleCountsByTable, canEdit = false, onSaveField }: {
+export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, reviewFindingsByTable, onOpenField, onAddReviewPoint, reviewPointCellsByTable, reviewPointRowsByTable, onAddContent, onReorderRows, onRemoveRow, onOpenPlantRules, plantRuleCountsByTable, canEdit = false, onSaveField }: {
   columns: GeneratedColumn[]; tables: GeneratedTable[];
   /** structureId -> rowKey -> changed field names, vs. the previous version — yellow-highlights
    * exactly the cells that changed since then. Undefined/absent means "nothing to compare against
@@ -291,6 +291,8 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
   /** Moves one row within a structure. A row IS a field in an FMD, so this is what "rearrange the
    * fields" means. Omitted where the FMD cannot be edited. */
   onReorderRows?: (structureId: string, from: number, to: number) => Promise<void>;
+  /** Removes one row. Same gating as reordering — a shape change, so edit mode only. */
+  onRemoveRow?: (structureId: string, rowIndex: number, rowLabel: string) => void;
   /** Opens the per-plant rules dialog for one row. Omitted where the FMD covers no plants — a
    * single-plant subproject has nothing for a rule to differ between. */
   onOpenPlantRules?: (structureId: string, rowIndex: number) => void;
@@ -723,6 +725,7 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                        the drop target (see the <tr> above); the handle is only what starts it, so
                        an ordinary click still lands in the cell underneath. */
                     <td className="border-t border-line-soft px-0 align-middle w-9 text-center">
+                      <span className="inline-flex flex-col items-center">
                       <span
                         draggable={rowsInDocumentOrder && !reordering}
                         onDragStart={() => setDragRow(originalIndex)}
@@ -739,6 +742,27 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                         )}
                       >
                         <GripVertical size={13} />
+                      </span>
+                      {onRemoveRow && (
+                        /* Under the handle rather than beside it: the gutter is 36px, and two
+                           controls side by side there are two targets nobody can hit. Confirmation
+                           is the caller's — removing a row is a shape change that publishes as a
+                           version, so it is not something to do on a mis-click. */
+                        <button
+                          type="button"
+                          aria-label="Remove this field"
+                          title="Remove this field from the FMD"
+                          disabled={reordering}
+                          onClick={() => onRemoveRow(
+                            activeTable.structureId,
+                            originalIndex,
+                            row.SRC_FIELD || row.TGT_FIELD || `Row ${originalIndex + 1}`,
+                          )}
+                          className="mt-0.5 text-muted/60 hover:text-red disabled:opacity-30 disabled:pointer-events-none"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
                       </span>
                     </td>
                   )}

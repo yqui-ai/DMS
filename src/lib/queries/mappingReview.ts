@@ -185,6 +185,11 @@ export function useMappingReview() {
       const review: MappingReview = {
         id: crypto.randomUUID(),
         reviewedBy: user?.email ?? 'Unknown', reviewedAt: new Date().toISOString(), findings,
+        // What this run actually looked at, so a row added later cannot inherit its column-level
+        // findings — see MappingReview.rowCounts.
+        rowCounts: Object.fromEntries(
+          (currentSheets.generatedTables ?? []).map((t) => [t.structureId, t.rows.length]),
+        ),
       };
       const sheets = { ...currentSheets, mappingReviews: [...readMappingReviews(currentSheets), review] };
       // The legacy single-review key is folded into the list by readMappingReviews above, so drop
