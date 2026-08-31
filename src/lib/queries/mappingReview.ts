@@ -70,6 +70,22 @@ export function useMappingReview() {
         // auditing it only manufactures findings nobody will act on. Only an EXPLICIT "no" is
         // skipped: a blank MIGRATION_IN_SCOPE means nobody has decided yet, and an undecided field
         // still has to be checked — otherwise an unfinished FMD passes by omission.
+        /* An EMPTY structure is a finding in its own right.
+         *
+         * Everything below iterates rows, and `alwaysBlankFields` returns nothing for an empty
+         * array — so a structure with no rows produced no findings at all and the review reported
+         * a clean bill of health on a tab containing nothing. That was survivable while structures
+         * only ever arrived from generation (which always brings rows); adding one by hand made it
+         * reachable, and silence is the worst possible answer to "is this document finished". */
+        if (table.rows.length === 0) {
+          findings.push(at(-1, {
+            field: undefined,
+            severity: 'error',
+            issue: 'This structure has no rows. Nothing will be loaded for it.',
+          }));
+          continue;
+        }
+
         const inScopeRows = table.rows.filter((r) => !isOutOfScope(r));
 
         const blanks = alwaysBlankFields(inScopeRows);

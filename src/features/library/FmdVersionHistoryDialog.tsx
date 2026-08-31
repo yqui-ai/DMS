@@ -848,7 +848,6 @@ export function FmdVersionHistoryDialog({ fmd, onClose, asPage }: {
       <AddFmdContentDialog
         open={addingContent}
         fmdId={fmd.id}
-        columns={latest?.sheets.generatedColumns ?? []}
         tables={latest?.sheets.generatedTables ?? []}
         activeStructureId={openField?.structureId}
         onClose={() => setAddingContent(false)}

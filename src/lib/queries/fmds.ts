@@ -889,51 +889,11 @@ export function useAddFmdContent(fmdId: string) {
   };
 
   return {
-    /** Appends a field to EVERY structure in the document.
-     *
-     * A generated FMD's columns are one list shared by all its structures (`generatedColumns`), and
-     * the grid renders that list against each table — so a column present in one structure's rows
-     * and absent from another's is not a narrower document, it is a document whose other tabs show
-     * blanks under a header. Adding it everywhere keeps the shape honest.
-     *
-     * `FIELD_TYPE: 'Custom'` is stamped on the COLUMN, not the row, because it describes where the
-     * column came from rather than what any row holds. */
-    async addField(field: string, options?: { description?: string; sectionName?: string }): Promise<void> {
-      const name = field.trim().toUpperCase();
-      if (!name) throw new Error('Give the field a name.');
+    /* No addField. A COLUMN is part of what an FMD is, and every FMD is generated from one
+       template — adding one to a single document would make it a different shape from its
+       siblings, and no export, diff or review would agree on what an FMD contains. Columns are
+       added in the Golden FMD designer, where the change reaches every document that follows it. */
 
-      const { current, sheets, tables, pending } = await openDraft();
-      const columns = sheets.generatedColumns ?? [];
-      if (columns.some((c) => c.field.trim().toUpperCase() === name)) {
-        throw new Error(`${name} already exists in this FMD.`);
-      }
-
-      // Placed in the section it was asked for, else in the last one — never the first, which would
-      // put a custom column in front of SRC_SYSTEM.
-      const section = options?.sectionName?.trim() || columns[columns.length - 1]?.sectionName || 'Custom';
-      const colour = columns.find((c) => c.sectionName === section)?.color
-        ?? columns[columns.length - 1]?.color
-        ?? 'blue';
-
-      const nextColumns: GeneratedColumn[] = [
-        ...columns,
-        { field: name, sectionName: section, color: colour, description: options?.description },
-      ];
-      const nextTables: GeneratedTable[] = tables.map((t) => ({
-        ...t,
-        // Every row gains the key with an empty value, so the column exists rather than being
-        // absent-but-rendered — an undefined cell and a blank one look identical and behave
-        // differently the moment anything counts them.
-        rows: t.rows.map((r) => ({ ...r, [name]: '', FIELD_TYPE: r.FIELD_TYPE || CUSTOM_FIELD_TYPE })),
-      }));
-
-      await write(
-        current as any, sheets,
-        { ...sheets, generatedColumns: nextColumns, generatedTables: nextTables },
-        `Added custom field ${name}`,
-        pending.length > 0,
-      );
-    },
 
     /** Appends a whole structure — a new tab in the grid, with the document's columns and no rows.
      *

@@ -7,20 +7,22 @@ import { Segmented } from '../../../components/Segmented';
 import { useToast } from '../../../components/Toast';
 import { normaliseStructureFieldName } from '../../../lib/structureFieldName';
 import { useAddFmdContent } from '../../../lib/queries/fmds';
-import type { GeneratedColumn, GeneratedTable } from '../../../types/entities';
+import type { GeneratedTable } from '../../../types/entities';
 
-type Mode = 'field' | 'row' | 'structure';
+type Mode = 'row' | 'structure';
 
 /** Adds something the Golden template never gave this FMD.
  *
- * Three shapes of "custom", because they are genuinely different things and folding them into one
- * button would make the common one ambiguous:
- *  · **Field** — a new COLUMN, added to every structure. The document's columns are one shared list,
- *    so a column present in one tab and absent from another is not a narrower document, it is one
- *    whose other tabs show blanks under a header.
+ * Two shapes, because they are genuinely different things:
  *  · **Row** — a new mapping line in one structure, for a field the sender structure did not
  *    declare.
  *  · **Structure** — a new tab, for a sender structure this object turned out to also send.
+ *
+ * **Adding a COLUMN is deliberately not here.** A column is part of what an FMD IS, and every FMD in
+ * the programme is generated from one template — so a column added to a single document would make
+ * that document a different shape from its siblings, and no export, diff or review would agree on
+ * what an FMD contains. Columns are added in the Golden FMD designer, where the change reaches every
+ * document that follows it.
  *
  * Whatever is added is marked `FIELD_TYPE: Custom`, which is what lets a reader tell the template's
  * columns from this document's own — and why FIELD_TYPE is in the Golden baseline rather than being
@@ -29,10 +31,9 @@ type Mode = 'field' | 'row' | 'structure';
  * Every one of these produces a real draft VERSION rather than a pending change: pending changes are
  * cell edits and cannot express "a row appeared". Saying so on the dialog matters, because it is the
  * difference between an edit you can un-tick at publish and one you cannot. */
-export function AddFmdContentDialog({ open, fmdId, columns, tables, activeStructureId, onClose, onAdded }: {
+export function AddFmdContentDialog({ open, fmdId, tables, activeStructureId, onClose, onAdded }: {
   open: boolean;
   fmdId: string;
-  columns: GeneratedColumn[];
   tables: GeneratedTable[];
   /** The structure the grid is showing — what a new row defaults to. */
   activeStructureId?: string;
@@ -40,21 +41,17 @@ export function AddFmdContentDialog({ open, fmdId, columns, tables, activeStruct
   onAdded?: () => void;
 }) {
   const toast = useToast();
-  const { addField, addRow, addStructure } = useAddFmdContent(fmdId);
+  const { addRow, addStructure } = useAddFmdContent(fmdId);
 
-  const [mode, setMode] = useState<Mode>('field');
+  const [mode, setMode] = useState<Mode>('row');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [sectionName, setSectionName] = useState('');
   const [structureId, setStructureId] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const sections = [...new Set(columns.map((c) => c.sectionName))];
-
   useEffect(() => {
     if (!open) return;
-    setMode('field'); setName(''); setDescription('');
-    setSectionName(sections[sections.length - 1] ?? '');
+    setMode('row'); setName(''); setDescription('');
     setStructureId(activeStructureId ?? tables[0]?.structureId ?? '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, activeStructureId]);
@@ -62,10 +59,7 @@ export function AddFmdContentDialog({ open, fmdId, columns, tables, activeStruct
   const submit = async () => {
     setBusy(true);
     try {
-      if (mode === 'field') {
-        await addField(name, { description: description.trim() || undefined, sectionName });
-        toast.success(`${normaliseStructureFieldName(name)} added to every structure.`);
-      } else if (mode === 'structure') {
+      if (mode === 'structure') {
         await addStructure(name, description);
         toast.success(`Structure ${normaliseStructureFieldName(name)} added.`);
       } else {
@@ -105,33 +99,10 @@ export function AddFmdContentDialog({ open, fmdId, columns, tables, activeStruct
           value={mode}
           onChange={(v) => { setMode(v); setName(''); }}
           options={[
-            { value: 'field' as const, label: 'Field', title: 'A new column, added to every structure in this FMD' },
             { value: 'row' as const, label: 'Row', title: 'A new mapping line in one structure' },
             { value: 'structure' as const, label: 'Structure', title: 'A new sender structure — a new tab in the grid' },
           ]}
         />
-
-        {mode === 'field' && (
-          <>
-            <Field label="Field name" hint="ALL CAPS, no spaces — what you type is converted automatically.">
-              <Input
-                value={name}
-                onChange={(e) => setName(normaliseStructureFieldName(e.target.value))}
-                placeholder="LOCAL_PRICING_GROUP"
-                className="font-mono"
-                autoFocus
-              />
-            </Field>
-            <Field label="Description" hint="What the column is for. Shown to whoever has to fill it in.">
-              <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional" />
-            </Field>
-            <Field label="Section" hint="Which coloured band it appears under in the grid and the export.">
-              <Select value={sectionName} onChange={(e) => setSectionName(e.target.value)} className="w-full">
-                {sections.map((s) => <option key={s} value={s}>{s}</option>)}
-              </Select>
-            </Field>
-          </>
-        )}
 
         {mode === 'row' && (
           <Field label="Structure" hint="The new row is added at the end, with every column blank.">
