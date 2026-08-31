@@ -44,7 +44,7 @@ select
   coalesce(
     string_agg(
       t.tgname || ' — ' ||
-      case t.tgenabled when 'O' then 'enabled' when 'D' then 'DISABLED' else 'enabled (' || t.tgenabled || ')' end ||
+      case t.tgenabled when 'O' then 'enabled' when 'D' then 'DISABLED' else 'enabled (' || t.tgenabled::text || ')' end ||
       case when (t.tgtype & 2) <> 0 then ', before' else ', AFTER (wrong — too late to reject)' end ||
       case when (t.tgtype & 1) <> 0 then ', per row' else ', PER STATEMENT (wrong)' end ||
       case when (t.tgtype & 16) <> 0 then ', on update' else ', NOT on update (wrong)' end,
@@ -125,5 +125,82 @@ from pg_trigger t
 join pg_class c on c.oid = t.tgrelid
 where c.relname in ('fmd_versions', 'xref_versions') and not t.tgisinternal
   and t.tgname in ('fmd_versions_no_published_edit', 'xref_versions_no_published_edit')
+
+union all
+
+/* ── 0060: review points and lineage ──────────────────────────────────────────────────────────
+   The columns themselves are easy to confirm from outside (a PostgREST select either resolves or
+   names the missing column). What follows is the part that ISN'T visible from the API: whether the
+   RLS policy exists, whether the CHECK constraint matches the app's vocabulary, and what the
+   foreign key does when its target disappears. */
+
+-- 9. Lineage column, and — the part that actually matters — its ON DELETE behaviour. SET NULL means
+--    deleting a Golden version makes the tables built from it read as "never built". CASCADE would
+--    delete the TABLES, which is why 0026 exists as a cautionary sibling.
+select
+  '9. Lineage FK is ON DELETE SET NULL',
+  case when count(*) = 1 and min(confdeltype) = 'n' then 'OK' else 'FAIL' end,
+  case
+    when count(*) = 0 then 'xref_tables.based_on_golden_version_id has no foreign key'
+    when min(confdeltype) = 'n' then 'set null — deleting a template version orphans the pointer, not the table'
+    when min(confdeltype) = 'c' then 'CASCADE — deleting a template version would DELETE the tables built from it'
+    else 'unexpected on-delete action: ' || min(confdeltype)::text
+  end
+from pg_constraint con
+join pg_class c on c.oid = con.conrelid
+join pg_attribute a on a.attrelid = c.oid and a.attnum = any (con.conkey)
+where c.relname = 'xref_tables' and con.contype = 'f' and a.attname = 'based_on_golden_version_id'
+
+union all
+
+-- 10. RLS on the review table. A table with RLS off is readable by any signed-in user; a table with
+--     RLS on and no policy denies everyone, which reads in the app as an empty list rather than as
+--     an error. Both are silent, so both are checked here.
+select
+  '10. xref_review_points is protected by RLS',
+  case when bool_and(c.relrowsecurity) and count(p.polname) > 0 then 'OK' else 'FAIL' end,
+  case
+    when not bool_and(c.relrowsecurity) then 'RLS is OFF — every signed-in user can read every review point'
+    when count(p.polname) = 0 then 'RLS is on with NO policy — nobody can read anything, and it looks like an empty list'
+    else count(p.polname) || ' policy/policies: ' || string_agg(p.polname, ', ')
+  end
+from pg_class c
+join pg_namespace n on n.oid = c.relnamespace
+left join pg_policy p on p.polrelid = c.oid
+where n.nspname = 'public' and c.relname = 'xref_review_points'
+group by c.relname
+
+union all
+
+-- 11. The tag vocabulary. src/lib/reviewPointCategories.ts renders todo/issue/remark and still maps
+--     the retired question/decision; a value the app can post but the constraint rejects fails at
+--     the database with no clue why, which is exactly the trap the FMD's 0028 documents.
+select
+  '11. Review tags the app posts are all accepted',
+  case when count(*) = 1 and bool_and(
+    pg_get_constraintdef(con.oid) like '%todo%'
+    and pg_get_constraintdef(con.oid) like '%issue%'
+    and pg_get_constraintdef(con.oid) like '%remark%'
+  ) then 'OK' else 'FAIL' end,
+  coalesce(string_agg(pg_get_constraintdef(con.oid), ' | '), 'no CHECK constraint on tag')
+from pg_constraint con
+join pg_class c on c.oid = con.conrelid
+where c.relname = 'xref_review_points' and con.contype = 'c'
+  and pg_get_constraintdef(con.oid) like '%tag%'
+
+union all
+
+-- 12. Lineage sanity. Every pointer should name a version OF THE GOLDEN TABLE — a table built from
+--     some other table's version is a bug in whatever wrote it, and it would report a confident,
+--     wrong answer on Where used rather than failing visibly.
+select
+  '12. Every lineage pointer names a Golden version',
+  case when count(*) = 0 then 'OK' else 'FAIL' end,
+  case when count(*) = 0 then 'no table points at a non-Golden version'
+       else count(*) || ' table(s) point at a version that is not the Golden template''s' end
+from xref_tables t
+join xref_versions v on v.id = t.based_on_golden_version_id
+join xref_tables golden on golden.id = v.xref_table_id
+where golden.type <> 'Golden'
 
 order by 1;

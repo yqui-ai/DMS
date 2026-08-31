@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import clsx from 'clsx';
-import { Check, ChevronLeft, ChevronRight, Columns3, Maximize2, Pencil, Type } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Columns3, Eye, EyeOff, Factory, GripVertical, Maximize2, MessageSquare, Pencil, Plus, Trash2, Type } from 'lucide-react';
 import { Dialog } from '../../components/Dialog';
 import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import { useDismiss } from '../../components/useDismiss';
 import { Button } from '../../components/Button';
-import { optionsOf, valueTypeError } from '../../lib/mappingRulePolicy';
+import { optionsOf, scopeOf, valueTypeError } from '../../lib/mappingRulePolicy';
 import { colorByKey } from '../../lib/goldenFmdColors';
 import { rowKey } from '../../lib/rowDiff';
 import type { GeneratedColumn, GeneratedTable } from '../../types/entities';
@@ -17,6 +18,63 @@ const FIELD_MAX_WIDTH: Record<string, number> = {
   TRANSFORMATION_RULE: 600, TECHNICAL_RULE: 600,
   SRC_FIELD_DESC: 400, TGT_FIELD_DESC: 400,
 };
+
+/** Floor on a column's width, so a cell cannot shrink below what its value needs.
+ *
+ * Only matters while EDITING, and that is exactly when it was wrong. A read-only cell is text: the
+ * table sizes the column to it and `whitespace-nowrap` keeps it on one line. An editing cell is an
+ * `<input>` at `w-full`, which has no intrinsic width to contribute — so the column collapsed to
+ * whatever the header needed and the value inside was clipped mid-word. `BANKS` in a `SRC_FIELD`
+ * column showed as `BANKS` with the expand affordance sitting on top of it.
+ *
+ * A floor rather than a fixed width: the column still grows for a long value, it just cannot fall
+ * below a size that fits a normal one. And a floor rather than sizing the input to its content,
+ * which would make every column jump as you type.
+ *
+ * The wrapping columns need a floor MORE than the others, not less. A max-width is the most a
+ * column may take, never what it keeps: a cell set to wrap has a min-content width of its longest
+ * single word, so the table shrinks it first whenever the grid is crowded. TECHNICAL_RULE was
+ * capped at 600 and floored at nothing, and duly collapsed to about 120px — `SELECT BANKS AS BANKS
+ * FROM S_BNKA` broke across three lines in a column wide enough for one word. Cap and floor are
+ * both needed, and they are not in tension: the floor stops the collapse, the cap stops one long
+ * rule stretching the table sideways. */
+const DEFAULT_MIN_WIDTH = 128;
+const FIELD_MIN_WIDTH: Record<string, number> = {
+  // SAP field and table names run to 30 characters.
+  SRC_FIELD: 176, TGT_FIELD: 176, LOAD_FIELD: 176,
+  SRC_TABLE: 152, TGT_TABLE: 152, LOAD_TABLE: 152,
+  SRC_CHECK_TABLE: 168, TGT_CHECK_TABLE: 168,
+  SRC_SYSTEM: 140, TGT_SYSTEM: 140,
+  // Descriptions wrap (they carry a FIELD_MAX_WIDTH), but still need room to be worth reading.
+  SRC_FIELD_DESC: 260, TGT_FIELD_DESC: 260,
+  // The rule columns. TECHNICAL_RULE holds SQL, which is the longest thing on the row and the one
+  // people read line by line — roughly double what it was collapsing to, and still capped at 600
+  // so it cannot run away with the table. TRANSFORMATION_RULE is usually a token like "1:1", so it
+  // gets a smaller floor: enough that a wordy one does not shred into one word per line either.
+  TECHNICAL_RULE: 300, TRANSFORMATION_RULE: 210,
+  // Selects: the widest option plus the browser's arrow, which is not part of the text.
+  // Both spellings: the Golden template ships this one with a space, and a programme that renames
+  // it to the underscored form should not silently lose its width.
+  MIGRATION_IN_SCOPE: 150, FIELD_CLASS: 150, 'FIELD CLASS': 150, MAPPING_TYPE: 168, LOAD_APPROACH: 168,
+  SRC_FIELD_MANDATORY: 168, TGT_FIELD_MANDATORY: 168,
+  SRC_FIELD_DATATYPE: 150, TGT_FIELD_DATATYPE: 150,
+};
+
+/** The floor for one column. Every column gets one, capped ones included — see above for why
+ * exempting the wrapping columns was what let them collapse. */
+const minWidthFor = (field: string): number => FIELD_MIN_WIDTH[field] ?? DEFAULT_MIN_WIDTH;
+/** In scope means MIGRATION_IN_SCOPE says so — **not** "isn't explicitly out".
+ *
+ * The same call the health tab makes, and made for the same reason: a field nobody has decided on
+ * is not a field being migrated. Treating blanks as in-scope would let the filter show rows that
+ * still need a decision as though they were settled, which is exactly the group most worth seeing. */
+const isInScope = (row: Record<string, string>) => scopeOf(row.MIGRATION_IN_SCOPE) === 'in';
+
+/** The columns a plant can override. Only these two: a plant differs in HOW a value is produced,
+ * never in what the source or target field is — a different target column is a different mapping,
+ * not the same one done differently. */
+const PLANT_RULE_FIELDS = new Set(['TRANSFORMATION_RULE', 'TECHNICAL_RULE']);
+
 const CHANGED_BG = '#fef9c3';
 const REVIEW_ERROR_BG = '#fecaca';
 const REVIEW_WARNING_BG = '#fed7aa';
@@ -196,7 +254,7 @@ function GridCell({ column, value, onSave }: {
   );
 }
 
-export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, reviewFindingsByTable, onOpenField, onAddReviewPoint, reviewPointCellsByTable, canEdit = false, onSaveField }: {
+export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, reviewFindingsByTable, onOpenField, onAddReviewPoint, reviewPointCellsByTable, reviewPointRowsByTable, onAddContent, onReorderRows, onRemoveRow, onOpenPlantRules, controlsContainer, plantRuleCountsByTable, canEdit = false, onSaveField }: {
   columns: GeneratedColumn[]; tables: GeneratedTable[];
   /** structureId -> rowKey -> changed field names, vs. the previous version — yellow-highlights
    * exactly the cells that changed since then. Undefined/absent means "nothing to compare against
@@ -222,6 +280,32 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
   onAddReviewPoint?: (structureId: string, rowIndex: number, field: string) => void;
   /** structureId -> rowKey -> fields that already carry a review point, for the corner marker. */
   reviewPointCellsByTable?: Map<string, Map<string, Set<string>>>;
+  /** structureId -> rowKey -> how many review points the ROW carries, and how many are still open.
+   *
+   * Separate from `reviewPointCellsByTable`, which is keyed by cell and — by construction — drops
+   * every point that is about the row rather than one of its fields. Those had no marker anywhere
+   * on the grid: raise a point about a mapping without pinning it to a column and the row looked
+   * untouched. This drives the gutter, which is the row-level answer. */
+  reviewPointRowsByTable?: Map<string, Map<string, { total: number; open: number }>>;
+  /** Opens the add-row/structure dialog. Omitted where the FMD cannot be edited. */
+  onAddContent?: () => void;
+  /** Moves one row within a structure. A row IS a field in an FMD, so this is what "rearrange the
+   * fields" means. Omitted where the FMD cannot be edited. */
+  onReorderRows?: (structureId: string, from: number, to: number) => Promise<void>;
+  /** Removes one row. Same gating as reordering — a shape change, so edit mode only. */
+  onRemoveRow?: (structureId: string, rowIndex: number, rowLabel: string) => void;
+  /** Opens the per-plant rules dialog for one row. Omitted where the FMD covers no plants — a
+   * single-plant subproject has nothing for a rule to differ between. */
+  onOpenPlantRules?: (structureId: string, rowIndex: number) => void;
+  /** rowKey -> how many plants override that row's rule, for the marker on the rule cells. */
+  /** structureId -> rowKey -> how many plants override that row's rule. Keyed by structure like the
+   * review-point maps, because a rowKey is only unique WITHIN a structure — two structures can each
+   * carry a row for the same source/target pair, and a flat map would show one's overrides on the
+   * other's row. */
+  plantRuleCountsByTable?: Map<string, Map<string, number>>;
+  /** Where to render the grid controls. The FMD viewer passes its tab row; anything else leaves
+   * them inline above the grid. */
+  controlsContainer?: HTMLElement | null;
 }) {
   const [activeTableId, setActiveTableId] = useState<string | null>(tables[0]?.structureId ?? null);
   const [tabLabelMode, setTabLabelMode] = useState<'ident' | 'description'>('ident');
@@ -243,6 +327,13 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
   }, []);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
+  /** Off by default: the document is the whole sender structure, and opening on a filtered view
+   * would misrepresent what the FMD contains to anyone who does not notice the toggle. */
+  const [hideOutOfScope, setHideOutOfScope] = useState(false);
+  const [reordering, setReordering] = useState(false);
+  /** The row being dragged, by its index in the DOCUMENT — the same identity moveRow takes, so
+   * nothing has to be translated between picking a row up and dropping it. */
+  const [dragRow, setDragRow] = useState<number | null>(null);
   /** Off by default, exactly like the field-level view's sections. A grid you can change by clicking
    * into it is a grid you can change by accident, so the mode makes the intent explicit and leaves
    * read-only as the resting state. */
@@ -302,8 +393,35 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
   const changedCells = changedCellsByTable?.get(activeTable?.structureId ?? '');
   const reviewFindings = reviewFindingsByTable?.get(activeTable?.structureId ?? '');
   const reviewPointCells = reviewPointCellsByTable?.get(activeTable?.structureId ?? '');
+  const reviewPointRows = reviewPointRowsByTable?.get(activeTable?.structureId ?? '');
+  const plantRuleCounts = plantRuleCountsByTable?.get(activeTable?.structureId ?? '');
+  /** The gutter exists only when this FMD has review points at all — an always-present empty
+   * column is 28px of nothing on every row of every document that has never been reviewed. */
+  const showPointGutter = !!reviewPointRowsByTable;
+  /** The reorder gutter appears only while editing: it is a control, and a read-only viewer should
+   * not carry a column of buttons nobody can press. */
+  const showReorderGutter = !!onReorderRows && editing;
+  /* One narrow column per icon, rather than a stack inside one.
+   *
+   * Drag and delete sat on top of each other in a single 36px cell, which read as a smudge of grey
+   * marks down the left edge and gave each a target half a row tall. They are unrelated actions and
+   * they now get a column each: 24px, one icon, vertically centred like every other cell. */
+  const showRemoveGutter = !!onRemoveRow && editing;
+  const gutterCount = (showReorderGutter ? 1 : 0) + (showRemoveGutter ? 1 : 0) + (showPointGutter ? 1 : 0);
+  /** How many rows the template says are NOT being migrated. Counted before the filter so the
+   * button can say what it would hide, and so "0 out of scope" can disable it rather than offering
+   * a toggle that does nothing. */
+  const outOfScopeCount = useMemo(
+    () => (activeTable?.rows ?? []).filter((r) => !isInScope(r)).length,
+    [activeTable],
+  );
+
   const processedRows = useMemo(() => {
     let rows = activeTable?.rows ?? [];
+    /* Hiding is a VIEW, never an edit: the rows stay in the document and in every export. On a
+       large object most of the sender structure is out of scope, and reading the twenty fields that
+       matter meant scrolling past two hundred that do not. */
+    if (hideOutOfScope) rows = rows.filter(isInScope);
     if (sortField) {
       rows = [...rows].sort((a, b) => {
         const cmp = (a[sortField] ?? '').localeCompare(b[sortField] ?? '');
@@ -311,7 +429,7 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
       });
     }
     return rows;
-  }, [activeTable, sortField, sortDir]);
+  }, [activeTable, sortField, sortDir, hideOutOfScope]);
 
   const toggleSort = (field: string) => {
     if (sortField !== field) { setSortField(field); setSortDir('asc'); }
@@ -329,6 +447,21 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
     fields.forEach((f) => next.add(f));
     return next;
   });
+  /** Whether the grid is showing the rows in DOCUMENT order.
+   *
+   * Reordering is only offered then. Sorted or filtered, the row above a given row on screen is not
+   * the row above it in the document, so "move up" would move it somewhere the reader cannot see —
+   * and a control whose effect you cannot observe is worse than one that is missing. Disabled with
+   * the reason rather than hidden, so it does not look like the feature vanished. */
+  const rowsInDocumentOrder = !sortField && !hideOutOfScope;
+
+  const moveRow = async (from: number, to: number) => {
+    if (!onReorderRows || !activeTable || reordering) return;
+    if (to < 0 || to >= activeTable.rows.length) return;
+    setReordering(true);
+    try { await onReorderRows(activeTable.structureId, from, to); } finally { setReordering(false); }
+  };
+
   const toggleColumn = (field: string) => setHiddenColumns((s) => {
     const next = new Set(s);
     if (next.has(field)) next.delete(field); else next.add(field);
@@ -337,18 +470,52 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
 
   if (!activeTable) return <p className="text-sm2 text-muted py-8 text-center">No structure data on this version.</p>;
 
-  return (
-    <div className="flex flex-col h-full min-h-0">
-      {/* Sort/columns controls, structure tabs and the tab-label toggle share ONE row. They used to
-          occupy two stacked bands — the first nearly empty (two small icons at one end, a text link
-          at the other) — which, above the section band and the field-name header, put five strips of
-          chrome between the top of the dialog and the first row of data. */}
-      <div className="flex items-center gap-1 border-b border-line mb-2 shrink-0">
+  /* The grid's own controls, rendered through a PORTAL when the caller supplies a container.
+     The FMD viewer puts them on its tab row, in line with Field Mapping / Health Check /
+     Versions & Review, because they belong to the screen rather than to the structure strip
+     underneath it. A portal rather than lifting state: editing, hidden columns, the scope filter
+     and the label mode are all this component's, and hoisting five pieces of state into the
+     parent to relocate five buttons would put the logic where nothing else uses it.
+
+     They show only while the grid is mounted, which is only while Field Mapping is the open tab,
+     so "only on Field Mapping" needs no condition of its own. With no container they render
+     inline, which is what the standalone Standard-FMD viewer still does. */
+  const controls = (
+    <div className="flex items-center gap-1.5 shrink-0">
+          {/* The structure-label toggle belongs with the other display controls, not in front of
+              the tabs. It sat inside the tab block, so when the tabs moved left it went with them
+              and landed on top of the first tab — a control overlapping the thing it controls. */}
+          {tables.length > 1 && (
+            <button
+              onClick={() => setTabLabelMode((m) => (m === 'ident' ? 'description' : 'ident'))}
+              title={tabLabelMode === 'ident' ? 'Show structure names' : 'Show structure IDs'}
+              aria-label={tabLabelMode === 'ident' ? 'Show structure names' : 'Show structure IDs'}
+              className={clsx('flex items-center justify-center w-8 h-8 rounded shrink-0',
+                tabLabelMode === 'description' ? 'text-blue bg-blue-pale' : 'text-muted hover:text-blue hover:bg-blue-pale')}
+            >
+              <Type size={15} />
+            </button>
+          )}
         {/* Pencil to enter, CHECK to finish — the same pair the field-level view and the scope
             register use, so "this is being edited" reads the same everywhere in the app. It was an
             eye here, which meant "view" rather than "done" and made this the one edit toggle whose
             exit icon differed. Editing is a mode you enter, not a property of clicking; every save
             lands in the draft, so nothing publishes. */}
+        {/* Only while EDITING. Adding a row or a structure changes the document, and every other
+            way of changing it is already behind the edit toggle — an add button sitting in a
+            read-only grid is an invitation to alter a document you opened to read. It also keeps
+            the two shape changes and the reorder handles appearing and disappearing together,
+            rather than as three unrelated controls. */}
+        {canEdit && editing && onAddContent && (
+          <button
+            onClick={onAddContent}
+            aria-label="Add a custom field, row or structure"
+            title="Add a custom field, row or structure — something the Golden template does not define"
+            className="flex items-center justify-center w-8 h-8 rounded text-muted hover:text-blue hover:bg-blue-pale"
+          >
+            <Plus size={16} />
+          </button>
+        )}
         {canEdit && onSaveField && (
           <button
             onClick={() => setEditing((v) => !v)}
@@ -414,20 +581,53 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
             })}
           </div>
         </IconPopoverButton>
+
+        {/* Rows out of scope, hidden or shown. Sits right after the column filter because it is the
+            same kind of control — what this grid displays — and the pair reads as "which columns,
+            which rows". Hiding is a VIEW: the rows stay in the document, in every export, and in
+            the counts on the Health tab. Disabled when every field is in scope, because a toggle
+            that provably changes nothing should say so rather than appearing to work. */}
+        <button
+          onClick={() => setHideOutOfScope((v) => !v)}
+          disabled={outOfScopeCount === 0}
+          aria-pressed={hideOutOfScope}
+          aria-label="Show or hide fields not in scope"
+          title={outOfScopeCount === 0
+            ? 'Every field in this structure is marked in scope'
+            : hideOutOfScope
+              ? `Showing in-scope fields only — ${outOfScopeCount} hidden. Click to show all.`
+              : `Hide the ${outOfScopeCount} field${outOfScopeCount === 1 ? '' : 's'} not marked in scope`}
+          className={clsx(
+            'flex items-center justify-center w-8 h-8 rounded disabled:opacity-40 disabled:pointer-events-none',
+            hideOutOfScope ? 'text-blue bg-blue-pale' : 'text-muted hover:text-blue hover:bg-blue-pale',
+          )}
+        >
+          {/* The icon states what the click does, and changes with the state — a funnel said
+              "filtering happens here" without saying whether anything currently is. */}
+          {hideOutOfScope ? <EyeOff size={15} /> : <Eye size={15} />}
+        </button>
+
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      {/* Sort/columns controls, structure tabs and the tab-label toggle share ONE row. They used to
+          occupy two stacked bands — the first nearly empty (two small icons at one end, a text link
+          at the other) — which, above the section band and the field-name header, put five strips of
+          chrome between the top of the dialog and the first row of data. */}
+      {controlsContainer ? createPortal(controls, controlsContainer) : null}
+
+      <div className="flex items-center gap-1 border-b border-line mb-2 shrink-0">
+        {!controlsContainer && <div className="ml-auto flex items-center">{controls}</div>}
+        {/* Structures on the LEFT, controls on the RIGHT.
+            The tab strip is what this row is FOR — which structure am I looking at — and it was
+            starting a third of the way across, after five icon buttons. The controls are still
+            here rather than in the title bar because they act on the GRID (what it shows, whether
+            it is being edited), not on the document; the document's own actions sit with its
+            name. */}
         {tables.length > 1 && (
           <>
-            {/* Grouped with sort/columns: all three change how the grid is displayed, so they read
-                as one control cluster rather than one stranded at the far end of the tab strip. */}
-            <button
-              onClick={() => setTabLabelMode((m) => (m === 'ident' ? 'description' : 'ident'))}
-              title={tabLabelMode === 'ident' ? 'Show structure names' : 'Show structure IDs'}
-              aria-label={tabLabelMode === 'ident' ? 'Show structure names' : 'Show structure IDs'}
-              className={clsx('flex items-center justify-center w-8 h-8 rounded shrink-0',
-                tabLabelMode === 'description' ? 'text-blue bg-blue-pale' : 'text-muted hover:text-blue hover:bg-blue-pale')}
-            >
-              <Type size={15} />
-            </button>
-            <div className="w-px h-5 bg-line shrink-0 mx-1" aria-hidden />
             {canScrollLeft && (
               <button onClick={() => scrollTabs('left')} className="shrink-0 p-1 text-muted hover:text-blue" aria-label="Scroll tabs left">
                 <ChevronLeft size={16} />
@@ -477,6 +677,12 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
         <table className="border-separate border-spacing-0 text-sm2">
           <thead>
             <tr ref={bandRef}>
+              {/* The gutter has no section — it is not a field of the document, it is a note about
+                  one. Left blank in the band so it reads as a margin rather than as a column of
+                  some section it does not belong to. */}
+              {Array.from({ length: gutterCount }, (_, i) => (
+                <th key={`band-gutter-${i}`} className="sticky top-0 bg-surface-3 w-10" aria-hidden />
+              ))}
               {runs.map((run, i) => (
                 <th
                   key={i} colSpan={run.span}
@@ -488,11 +694,30 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
               ))}
             </tr>
             <tr>
+              {showReorderGutter && (
+                <th
+                  className="sticky bg-surface-3 w-10 z-[2] px-0"
+                  style={{ top: bandHeight }}
+                  aria-label="Reorder"
+                  title={rowsInDocumentOrder
+                    ? 'Drag a field to move it'
+                    : 'Clear the sort and the scope filter to reorder — the order on screen is not the document order'}
+                />
+              )}
+              {showRemoveGutter && (
+                <th className="sticky bg-surface-3 w-10 z-[2] px-0" style={{ top: bandHeight }} aria-label="Remove" title="Remove a field" />
+              )}
+              {showPointGutter && (
+                <th className="sticky bg-surface-3 w-10 z-[2] px-0" style={{ top: bandHeight }} aria-label="Review points" title="Rows carrying a review point" />
+              )}
               {visibleColumns.map((c) => (
                 <th
                   key={c.field} onClick={() => toggleSort(c.field)}
                   className="text-2xs font-bold uppercase tracking-[.04em] text-text px-2.5 py-2 sticky text-center whitespace-nowrap cursor-pointer select-none z-[2]"
-                  style={{ backgroundColor: colorByKey(c.color).bg, top: bandHeight }}
+                  // The floor goes on the header as well as the cells: a table sizes a column from
+                  // every cell in it, and a minimum set only on the body rows loses to a header that
+                  // has already been measured.
+                  style={{ backgroundColor: colorByKey(c.color).bg, top: bandHeight, minWidth: minWidthFor(c.field) }}
                 >
                   {c.field}{sortField === c.field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
                 </th>
@@ -501,20 +726,109 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
           </thead>
           <tbody>
             {processedRows.length === 0 && (
-              <tr><td colSpan={visibleColumns.length} className="px-2.5 py-6 text-center text-muted text-sm2">No rows.</td></tr>
+              <tr><td colSpan={visibleColumns.length + gutterCount} className="px-2.5 py-6 text-center text-muted text-sm2">No rows.</td></tr>
             )}
             {processedRows.map((row, i) => {
-              const rk = rowKey(row, i);
+              // Keyed on the row's position in the DOCUMENT, not in this render. rowKey falls back
+              // to the index for a row carrying neither SRC_FIELD nor TGT_FIELD, and the render
+              // index moves whenever the grid is sorted or filtered — so such a row's highlights,
+              // findings and review points would attach to whichever row happened to land in that
+              // slot. Sorting already had this; the scope filter would have widened it.
+              const originalIndex = activeTable.rows.indexOf(row);
+              const rk = rowKey(row, originalIndex);
               const rowChanges = changedCells?.get(rk);
               const rowFindings = reviewFindings?.get(rk);
               const rowPoints = reviewPointCells?.get(rk);
-              const originalIndex = activeTable.rows.indexOf(row);
               return (
                 <tr
                   key={i}
                   onDoubleClick={onOpenField && !editing ? () => onOpenField(activeTable.structureId, originalIndex) : undefined}
-                  className={clsx(onOpenField && !editing && 'cursor-default select-none')}
+                  className={clsx(
+                    'group/row',
+                    onOpenField && !editing && 'cursor-default select-none',
+                    dragRow === originalIndex && 'opacity-40',
+                  )}
+                  onDragOver={showReorderGutter && dragRow !== null ? (e) => e.preventDefault() : undefined}
+                  onDrop={showReorderGutter && dragRow !== null ? () => {
+                    const from = dragRow;
+                    setDragRow(null);
+                    if (from !== null && from !== originalIndex) void moveRow(from, originalIndex);
+                  } : undefined}
                 >
+                  {showReorderGutter && (
+                    /* A drag handle, exactly as the Golden FMD designer's field rows have — the
+                       same gesture for the same act, so knowing one teaches the other. The row is
+                       the drop target (see the <tr> above); the handle is only what starts it, so
+                       an ordinary click still lands in the cell underneath. */
+                    <td className="border-t border-line-soft px-0 align-middle w-10 text-center">
+                      <span
+                        draggable={rowsInDocumentOrder && !reordering}
+                        onDragStart={() => setDragRow(originalIndex)}
+                        onDragEnd={() => setDragRow(null)}
+                        aria-label="Drag to reorder this field"
+                        title={rowsInDocumentOrder
+                          ? 'Drag to move this field'
+                          : 'Clear the sort and the scope filter first — the order on screen is not the document order'}
+                        className={clsx(
+                          'inline-flex',
+                          rowsInDocumentOrder && !reordering
+                            ? 'cursor-grab active:cursor-grabbing text-muted/60 hover:text-blue'
+                            : 'text-muted/25 cursor-not-allowed',
+                        )}
+                      >
+                        <GripVertical size={14} />
+                      </span>
+                    </td>
+                  )}
+
+                  {showRemoveGutter && onRemoveRow && (
+                    /* Its own column. Confirmation is the caller's — removing a row is a shape
+                       change that publishes as a version, so it is not something to do on a
+                       mis-click. Muted until hovered, then red: destructive, but not shouting it
+                       on every row of a two-hundred-row grid. */
+                    <td className="border-t border-line-soft px-0 align-middle w-10 text-center">
+                      <button
+                        type="button"
+                        aria-label="Remove this field"
+                        title="Remove this field from the FMD"
+                        disabled={reordering}
+                        onClick={() => onRemoveRow(
+                          activeTable.structureId,
+                          originalIndex,
+                          row.SRC_FIELD || row.TGT_FIELD || `Row ${originalIndex + 1}`,
+                        )}
+                        className="inline-flex text-muted/40 hover:text-red disabled:opacity-30 disabled:pointer-events-none"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  )}
+                  {showPointGutter && (() => {
+                    const points = reviewPointRows?.get(rk);
+                    return (
+                      /* One icon, centred, and nothing else.
+                         This has now been a filled glyph (a solid blob at 12px), then a stripe plus
+                         an icon plus a count — three marks competing in a 36px gutter for a fact
+                         that is binary: is there a conversation on this row. Colour carries the
+                         only other distinction worth making, open versus settled, and the count
+                         lives in the tooltip where it costs nothing. */
+                      <td className="border-t border-line-soft px-0 align-middle w-10">
+                        {points && (
+                          <span
+                            className="flex items-center justify-center"
+                            title={points.open > 0
+                              ? `${points.open} open review point${points.open === 1 ? '' : 's'} on this field${points.total > points.open ? ` (${points.total} in total)` : ''}`
+                              : `${points.total} review point${points.total === 1 ? '' : 's'}, all resolved`}
+                          >
+                            <MessageSquare
+                              size={14}
+                              className={points.open > 0 ? 'text-amber-ink' : 'text-muted/60'}
+                            />
+                          </span>
+                        )}
+                      </td>
+                    );
+                  })()}
                   {visibleColumns.map((c) => {
                     const maxWidth = FIELD_MAX_WIDTH[c.field];
                     const finding = rowFindings?.get(c.field);
@@ -535,7 +849,11 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                           maxWidth ? 'whitespace-normal break-words text-left' : 'text-center whitespace-nowrap',
                           hasPoint && 'relative',
                         )}
-                        style={{ ...(maxWidth ? { maxWidth } : {}), backgroundColor: bg }}
+                        style={{
+                          ...(maxWidth ? { maxWidth } : {}),
+                          minWidth: minWidthFor(c.field),
+                          backgroundColor: bg,
+                        }}
                       >
                         {editing && onSaveField ? (
                           <div
@@ -561,6 +879,38 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                             )}
                           </div>
                         ) : row[c.field]}
+
+                        {/* Per-plant rules, on the two columns a plant can differ in.
+                            One control doing both jobs: it OPENS the dialog, and when overrides
+                            exist it is always visible and carries the count — so "some plants
+                            differ here" is discoverable without hovering every rule in the grid,
+                            which is the only way a difference like this ever gets noticed. With no
+                            overrides it stays a hover affordance, because a permanent icon on every
+                            rule cell of a 200-row FMD is noise. */}
+                        {onOpenPlantRules && PLANT_RULE_FIELDS.has(c.field) && (() => {
+                          const overrides = plantRuleCounts?.get(rk) ?? 0;
+                          return (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onOpenPlantRules(activeTable.structureId, originalIndex); }}
+                              aria-label="Rules by plant"
+                              title={overrides > 0
+                                ? `${overrides} plant${overrides === 1 ? '' : 's'} override this rule — open to view or edit`
+                                : 'Set a different rule for individual plants'}
+                              className={clsx(
+                                'ml-1.5 align-middle inline-flex items-center gap-0.5 shrink-0',
+                                overrides > 0
+                                  ? 'text-amber-ink'
+                                  : 'opacity-0 group-hover/row:opacity-100 focus:opacity-100 text-muted hover:text-blue',
+                              )}
+                            >
+                              <Factory size={11} />
+                              {overrides > 0 && (
+                                <span className="text-[9px] font-bold tabular-nums leading-none">{overrides}</span>
+                              )}
+                            </button>
+                          );
+                        })()}
+
                         {/* Folded-corner marker: this cell already carries a review point. */}
                         {hasPoint && (
                           <span

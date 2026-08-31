@@ -70,7 +70,41 @@ export function useMappingReview() {
         // auditing it only manufactures findings nobody will act on. Only an EXPLICIT "no" is
         // skipped: a blank MIGRATION_IN_SCOPE means nobody has decided yet, and an undecided field
         // still has to be checked — otherwise an unfinished FMD passes by omission.
+        /* An EMPTY structure is a finding in its own right.
+         *
+         * Everything below iterates rows, and `alwaysBlankFields` returns nothing for an empty
+         * array — so a structure with no rows produced no findings at all and the review reported
+         * a clean bill of health on a tab containing nothing. That was survivable while structures
+         * only ever arrived from generation (which always brings rows); adding one by hand made it
+         * reachable, and silence is the worst possible answer to "is this document finished". */
+        if (table.rows.length === 0) {
+          findings.push(at(-1, {
+            field: undefined,
+            severity: 'error',
+            issue: 'This structure has no rows. Nothing will be loaded for it.',
+          }));
+          continue;
+        }
+
         const inScopeRows = table.rows.filter((r) => !isOutOfScope(r));
+
+        /* …and a structure whose every row is OUT of scope is the same silence by a different
+         * route. Skipping an out-of-scope row is right per row — it needs no rule, no target and no
+         * data type, so auditing it only manufactures findings nobody will act on. But when that
+         * skip empties the whole structure, every check below has nothing left to look at and the
+         * review reports a clean bill of health on a tab that will load nothing.
+         *
+         * A warning, not an error: unlike a structure with no rows at all, this is a state somebody
+         * may have chosen — a sender structure carried for completeness with nothing migrating from
+         * it yet. Worth surfacing, not worth calling broken. */
+        if (inScopeRows.length === 0) {
+          findings.push(at(-1, {
+            field: undefined,
+            severity: 'warning',
+            issue: `All ${table.rows.length} row${table.rows.length === 1 ? '' : 's'} in this structure are marked out of scope, so nothing will be loaded for it.`,
+          }));
+          continue;
+        }
 
         const blanks = alwaysBlankFields(inScopeRows);
         for (const field of blanks) {
@@ -151,6 +185,11 @@ export function useMappingReview() {
       const review: MappingReview = {
         id: crypto.randomUUID(),
         reviewedBy: user?.email ?? 'Unknown', reviewedAt: new Date().toISOString(), findings,
+        // What this run actually looked at, so a row added later cannot inherit its column-level
+        // findings — see MappingReview.rowCounts.
+        rowCounts: Object.fromEntries(
+          (currentSheets.generatedTables ?? []).map((t) => [t.structureId, t.rows.length]),
+        ),
       };
       const sheets = { ...currentSheets, mappingReviews: [...readMappingReviews(currentSheets), review] };
       // The legacy single-review key is folded into the list by readMappingReviews above, so drop

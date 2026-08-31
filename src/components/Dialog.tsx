@@ -79,7 +79,21 @@ export function Dialog({ open, onClose, title, subtitle, size = 'md', children, 
   const z = 900 + depth * 10;
 
   return createPortal(
-    <div className="fixed inset-0 flex items-center justify-center bg-black/40 p-4" style={{ zIndex: z }} onMouseDown={requestClose}>
+    /* Closes on a CLICK whose target is the backdrop itself — not on mousedown.
+     *
+     * `onMouseDown={requestClose}` had two failure modes. A dialog opened BY a click mounted while
+     * that interaction was still in flight and took the tail of it, so it appeared and vanished in
+     * the same gesture (the add-field dialog did exactly this). And a drag that started inside the
+     * card — selecting text in a rule, resizing a textarea — closed the dialog the moment the
+     * pointer was released outside it, discarding whatever was being typed.
+     *
+     * A click requires a full press-and-release, and the target check requires both halves to have
+     * landed on the backdrop rather than on anything within the card. */
+    <div
+      className="fixed inset-0 flex items-center justify-center bg-black/40 p-4"
+      style={{ zIndex: z }}
+      onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
+    >
       <div
         className={clsx(
           'rounded-lg flex flex-col max-h-full shadow-cardHover',
@@ -87,7 +101,18 @@ export function Dialog({ open, onClose, title, subtitle, size = 'md', children, 
           isAi && 'p-[1.5px]',
           isAi && (processing ? 'ai-border-processing' : 'bg-gradient-to-br from-[#3b82f6] via-[#8b5cf6] to-[#a855f7]'),
         )}
-        onMouseDown={(e) => e.stopPropagation()}
+        /* No stopPropagation here any more, and its absence is load-bearing.
+         *
+         * The card used to swallow mousedown so it could not reach the backdrop's
+         * `onMouseDown={requestClose}`. But React's synthetic stopPropagation also stops the NATIVE
+         * event, and React listens at the root container — so the event died there and never
+         * reached `document`, which is where `useDismiss` listens. Every popover inside every
+         * dialog therefore stayed open when you clicked away: the review filters, the column
+         * picker, every MultiSelectFilter. Two could be open at once, overlapping.
+         *
+         * The backdrop now closes on a CLICK whose target is the backdrop itself, so it already
+         * ignores anything that happens inside the card and needs no help from here. Do not
+         * reintroduce this. */
       >
         <div className="bg-surface rounded flex flex-col flex-1 min-h-0 overflow-hidden">
           <div className="flex items-center gap-2 px-5 py-4 border-b border-line">
@@ -119,9 +144,15 @@ export function Dialog({ open, onClose, title, subtitle, size = 'md', children, 
           {footer && <div className="px-5 py-3.5 border-t border-line flex items-center justify-end gap-2.5">{footer}</div>}
         </div>
       </div>
+      {/* Same rule as the main backdrop above — and it matters more here, since this overlay opens
+          from a click and its whole purpose is to stop work being discarded by accident. */}
       {confirmingClose && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black/40 p-4" style={{ zIndex: z + 5 }} onMouseDown={() => setConfirmingClose(false)}>
-          <div className="w-[400px] bg-surface rounded-lg shadow-cardHover p-5" onMouseDown={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 flex items-center justify-center bg-black/40 p-4"
+          style={{ zIndex: z + 5 }}
+          onClick={(e) => { if (e.target === e.currentTarget) setConfirmingClose(false); }}
+        >
+          <div className="w-[400px] bg-surface rounded-lg shadow-cardHover p-5">
             <h3 className="text-md font-semibold text-text mb-1.5">Discard unsaved changes?</h3>
             <p className="text-sm2 text-muted mb-4">{unsavedWarning}</p>
             <div className="flex items-center justify-end gap-2.5">

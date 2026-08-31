@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { AlertTriangle, CheckCircle2, ChevronDown, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, Clock, XCircle } from 'lucide-react';
 import { Pane } from '../../../components/Pane';
 import { Tag } from '../../../components/Tag';
 import { Segmented } from '../../../components/Segmented';
@@ -196,24 +196,53 @@ export function FmdHealthTab({ fmd, latest, notes, pendingChanges, versionLabel,
       {/* Being behind the template is the one thing on this tab with a button attached, so it gets
           the only coloured panel — everything else here is a number to read. When nothing is behind
           it collapses to one quiet line, because a permanent green banner is just furniture. */}
+      {/* Two different messages, because they ask for two different things.
+          RED — genuinely behind the LIVE template: something was released and this document has not
+          taken it. There is work to do, and a button to start it.
+          AMBER — a template version is in DRAFT: nothing is required, nothing can even be synced to
+          yet, but it is worth knowing a change is coming before you invest a day in this document.
+          These used to be one message, because "latest version" meant the newest row of any kind —
+          so saving a draft in the Golden designer marked every FMD in the programme Outdated
+          against a version that did not exist yet. */}
       {(fmd.goldenOutdated || fmd.standardRefOutdated) ? (
-        <div className="flex items-start gap-3 rounded-lg bg-amber-bg shadow-[inset_0_0_0_1px_var(--amber-ink)] px-4 py-3 shrink-0">
-          <AlertTriangle size={16} className="text-amber-ink shrink-0 mt-0.5" />
+        <div className="flex items-start gap-3 rounded-lg bg-red-light shadow-[inset_0_0_0_1px_var(--red)] px-4 py-3 shrink-0">
+          <AlertTriangle size={16} className="text-red-ink shrink-0 mt-0.5" />
           <div className="min-w-0 flex-1">
-            <div className="text-sm2 font-semibold text-amber-ink">
+            <div className="text-sm2 font-semibold text-red-ink">
               {fmd.goldenOutdated ? 'Behind the Golden template' : 'Behind the object’s Standard FMD'}
             </div>
-            <p className="text-2xs text-amber-ink/90 mt-0.5">
+            <p className="text-2xs text-red-ink/90 mt-0.5">
               {fmd.goldenOutdated
-                ? <>Built from Golden <span className="font-mono font-semibold">{fmd.goldenVersionLabel}</span>; the template has moved on. Reviewing shows exactly what changed before anything is applied, and the result is a draft.</>
-                : <>Built from Standard FMD <span className="font-mono font-semibold">{fmd.standardRefVersionLabel}</span>, which has since been re-versioned.</>}
+                ? <>Built from Golden <span className="font-mono font-semibold">{fmd.goldenVersionLabel}</span>; a newer version has been published. Reviewing shows exactly what changed before anything is applied, and the result is a draft.</>
+                : <>Built from Standard FMD <span className="font-mono font-semibold">{fmd.standardRefVersionLabel}</span>, which has since published a newer version.</>}
             </p>
+            {fmd.goldenDraftPending && (
+              <p className="text-2xs text-red-ink/80 mt-1">
+                A further template version is also in draft — you may want to wait for it rather than
+                syncing twice.
+              </p>
+            )}
           </div>
           {fmd.goldenOutdated && (
             <Button variant="primary" size="sm" className="shrink-0" onClick={() => setSyncOpen(true)}>
               Review changes…
             </Button>
           )}
+        </div>
+      ) : (fmd.goldenDraftPending || fmd.standardRefDraftPending) ? (
+        <div className="flex items-start gap-3 rounded-lg bg-amber-bg shadow-[inset_0_0_0_1px_var(--amber-ink)] px-4 py-3 shrink-0">
+          <Clock size={16} className="text-amber-ink shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <div className="text-sm2 font-semibold text-amber-ink">
+              {fmd.goldenDraftPending ? 'A new Golden template version is in draft' : 'A new Standard FMD version is in draft'}
+            </div>
+            <p className="text-2xs text-amber-ink/90 mt-0.5">
+              This document is on the current published template
+              {fmd.goldenVersionLabel && <> (<span className="font-mono font-semibold">{fmd.goldenVersionLabel}</span>)</>}
+              {' '}and is not out of date. Nothing can be synced until the draft is published — this is
+              only so a change arriving soon is not a surprise.
+            </p>
+          </div>
         </div>
       ) : (fmd.goldenVersionLabel || fmd.standardRefVersionLabel) && (
         <p className="text-2xs text-muted shrink-0">

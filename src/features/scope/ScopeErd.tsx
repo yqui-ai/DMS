@@ -1,27 +1,28 @@
 import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { useToast } from '../../components/Toast';
 import {
-  useMigrationObjects, useSubprojectObjects, useScopeDependencies, useScopeMutations,
+  useMigrationObjects, useSubprojectObjects, useScopeDependencies,
 } from '../../lib/queries/scope';
 import { DependencyDiagram } from './diagram/DependencyDiagram';
 import { LibraryObjectDialog } from '../library/LibraryObjectDialog';
 import type { MigrationObject } from '../../types/entities';
 
-/** The in-scope objects and their relationships, as a picture — the standalone tab.
+/** The in-scope objects and their relationships — the standalone ERD tab.
  *
  * Draws the same graph the wizard's Load Sequence step stages, so the dependencies you signed off
- * while setting the scope are the ones you come back to afterwards. It opens on Execution rather than
- * Graph: once the scope is agreed, the question people bring to this screen is "what loads when",
- * not "what does this look like". */
+ * while setting the scope are the ones you come back to afterwards. It opens on Execution, which is
+ * also the first view: once the scope is agreed, the question people bring to this screen is "what
+ * loads when", not "what does this look like".
+ *
+ * **A reading screen.** It used to save a reordered `load_seq` straight from the Execution list,
+ * which put the programme's load order one drag away on a tab nobody opens expecting to change
+ * anything. Changing it belongs to Scope > Load Sequence (`scope/build/sequence`), where it sits
+ * behind the dependency check and in front of the finalize gate. */
 export function ScopeErd() {
   const { subprojectId } = useParams();
-  const toast = useToast();
   const { data: objects = [] } = useMigrationObjects();
   const { data: subprojectObjects = [] } = useSubprojectObjects(subprojectId);
   const { data: dependencies = [] } = useScopeDependencies(subprojectId);
-  const mutations = useScopeMutations(subprojectId!);
-  const [busy, setBusy] = useState(false);
   const [detail, setDetail] = useState<MigrationObject | null>(null);
   const [trail, setTrail] = useState<MigrationObject[]>([]);
 
@@ -34,18 +35,6 @@ export function ScopeErd() {
     [inScope],
   );
 
-  const saveSequence = async (order: string[]) => {
-    setBusy(true);
-    try {
-      await mutations.setLoadSeqBulk(order.map((id, i) => ({ migrationObjectId: id, loadSeq: i + 1 })));
-      toast.success('Load sequence saved.');
-    } catch (err: any) {
-      toast.error(err?.message ?? 'Could not save the sequence.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <>
       <DependencyDiagram
@@ -53,9 +42,6 @@ export function ScopeErd() {
         inScope={inScope}
         dependencies={dependencies}
         savedOrder={savedOrder}
-        onSaveSequence={saveSequence}
-        busy={busy}
-        defaultView="execution"
         onOpenObject={(id) => setDetail(objects.find((o) => o.id === id) ?? null)}
       />
       {/* The same dialog as Library > Migration Object, the scope catalogue and the register —

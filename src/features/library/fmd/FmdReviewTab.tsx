@@ -446,20 +446,27 @@ function VersionDetailsPane({ fmd, selected, owner, etlDeveloper, objectIdent, c
               across a rule as though they were different kinds of fact; they are the same kind —
               a person and a date — and reading them together is how you answer "who has had this". */}
           <Group>
-            <Fact label="Consultant">
-              {owner ? <span className="font-semibold break-all">{owner}</span> : <span className="text-muted">Not assigned in scope</span>}
-            </Fact>
+            {/* Custom FMDs only. Ownership is `subproject_objects.owner` — it is assigned when the
+                object is put in scope for a subproject, so only a document that HAS a subproject can
+                have one. A Standard or Golden FMD is programme-wide: it has no scope entry, so
+                "Not assigned in scope" read as a gap somebody should go and fill, when in fact the
+                field does not apply to that kind of document at all. */}
+            {fmd.type === 'Custom' && (
+              <Fact label="Consultant">
+                {owner ? <span className="font-semibold break-all">{owner}</span> : <span className="text-muted">Not assigned in scope</span>}
+              </Fact>
+            )}
             {etlDeveloper && <Fact label="ETL developer"><span className="font-semibold break-all">{etlDeveloper}</span></Fact>}
             <Fact label="Modified by"><By who={selected.createdBy} at={selected.createdAt} /></Fact>
             {selected.approvedBy && (
               <Fact label="Approved by"><By who={selected.approvedBy} at={selected.approvedAt} /></Fact>
             )}
             {fmd.createdBy && <Fact label="Created by"><By who={fmd.createdBy} at={fmd.createdAt} /></Fact>}
-            {/* The newest version's edit — so it only tells you something you can't already see when
-                you're reading an older one. */}
-            {fmd.changedBy && fmd.changedAt !== selected.createdAt && (
-              <Fact label="Last modified"><By who={fmd.changedBy} at={fmd.changedAt} /></Fact>
-            )}
+            {/* No "Last modified" row. It reported the FMD's newest edit while "Modified by" above
+                reports the selected version's — so on the version you are almost always reading,
+                the newest one, they are the same person and the same act stated twice. Which
+                version was touched last is what the version selector and the Versions list are
+                for. */}
           </Group>
 
           {/* Stable attributes of the document rather than of this release. Class and Reference used

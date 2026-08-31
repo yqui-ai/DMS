@@ -1,32 +1,48 @@
 import { colorByKey } from '../../lib/goldenFmdColors';
 import type { GoldenFmdStructure } from '../../types/entities';
 
-/** The note beside a field: a set of permitted values, or a sentence about it.
+/** What a field is FOR and what you may actually type in it — both, when both exist.
  *
- * These arrive in one free-text column, so the two are told apart by shape rather than by a flag —
- * "Copy, Default, Transform, XREF" and "Mandatory or Optional" are lists of short tokens, while a
- * description is prose. Splitting on commas and the word "or", then requiring every part to be
- * short, gets that right for the cases that exist and falls back to plain text when it does not.
+ * These are two different facts and a field can carry each: FIELD_TYPE has the value list
+ * `Standard | Custom` AND a sentence explaining what those mean. Showing one or the other, as this
+ * did, meant a field with a real value list hid its description and a field with a description hid
+ * nothing but told you nothing about what it accepts.
  *
- * Worth the distinction because the two mean different things to someone filling the document in:
- * a description tells you what the field is FOR, whereas allowed values tell you what you may
- * actually type — the second is a constraint, and constraints should look like constraints. */
-function AllowedValues({ note }: { note?: string }) {
-  if (!note?.trim()) return null;
-  const parts = note.split(/\s*,\s*|\s+or\s+/i).map((p) => p.trim()).filter(Boolean);
-  // More than one part, and every part short enough to be a value rather than a clause.
-  const isEnumeration = parts.length > 1 && parts.every((p) => p.length <= 24);
+ * `options` is the real answer whenever the template sets it (`kind: 'select'`). The comma-splitting
+ * heuristic below is kept only as a FALLBACK for the fields that predate `options` and encoded their
+ * list in the description — "Copy, Default, Transform, XREF", "Mandatory or Optional". Those are
+ * lists of short tokens rather than prose, and rendering them as chips is what makes a constraint
+ * look like a constraint. New templates should set `options` and let the heuristic go unused. */
+function FieldNote({ options, description }: { options?: string[]; description?: string }) {
+  const note = description?.trim();
 
-  if (!isEnumeration) {
-    return <span className="text-2xs text-muted min-w-0 flex-1">{note}</span>;
-  }
+  const listed = options?.length
+    ? options
+    : (() => {
+      if (!note) return undefined;
+      const parts = note.split(/\s*,\s*|\s+or\s+/i).map((p) => p.trim()).filter(Boolean);
+      // More than one part, and every part short enough to be a value rather than a clause.
+      return parts.length > 1 && parts.every((p) => p.length <= 24) ? parts : undefined;
+    })();
+
+  // The description is suppressed only when the heuristic derived the chips FROM it — printing the
+  // same words twice, once as chips and once as prose, is not showing two facts.
+  const prose = note && !(listed && !options?.length) ? note : undefined;
+
+  if (!listed && !prose) return null;
+
   return (
-    <span className="flex flex-wrap items-baseline gap-1 min-w-0 flex-1">
-      {parts.map((p) => (
-        <span key={p} className="font-mono text-2xs bg-surface-2 text-muted rounded-xs px-1.5 py-px">
-          {p}
+    <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1 min-w-0 flex-1">
+      {listed && (
+        <span className="flex flex-wrap items-baseline gap-1 shrink-0">
+          {listed.map((p) => (
+            <span key={p} className="font-mono text-2xs bg-surface-2 text-muted rounded-xs px-1.5 py-px">
+              {p}
+            </span>
+          ))}
         </span>
-      ))}
+      )}
+      {prose && <span className="text-2xs text-muted min-w-0">{prose}</span>}
     </span>
   );
 }
@@ -55,6 +71,24 @@ export function GoldenFmdStructureView({ structure }: { structure: GoldenFmdStru
 
   // Runs across the whole template, not per section — see above.
   let position = 0;
+
+  /* The name column is sized to the LONGEST name in the template, not to a guessed constant.
+   *
+   * It was a flat 210px with `truncate`, which is about 29 monospace characters — and SAP-style
+   * template names run past that routinely (`LEGACY_FIELDNAME1_DESCRIPTION` is exactly 29), so the
+   * column clipped the identifiers it exists to show. Widening the constant would only move the
+   * cliff.
+   *
+   * `ch` is the unit that makes this exact rather than approximate: in a monospace face one ch IS
+   * one character, so the width is the character count. Clamped at both ends — a floor keeps the
+   * notes beside it aligned down the page when every name is short, and a ceiling stops one
+   * pathological name from pushing the notes off the screen (that one still truncates, with the
+   * full value on hover). */
+  const longestName = Math.max(
+    0,
+    ...structure.sections.flatMap((s) => s.fields.map((f) => (f.field ?? '').length)),
+  );
+  const nameWidth = `${Math.min(48, Math.max(28, longestName + 2))}ch`;
 
   return (
     <div className="rounded-lg shadow-[inset_0_0_0_1px_var(--line)] overflow-hidden">
@@ -88,12 +122,17 @@ export function GoldenFmdStructureView({ structure }: { structure: GoldenFmdStru
                         </span>
                         {/* Monospace because it is a technical identifier — the same rule every
                             field, table and version reference follows across the app.
-                            Fixed width so the values beside it line up down the page instead of
-                            starting wherever the previous name happened to end. */}
-                        <span className="font-mono text-sm2 text-text shrink-0 w-[210px] truncate" title={f.field}>
+                            One width for the whole template so the notes beside it line up down the
+                            page instead of starting wherever the previous name happened to end —
+                            but a width measured from the longest name, not guessed. */}
+                        <span
+                          className="font-mono text-sm2 text-text shrink-0 truncate"
+                          style={{ width: nameWidth }}
+                          title={f.field}
+                        >
                           {f.field || '—'}
                         </span>
-                        <AllowedValues note={f.description} />
+                        <FieldNote options={f.options} description={f.description} />
                       </div>
                     );
                   })}

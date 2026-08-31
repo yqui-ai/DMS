@@ -7,6 +7,7 @@ import { Button } from '../../components/Button';
 import { useToast } from '../../components/Toast';
 import { useXrefVersions, useGoldenXrefMutations, type LibraryXrefRow } from '../../lib/queries/rules';
 import { SECTION_COLORS, colorByKey, nextColor } from '../../lib/goldenFmdColors';
+import { normaliseStructureFieldName } from '../../lib/structureFieldName';
 import type { GoldenFmdStructure } from '../../types/entities';
 
 export const GOLDEN_XREF_NAME = 'Golden_Cross_Reference_Template';
@@ -263,7 +264,13 @@ export function GoldenXrefDesignerDialog({ target, onClose }: { target: LibraryX
                     <thead>
                       <tr>
                         <th className="w-8 bg-surface border-b border-line px-2.5 py-2" />
-                        <th className="w-[32%] text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface border-b border-line px-2.5 py-2 text-left sticky top-0">Field</th>
+                        {/* A character-based width, not 32%. As a percentage the field column
+                            narrowed with the dialog, and a name like LEGACY_FIELDNAME1_DESCRIPTION
+                            then scrolled inside its own input — you could only read the end of what
+                            you had typed. 34ch fits the longest name the template realistically
+                            carries; the description column takes whatever is left, which is the one
+                            that genuinely wants the slack. */}
+                        <th className="w-[34ch] text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface border-b border-line px-2.5 py-2 text-left sticky top-0">Field</th>
                         <th className="text-2xs font-bold uppercase tracking-[.04em] text-muted bg-surface border-b border-line px-2.5 py-2 text-left sticky top-0">Description / Allowed Values</th>
                         <th className="w-8 bg-surface border-b border-line" />
                       </tr>
@@ -282,7 +289,13 @@ export function GoldenXrefDesignerDialog({ target, onClose }: { target: LibraryX
                           </td>
                           <td className="p-0">
                             <input
-                              value={field.field} onChange={(e) => updateField(activeSection.id, field.id, 'field', e.target.value)}
+                              value={field.field}
+                              // Normalised as typed: ALL CAPS, no spaces. See structureFieldName.ts —
+                              // a field name is a technical identifier and the anchor every review
+                              // point, diff and generated column hangs off, so the wrong shape must
+                              // never become possible rather than merely be reported at save.
+                              onChange={(e) => updateField(activeSection.id, field.id, 'field', normaliseStructureFieldName(e.target.value))}
+                              title="ALL CAPS, no spaces — typed characters are converted automatically."
                               className="w-full bg-transparent px-2.5 py-1.5 text-sm2 font-mono font-bold focus-visible:outline-none focus-visible:bg-blue-pale"
                             />
                           </td>

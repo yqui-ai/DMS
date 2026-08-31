@@ -3,7 +3,7 @@ import { supabase } from '../supabase';
 import { formatLibraryReference } from '../libraryReference';
 import { useAuth } from '../auth';
 import { IDENTITY_FIELDS, rowKey, summariseVersionChange } from '../rowDiff';
-import type { Fmd, FmdDraft, FmdPendingChange, FmdVersion, GeneratedColumn, GeneratedTable, GoldenFmdStructure, GovState, LibraryListing } from '../../types/entities';
+import type { Fmd, FmdDraft, FmdPendingChange, FmdVersion, GeneratedColumn, GeneratedTable, GoldenFmdStructure, GovState, LibraryListing, MappingReview } from '../../types/entities';
 
 const toFmdVersion = (v: any): FmdVersion => ({
   id: v.id, fmdId: v.fmd_id, version: v.version, state: v.state,
@@ -20,6 +20,7 @@ export {
   DRAFT_VERSION, DRAFT_VERSION_ID, applyPendingChanges, draftOverlayVersion, nextPublishedVersion, bumpVersion,
 } from '../fmdDraft';
 import { DRAFT_VERSION, DRAFT_VERSION_ID, applyPendingChanges, bumpVersion, nextPublishedVersion } from '../fmdDraft';
+import { CUSTOM_FIELD_TYPE, STANDARD_FIELD_TYPE } from '../goldenFmdRequiredFields';
 
 
 export function useAllFmds() {
@@ -42,10 +43,20 @@ export interface LibraryFmdRow extends Fmd, LibraryListing {
    * on — undefined for the Golden FMD itself (it doesn't reference itself) and for anything never
    * generated from one. */
   goldenVersionLabel?: string; goldenOutdated?: boolean;
+  /** A newer template version exists but has NOT been published.
+   *
+   * Deliberately separate from `goldenOutdated`. Outdated means "behind what the programme is
+   * using" and asks for action; a draft on the template asks for nothing yet — it is one person's
+   * work in progress, and syncing to it is not even possible. Both can be true at once: an FMD can
+   * be genuinely behind the live template and have a further version coming after that. */
+  goldenDraftPending?: boolean;
   /** A Custom FMD's snapshot reference to the object's Standard FMD version — undefined for
    * Standard/Golden, which reference something else (or nothing). Outdated when the
-   * Standard FMD has since moved to a newer version for any reason, not just a Golden change. */
+   * Standard FMD has since moved to a newer PUBLISHED version, for any reason, not just a Golden
+   * change. */
   standardRefVersionLabel?: string; standardRefOutdated?: boolean;
+  /** The object's Standard FMD has an unpublished draft — same distinction as goldenDraftPending. */
+  standardRefDraftPending?: boolean;
   /** The newest PUBLISHED version — what everyone other than the editor should consider current.
    * Undefined while an FMD has only ever been a draft. */
   activeVersion?: string;
@@ -118,9 +129,24 @@ export function useLibraryFmds(enabled = true) {
       const versionLabelById = new Map<string, string>();
       for (const f of rows as any[]) for (const v of f.fmd_versions ?? []) versionLabelById.set(v.id, v.version);
 
-      const latestVersionId = (f: any): string | undefined => {
-        const sorted = [...(f.fmd_versions ?? [])].sort((a: any, b: any) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
-        return sorted[0]?.id as string | undefined;
+      const sortedVersionsOf = (f: any) =>
+        [...(f.fmd_versions ?? [])].sort((a: any, b: any) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
+
+      /** The newest RELEASED version — what everything downstream should be measured against.
+       *
+       * "Outdated" has to mean "behind what the programme is using", and an unpublished draft is not
+       * something the programme is using: it is one person's work in progress on the template. Using
+       * the newest version of any kind marked every FMD in the catalogue Outdated the moment anyone
+       * opened the Golden designer and saved, before a single change had been released — so the flag
+       * that is supposed to mean "go and re-sync this" fired on work nobody could sync to yet. */
+      const latestPublishedVersionId = (f: any): string | undefined =>
+        sortedVersionsOf(f).find((v: any) => v.published_at)?.id as string | undefined;
+
+      /** True when the newest version is an unpublished draft — a template change being prepared.
+       * Worth saying, but in a different voice from Outdated: nothing is required of anyone yet. */
+      const hasUnpublishedDraft = (f: any): boolean => {
+        const newest = sortedVersionsOf(f)[0];
+        return !!newest && !newest.published_at;
       };
       // How many Custom FMDs exist per object. A Standard FMD is the reference its Customs align
       // to, so archiving one with live children would leave them pointing at an archived parent.
@@ -131,12 +157,18 @@ export function useLibraryFmds(enabled = true) {
       }
 
       const goldenFmd = (rows as any[]).find((f) => f.type === 'Golden');
-      const goldenLatestVersionId = goldenFmd ? latestVersionId(goldenFmd) : undefined;
+      const goldenLatestVersionId = goldenFmd ? latestPublishedVersionId(goldenFmd) : undefined;
+      /** The Golden has unreleased work on it. Not the same as anything being outdated. */
+      const goldenDraftPending = goldenFmd ? hasUnpublishedDraft(goldenFmd) : false;
       const standardLatestVersionIdByObject = new Map<string, string>();
+      const standardDraftPendingByObject = new Map<string, boolean>();
       for (const f of rows as any[]) {
         if (f.type !== 'Standard' || !f.migration_object_id) continue;
-        const id = latestVersionId(f);
+        // Published only, for the same reason as the Golden: a Custom FMD is not behind a Standard
+        // draft that nobody has released.
+        const id = latestPublishedVersionId(f);
         if (id) standardLatestVersionIdByObject.set(f.migration_object_id, id);
+        standardDraftPendingByObject.set(f.migration_object_id, hasUnpublishedDraft(f));
       }
 
       const decorated = (rows as any[]).map((f) => {
@@ -179,8 +211,13 @@ export function useLibraryFmds(enabled = true) {
           changedAt: hasChanged ? (latest?.created_at ?? undefined) : undefined,
           goldenVersionLabel: goldenVersionId ? versionLabelById.get(goldenVersionId) : undefined,
           goldenOutdated: f.type !== 'Golden' && !!goldenVersionId && !!goldenLatestVersionId && goldenVersionId !== goldenLatestVersionId,
+          /** A new template version is being drafted. Informational — nothing is behind anything
+           * until it is published, and this is deliberately independent of goldenOutdated: an FMD
+           * can be genuinely outdated AND have a further draft coming. */
+          goldenDraftPending: f.type !== 'Golden' && goldenDraftPending,
           standardRefVersionLabel: standardRefVersionId ? versionLabelById.get(standardRefVersionId) : undefined,
           standardRefOutdated: f.type === 'Custom' && !!standardRefVersionId && !!currentStandardLatestId && standardRefVersionId !== currentStandardLatestId,
+          standardRefDraftPending: f.type === 'Custom' && !!f.migration_object_id && !!standardDraftPendingByObject.get(f.migration_object_id),
         };
         return { row, lastActivityAt: (latest?.created_at ?? first?.created_at ?? '') as string };
       });
@@ -370,7 +407,11 @@ export function useFmdUsage(fmdId?: string) {
 
       const [templateRes, newestRes] = await Promise.all([
         supabase.from('fmds').select('name, display_id').eq('id', (gv as any).fmd_id).single(),
+        // PUBLISHED only. Comparing against the newest row of any kind reported every FMD as
+        // outdated the moment somebody saved a draft on the template — against a version they
+        // could not have synced to even if they wanted to.
         supabase.from('fmd_versions').select('id').eq('fmd_id', (gv as any).fmd_id)
+          .not('published_at', 'is', null)
           .order('created_at', { ascending: false }).limit(1),
       ]);
       if (templateRes.error) throw templateRes.error;
@@ -684,7 +725,18 @@ export function useEditFmdField(fmdId: string) {
             .update({ row_key: after })
             .eq('fmd_id', fmdId).eq('structure_id', structureId).eq('row_key', before);
           if (rekeyError) throw rekeyError;
-          await queryClient.invalidateQueries({ queryKey: ['fmd-field-notes', fmdId] });
+          // Per-plant rules are anchored the same way and break the same way. A rule left behind by
+          // a rename is not deleted, just orphaned — which is worse than deleted, because nothing
+          // on screen shows that a plant override has stopped applying.
+          const { error: plantRekeyError } = await supabase
+            .from('fmd_plant_rules')
+            .update({ row_key: after })
+            .eq('fmd_id', fmdId).eq('structure_id', structureId).eq('row_key', before);
+          if (plantRekeyError) throw plantRekeyError;
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['fmd-field-notes', fmdId] }),
+            queryClient.invalidateQueries({ queryKey: ['fmd-plant-rules', fmdId] }),
+          ]);
         }
       }
       // An unpublished version is a generation nobody has released yet — edit it in place. It needs
@@ -752,6 +804,277 @@ export function useEditFmdField(fmdId: string) {
       if (error) throw error;
       await invalidateFmd(queryClient, fmdId);
       return { versionId: DRAFT_VERSION_ID, createdDraft: !existing.length, version: DRAFT_VERSION };
+    },
+  };
+}
+
+/** Adds a field or a whole structure to a generated FMD — things the Golden template never gave it.
+ *
+ * **Always produces a real draft VERSION, never a pending change.** A pending change is a cell edit
+ * (`structureId`, `rowIndex`, `field`, `from`, `to`); the model has no way to say "a row appeared",
+ * and inventing one would mean every consumer of `applyPendingChanges` — the draft overlay, the
+ * publish selector, the diff — learning to insert rows at a position that other pending changes are
+ * already indexed against. Adding a field changes the document's SHAPE, which is a different kind of
+ * act from changing a value, and it gets a version of its own.
+ *
+ * Anything already pending is folded into that version, exactly as goldenSync does. Without it the
+ * edits would still be stored but invisible — a real version row wins over the overlay — and
+ * publishing would silently release without them.
+ */
+export function useAddFmdContent(fmdId: string) {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  /** Reads the newest version, folds in any pending overlay, and hands back a writer that lands the
+   * result either in the existing unpublished row or in a fresh one. */
+  const openDraft = async () => {
+    const { data: current, error: readError } = await supabase
+      .from('fmd_versions')
+      .select('id, version, sheets, published_at')
+      .eq('fmd_id', fmdId).order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (readError) throw readError;
+    if (!current) throw new Error('This FMD has no version to add to yet.');
+
+    const sheets = (current.sheets ?? {}) as FmdVersion['sheets'];
+    if (!sheets.generatedTables?.length) throw new Error('This version has no generated mapping data to add to.');
+
+    const { data: fmdRow, error: draftReadError } = await supabase
+      .from('fmds').select('draft').eq('id', fmdId).single();
+    if (draftReadError) throw draftReadError;
+    const stored = (fmdRow?.draft as FmdDraft | null) ?? undefined;
+    const pending = stored && stored.baseVersionId === current.id ? (stored.pendingChanges ?? []) : [];
+
+    const tables = pending.length
+      ? applyPendingChanges(sheets.generatedTables, pending)
+      : sheets.generatedTables;
+
+    return { current, sheets, tables, pending };
+  };
+
+  const write = async (
+    current: { id: string; version: string; published_at: string | null },
+    _sheets: FmdVersion['sheets'],
+    nextSheets: FmdVersion['sheets'],
+    comment: string,
+    hadPending: boolean,
+  ) => {
+    const who = user?.email ?? 'Unknown';
+    const now = new Date().toISOString();
+
+    if (!current.published_at) {
+      // Already a working copy — edit it in place, exactly as a cell edit does.
+      const { error } = await supabase
+        .from('fmd_versions')
+        .update({ sheets: nextSheets, changed_by: who, changed_at: now })
+        .eq('id', current.id);
+      if (error) throw error;
+    } else {
+      /* Forking a NEW version off a published one. Three keys must NOT come across, and every one
+       * of them belongs to the version being left behind rather than to the document:
+       *
+       *  · `changeLog` — the record of what was done to v1.0.1. Carried forward, the new version's
+       *    Draft tab opens listing edits somebody already published, presented as part of the
+       *    unreleased work sitting on top of them.
+       *  · `mappingReview` / `mappingReviews` — a review assesses the content it ran against, and
+       *    this fork exists precisely because the content is changing.
+       *  · `pendingChanges` — folded into the content above and cleared below.
+       *
+       * goldenSync learned this the same way and strips the same keys; the two forks now agree.
+       * Updating an unpublished row in place (the branch above) keeps its log, because that log IS
+       * that row's own history. */
+      const { changeLog: _cl, mappingReview: _mr, mappingReviews: _mrs, pendingChanges: _pc, ...carried } = nextSheets;
+      const { error } = await supabase.from('fmd_versions').insert({
+        fmd_id: fmdId,
+        version: bumpVersion(current.version),
+        state: 'Draft',
+        sheets: carried,
+        comment,
+        created_by: who, created_at: now,
+      });
+      if (error) throw error;
+    }
+
+    // Folded into the version above, so the overlay must not replay them on top of it.
+    if (hadPending) {
+      const { error } = await supabase.from('fmds').update({ draft: null }).eq('id', fmdId);
+      if (error) throw error;
+    }
+    await invalidateFmd(queryClient, fmdId);
+  };
+
+  return {
+    /* No addField. A COLUMN is part of what an FMD is, and every FMD is generated from one
+       template — adding one to a single document would make it a different shape from its
+       siblings, and no export, diff or review would agree on what an FMD contains. Columns are
+       added in the Golden FMD designer, where the change reaches every document that follows it. */
+
+
+    /** Appends a whole structure — a new tab in the grid, with the document's columns and no rows.
+     *
+     * Rows are added by editing; a structure arrives empty because there is nothing to derive its
+     * contents from. The ident is what the grid tabs and every export sheet name key on, so it is
+     * uppercased and checked for collisions here rather than producing two tabs with one name. */
+    /** Moves one row within a structure.
+     *
+     * A row IS a field in an FMD — one source field mapped to one target — so this is what
+     * "rearrange the fields" means: putting the mapping lines in the order somebody wants to read
+     * and build them in, usually grouping related fields that generation emitted apart.
+     *
+     * ── Why the stored review has to be remapped ──────────────────────────────────────────────
+     * A finding pins `structureId + rowIndex + field`. Move a row and every finding after it points
+     * at the wrong line — silently, because an index is always a valid index. The review would keep
+     * rendering, just against the wrong rows, which is worse than losing it. So the indices move
+     * with the rows.
+     *
+     * Review POINTS need no such care: they are anchored to the content-based `row_key`, which is
+     * exactly why that decision was made. Pending changes need none either — `openDraft` folds them
+     * into the content first and the draft is cleared, so there are no index-bearing edits left to
+     * invalidate.
+     */
+    async reorderRows(structureId: string, from: number, to: number): Promise<void> {
+      if (from === to) return;
+      const { current, sheets, tables, pending } = await openDraft();
+      const target = tables.find((t) => t.structureId === structureId);
+      if (!target) throw new Error('Could not locate that structure.');
+      if (from < 0 || from >= target.rows.length || to < 0 || to >= target.rows.length) {
+        throw new Error('That row is no longer where it was — reopen the FMD and try again.');
+      }
+
+      const rows = [...target.rows];
+      rows.splice(to, 0, ...rows.splice(from, 1));
+
+      /** oldIndex -> newIndex for this structure, derived from the same splice rather than from a
+       * second piece of arithmetic that could disagree with it. */
+      const moved = new Map<number, number>();
+      const order = target.rows.map((_, i) => i);
+      order.splice(to, 0, ...order.splice(from, 1));
+      order.forEach((oldIndex, newIndex) => moved.set(oldIndex, newIndex));
+
+      const remap = (review?: MappingReview): MappingReview | undefined => (review && {
+        ...review,
+        findings: review.findings.map((f) => (
+          f.structureId === structureId && f.rowIndex >= 0
+            // A finding at -1 belongs to the structure rather than to a row (see mappingReview.ts)
+            // and must keep its sentinel, not be renumbered into row 0.
+            ? { ...f, rowIndex: moved.get(f.rowIndex) ?? f.rowIndex }
+            : f
+        )),
+      });
+
+      await write(
+        current as any, sheets,
+        {
+          ...sheets,
+          generatedTables: tables.map((t) => (t.structureId === structureId ? { ...t, rows } : t)),
+          mappingReview: remap(sheets.mappingReview),
+          mappingReviews: sheets.mappingReviews?.map((r) => remap(r)!),
+        },
+        `Reordered rows in ${target.structureIdent}`,
+        pending.length > 0,
+      );
+    },
+
+    async addStructure(ident: string, description?: string): Promise<void> {
+      const name = ident.trim().toUpperCase();
+      if (!name) throw new Error('Give the structure a name.');
+
+      const { current, sheets, tables, pending } = await openDraft();
+      if (tables.some((t) => t.structureIdent.trim().toUpperCase() === name)) {
+        throw new Error(`${name} already exists in this FMD.`);
+      }
+
+      const nextTables: GeneratedTable[] = [
+        ...tables,
+        { structureId: crypto.randomUUID(), structureIdent: name, structureDescription: description?.trim() || undefined, rows: [] },
+      ];
+
+      await write(
+        current as any, sheets,
+        { ...sheets, generatedTables: nextTables },
+        `Added custom structure ${name}`,
+        pending.length > 0,
+      );
+    },
+
+    /** Appends an empty row to one structure, so a custom field has somewhere to be filled in. */
+    /** Appends a row. Blank by default, or seeded from the object's Standard FMD.
+     *
+     * `seed` is how a predefined field is put back. Removing a row from a Custom FMD is a normal
+     * thing to do — the wave does not migrate that field — and so is changing your mind, and
+     * retyping SRC_FIELD, its description, its data type and its length from memory is both tedious
+     * and how a Custom FMD drifts from the standard it was generated from. A seeded row carries
+     * `FIELD_TYPE: Standard`, because it IS the standard field: only a row nobody predefined is
+     * Custom. */
+    async addRow(structureId: string, seed?: Record<string, string>): Promise<void> {
+      const { current, sheets, tables, pending } = await openDraft();
+      const target = tables.find((t) => t.structureId === structureId);
+      if (!target) throw new Error('Could not locate that structure.');
+
+      const row: Record<string, string> = {};
+      // Keyed off the document's own columns, so a seed from a Standard FMD with a different shape
+      // contributes only the fields this document actually has.
+      for (const c of sheets.generatedColumns ?? []) row[c.field] = seed?.[c.field] ?? '';
+      row.FIELD_TYPE = seed ? STANDARD_FIELD_TYPE : CUSTOM_FIELD_TYPE;
+
+      const nextTables: GeneratedTable[] = tables.map((t) => (
+        t.structureId !== structureId ? t : { ...t, rows: [...t.rows, row] }
+      ));
+
+      await write(
+        current as any, sheets,
+        { ...sheets, generatedTables: nextTables },
+        seed
+          ? `Restored ${seed.SRC_FIELD || seed.TGT_FIELD || 'a standard field'} to ${target.structureIdent}`
+          : `Added a custom field row to ${target.structureIdent}`,
+        pending.length > 0,
+      );
+    },
+
+    /** Removes one row.
+     *
+     * The stored review is remapped exactly as a reorder does, and for the same reason: a finding
+     * pins `rowIndex`, so deleting row 3 leaves every finding after it pointing one row too far —
+     * silently, because an index is always a valid index. Findings ON the deleted row are dropped;
+     * they describe something that no longer exists.
+     *
+     * Review POINTS are deliberately not deleted. They are keyed by the content-based `row_key`, so
+     * a point on the removed row becomes orphaned rather than destroyed — and the review pane
+     * already renders those as "not in this version", which is exactly right: somebody raised a
+     * question about this mapping, and the mapping being gone is the answer they need to see, not a
+     * reason to erase the question. */
+    async removeRow(structureId: string, rowIndex: number): Promise<void> {
+      const { current, sheets, tables, pending } = await openDraft();
+      const target = tables.find((t) => t.structureId === structureId);
+      if (!target?.rows[rowIndex]) throw new Error('That row is no longer where it was — reopen the FMD and try again.');
+
+      const rows = target.rows.filter((_, i) => i !== rowIndex);
+
+      const remap = (review?: MappingReview): MappingReview | undefined => (review && {
+        ...review,
+        findings: review.findings.filter((f) => !(f.structureId === structureId && f.rowIndex === rowIndex))
+          .map((f) => (
+            // -1 belongs to the structure, not a row, and must not be shifted into a real index.
+            f.structureId === structureId && f.rowIndex > rowIndex
+              ? { ...f, rowIndex: f.rowIndex - 1 }
+              : f
+          )),
+        rowCounts: review.rowCounts && {
+          ...review.rowCounts,
+          [structureId]: Math.max(0, (review.rowCounts[structureId] ?? rows.length + 1) - 1),
+        },
+      });
+
+      await write(
+        current as any, sheets,
+        {
+          ...sheets,
+          generatedTables: tables.map((t) => (t.structureId === structureId ? { ...t, rows } : t)),
+          mappingReview: remap(sheets.mappingReview),
+          mappingReviews: sheets.mappingReviews?.map((r) => remap(r)!),
+        },
+        `Removed a row from ${target.structureIdent}`,
+        pending.length > 0,
+      );
     },
   };
 }

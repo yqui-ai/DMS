@@ -2,22 +2,27 @@ import { useEffect, useMemo, useState } from 'react';
 import { Select } from '../../components/Select';
 import { Button } from '../../components/Button';
 import clsx from 'clsx';
-import { Download, Sparkles } from 'lucide-react';
-import { Dialog } from '../../components/Dialog';
+import { Download, ExternalLink, Sparkles } from 'lucide-react';
+import { DocumentShell } from '../../components/DocumentShell';
 import { useUnsavedGate } from '../../components/useUnsavedGate';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Tag } from '../../components/Tag';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../lib/auth';
 import { canPublish } from '../../lib/rbac';
 import { useCurrentRole } from '../../lib/queries/memberships';
 import { useDefaultProgram } from '../../lib/queries/programme';
-import { DRAFT_VERSION, DRAFT_VERSION_ID, draftOverlayVersion, nextPublishedVersion, useEditFmdField, useFmdVersions, useGoldenFmdSummary, useFmdUsage, useGoldenWhereUsed, useHistoricalSiblings, useLatestFmdVersion, usePublishFmdVersion, type LibraryFmdRow } from '../../lib/queries/fmds';
+import { DRAFT_VERSION, DRAFT_VERSION_ID, draftOverlayVersion, nextPublishedVersion, useEditFmdField, useFmdVersions, useGoldenFmdSummary, useFmdUsage, useGoldenWhereUsed, useHistoricalSiblings, useLatestFmdVersion, usePublishFmdVersion, useAddFmdContent, useStandardFmdLinks, type LibraryFmdRow } from '../../lib/queries/fmds';
 import { useFmdFieldNotes, useFmdFieldNoteMutations } from '../../lib/queries/fmdFieldNotes';
+import { useFmdPlantRules } from '../../lib/queries/fmdPlantRules';
 import { useMigrationObjects, useScopeObjectOwners, scopeOwnerKey, type ScopeAssignment } from '../../lib/queries/scope';
+import { usePlants, useSubprojectPlants } from '../../lib/queries/plants';
+import { useLibraryPath } from '../../lib/libraryNav';
 import { diffTablesByStructure, rowKey, summariseVersionChange } from '../../lib/rowDiff';
 import { useMappingReview, readMappingReviews, findingKey } from '../../lib/queries/mappingReview';
 import { analyseFmd } from '../../lib/fmdHealth';
 import { criticalFieldsOf, outstandingIssue } from '../../lib/mappingRulePolicy';
+import { isActionable } from '../../lib/reviewPointCategories';
 import { exportGeneratedFmdToExcel } from '../../lib/generatedFmdExport';
 import { exportGoldenFmdToExcel } from '../../lib/goldenFmdExport';
 import { GoldenFmdStructureView } from './GoldenFmdStructureView';
@@ -28,6 +33,8 @@ import { FmdWhereUsedTab } from './fmd/FmdWhereUsedTab';
 import { FmdDraftTab } from './fmd/FmdDraftTab';
 import { FmdReviewTab } from './fmd/FmdReviewTab';
 import { FmdHealthTab } from './fmd/FmdHealthTab';
+import { AddFmdContentDialog } from './fmd/AddFmdContentDialog';
+import { PlantRulesDialog } from './fmd/PlantRulesDialog';
 import type { MappingReviewFinding } from '../../types/entities';
 
 type Tab = 'mapping' | 'draft' | 'versions' | 'health' | 'whereUsed';
@@ -53,8 +60,14 @@ const SHEET_LABEL: Record<SheetKey, string> = { source: 'Source', target: 'Targe
  *  - Anything else: its sibling plants from the same tracked source file, if it was AI-converted
  *    (useHistoricalSiblings) — a manually-generated FMD with no tracked source just shows a message
  *    explaining there's nothing to find, rather than hiding the tab. */
-export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow | null; onClose: () => void }) {
+export function FmdVersionHistoryDialog({ fmd, onClose, asPage }: {
+  fmd: LibraryFmdRow | null;
+  onClose: () => void;
+  /** Rendered as its own page rather than over the catalogue — see DocumentShell. */
+  asPage?: boolean;
+}) {
   const toast = useToast();
+  const to = useLibraryPath();
   const { data: versions = [], isLoading } = useFmdVersions(fmd?.id);
   const [tab, setTab] = useState<Tab>('mapping');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -74,24 +87,67 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
   const [pointTarget, setPointTarget] = useState<ReviewPointTarget | null>(null);
   const [selectedReviewId, setSelectedReviewId] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
+  /* Adding a custom field, row or structure. Custom FMDs only — a Standard FMD is the programme's
+     generated reference and a Golden one is the template, so neither is somewhere to bolt an
+     object-specific column onto. */
+  const [addingContent, setAddingContent] = useState(false);
+  /* The node the grid portals its controls into — the tab row, so they sit in line with Field
+     Mapping / Health Check / Versions & Review. A state setter as the ref, because a plain ref
+     would not re-render the grid once the node exists. */
+  const [gridControls, setGridControls] = useState<HTMLDivElement | null>(null);
+  /* Which row's per-plant rules are open. Holds the row's identity rather than its index: the grid
+     can be sorted or filtered under the dialog, and an index would then point at a different row. */
+  const [plantRuleTarget, setPlantRuleTarget] = useState<{ structureId: string; structureIdent?: string; rowKey: string; rowLabel: string; transformation?: string; technical?: string } | null>(null);
   const { publish: publishVersion } = usePublishFmdVersion();
   const { saveField } = useEditFmdField(fmd?.id ?? '');
+  const { reorderRows, removeRow } = useAddFmdContent(fmd?.id ?? '');
+  /* Removing a row is a shape change that publishes as a version, so it asks first. Holds the
+     label as well as the position: a confirm that cannot name what it is about to delete is a
+     confirm nobody reads. */
+  const [removingRow, setRemovingRow] = useState<{ structureId: string; rowIndex: number; label: string } | null>(null);
   const { review: reviewMapping, save: saveMappingReview, setAddressed } = useMappingReview();
   const { user } = useAuth();
   const isCustomFmd = fmd?.type === 'Custom';
   const goldenMode = fmd?.type === 'Golden';
   const siblingsMode = !goldenMode;
-  const { data: whereUsed = [], isLoading: whereUsedLoading } = useGoldenWhereUsed(goldenMode ? fmd?.id : undefined, goldenMode ? versions[0]?.id : undefined);
+  /* The latest PUBLISHED version, not versions[0]. Where-used answers "is this FMD on the current
+     template", and an unpublished draft is not the current template — passing it marked every row
+     Outdated the moment anyone saved in the designer. */
+  const goldenLivePublished = versions.find((v) => v.publishedAt);
+  const { data: whereUsed = [], isLoading: whereUsedLoading } = useGoldenWhereUsed(goldenMode ? fmd?.id : undefined, goldenMode ? goldenLivePublished?.id : undefined);
   const { data: siblings = [], isLoading: siblingsLoading } = useHistoricalSiblings(siblingsMode ? fmd?.histSourceName : undefined, fmd?.id);
   const { data: usage } = useFmdUsage(fmd?.id);
   const { data: objects = [] } = useMigrationObjects(!!fmd);
+  /* Placement context for the header — see placementSubtitle. Loaded only while a dialog is open. */
+  const { data: plants = [] } = usePlants(false, !!fmd);
+  const { data: subprojectPlants = new Map<string, string[]>() } = useSubprojectPlants(!!fmd);
   const { data: scopeOwners = new Map<string, ScopeAssignment>() } = useScopeObjectOwners(!!fmd);
   /** The FMD's object, from the catalogue this dialog already loaded — see FmdWhereUsedTab. */
   const usageObject = objects.find((o) => o.id === fmd?.migrationObjectId);
 
+  /* The object's Standard FMD, so a removed field can be restored from it rather than retyped.
+     Only for a Custom FMD — a Standard has no standard above it to draw from. */
+  const { data: standardLinks = [] } = useStandardFmdLinks();
+  const standardFmdId = isCustomFmd
+    ? standardLinks.find((l) => l.migrationObjectId === fmd?.migrationObjectId)?.fmdId
+    : undefined;
+  const { data: standardLatest } = useLatestFmdVersion(standardFmdId);
+
   const { data: goldenSummary } = useGoldenFmdSummary(!!fmd);
   const { data: goldenLatest } = useLatestFmdVersion(fmd?.goldenOutdated ? goldenSummary?.id : undefined);
   const { data: fieldNotes = [] } = useFmdFieldNotes(fmd?.id);
+  const { data: plantRules = [] } = useFmdPlantRules(fmd?.id);
+  /** Override counts per structure, for the grid's rule-cell marker. Keyed by structure because a
+   * rowKey is only unique within one — see the prop's own note. */
+  const plantRuleCountsByTable = useMemo(() => {
+    const byTable = new Map<string, Map<string, number>>();
+    for (const r of plantRules) {
+      const byRow = byTable.get(r.structureId) ?? new Map<string, number>();
+      byRow.set(r.rowKey, (byRow.get(r.rowKey) ?? 0) + 1);
+      byTable.set(r.structureId, byRow);
+    }
+    return byTable.size > 0 ? byTable : undefined;
+  }, [plantRules]);
   const fieldNoteMutations = useFmdFieldNoteMutations(fmd?.id ?? '');
   /** Raising and replying to review points is open to anyone with access to the FMD — review is a
    * collaborative act, and RLS already limits who can reach the FMD at all. Ownership gates
@@ -281,7 +337,13 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
       const table = tables.find((t) => t.structureId === f.structureId);
       if (!table) continue;
       const byRow = byTable.get(f.structureId) ?? new Map<string, Map<string, ReviewCellFinding>>();
-      table.rows.forEach((row, i) => {
+      /* Only the rows this run actually saw. A column-level finding says "blank in all 157 rows" —
+         a statement about the 157 that existed when it ran. Painting it onto a row added afterwards
+         marks a brand-new field as a defect the review never examined, which is what happens the
+         moment you add one. Reviews saved before rowCounts existed have no count and keep the old
+         behaviour rather than silently losing their highlights. */
+      const reviewed = activeReview?.rowCounts?.[f.structureId] ?? table.rows.length;
+      table.rows.slice(0, reviewed).forEach((row, i) => {
         const rk = rowKey(row, i);
         const byField = byRow.get(rk) ?? new Map<string, ReviewCellFinding>();
         // A per-row finding on the same cell is more specific, so it wins.
@@ -313,6 +375,27 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
     }
     return byTable.size > 0 ? byTable : undefined;
   }, [fieldNotes]);
+
+  /** Review points counted per ROW, for the grid's left gutter.
+   *
+   * Deliberately not derived from the map above: that one is keyed by cell and skips every point
+   * with no `field`, so a point raised about the mapping as a whole — which is most of them, since
+   * the composer's default is the row — left no mark on the grid at all. Replies are excluded so a
+   * thread counts once; `open` counts only unresolved ACTIONABLE points, matching the badge in the
+   * review pane, so a remark never reads as work outstanding. */
+  const reviewPointRowsByTable = useMemo(() => {
+    const byTable = new Map<string, Map<string, { total: number; open: number }>>();
+    for (const n of fieldNotes) {
+      if (n.parentId) continue;
+      const byRow = byTable.get(n.structureId) ?? new Map<string, { total: number; open: number }>();
+      const tally = byRow.get(n.rowKey) ?? { total: 0, open: 0 };
+      tally.total += 1;
+      if (!n.resolved && isActionable(n.tag)) tally.open += 1;
+      byRow.set(n.rowKey, tally);
+      byTable.set(n.structureId, byRow);
+    }
+    return byTable.size > 0 ? byTable : undefined;
+  }, [fieldNotes]);
   // Oldest first, for the exported Version History sheet — the on-screen list stays independently
   // sortable (sortedVersions) but the export always reads the same way regardless of that toggle.
   const exportVersions = useMemo(
@@ -323,6 +406,27 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
   if (!fmd) return null;
 
   const object = objects.find((o) => o.id === fmd.migrationObjectId);
+
+  /* Where this document sits, under its name.
+   *
+   * An FMD is reusable — the same mapping gets adopted by another subproject, and a Custom one is
+   * regenerated for a different wave — so this is a description of where it is being read FROM
+   * today, not a property of the document. It is stated as an indicator rather than as data anyone
+   * should key on, which is also why it is a subtitle and not a Fact row.
+   *
+   * A Standard or Golden FMD is programme-wide and has no placement at all; saying "Program-wide"
+   * is the whole answer for those, and inventing a hierarchy for them would be a lie. */
+  const fmdPlants = fmd.subprojectId ? (subprojectPlants.get(fmd.subprojectId) ?? []) : [];
+  /** The plant RECORDS, in catalogue order — what the per-plant rules dialog lists. */
+  const fmdPlantRecords = fmdPlants
+    .map((id) => plants.find((p) => p.id === id))
+    .filter((p): p is NonNullable<typeof p> => !!p);
+  const plantLabels = fmdPlantRecords.map((p) => p.code);
+
+  const placementSubtitle = fmd.subprojectId
+    ? [fmd.programName, fmd.projectName, fmd.subprojectName].filter(Boolean).join(' › ')
+      + (plantLabels.length ? `  ·  ${plantLabels.length === 1 ? 'Plant' : 'Plants'} ${plantLabels.join(', ')}` : '')
+    : 'Program-wide — not tied to a project, subproject or plant';
   const isGoldenStructure = !!selected?.sheets.goldenStructure;
   const isGenerated = !!selected?.sheets.generatedColumns?.length && !!selected?.sheets.generatedTables?.length;
   const fieldViewOpen = !!(isGenerated && openField && openTable);
@@ -452,8 +556,85 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
     }
   };
 
+  /* The document's own actions, in the TITLE BAR beside the close button rather than in a strip
+     below the tabs. They act on the whole document — which version, export it, review it — so
+     they belong with its name, and moving them up leaves the tab row to the tabs. It also spares
+     the reader two rows of chrome before the first row of data. */
+  const documentActions = (
+    <>
+          {/* One version selector for the whole dialog — the Field Mapping tab (table and
+              field-level view alike) always renders whatever is picked here, so there's a single
+              answer to "which version am I looking at" no matter which tab is open. */}
+          {/* Hidden on Health check: that tab always measures the latest version, so a selector
+              sitting above it would imply a choice it doesn't honour. */}
+          {versions.length > 0 && tab !== 'health' && (
+            <label className="flex items-center gap-1.5 text-2xs text-muted">
+              Version
+              {/* Not `mono`: each option is an identifier followed by prose, and setting the
+                  whole control in the code face put "unpublished" in monospace beside two
+                  sans-serif buttons. Version numbers stay mono everywhere they stand alone. */}
+              <Select
+                value={selected?.id ?? ''} onChange={(e) => pickVersion(e.target.value)}
+                size="sm"
+              >
+                {versionOptions.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {/* "latest" used to mean newest by date, which labelled an unreleased
+                        generation as latest while an older version was the one everyone else
+                        could see. Newest and live are different questions: say which is live,
+                        and say plainly when a version isn't published at all. */}
+                    {v.id === DRAFT_VERSION_ID
+                      ? `Draft · ${pendingChanges.length} unpublished`
+                      : `${v.version}${versionNote.get(v.id) ?? ''}`}
+                  </option>
+                ))}
+              </Select>
+            </label>
+          )}
+          {/* A second BROWSER tab, not an in-app "full screen".
+              The complaint this answers is that a modal has to be closed to look at anything
+              else — and an in-app full-screen mode would not fix that, because it still occupies
+              the one window. A real tab does: the FMD stays open on its own URL while you use the
+              rest of the app beside it. The address already exists (every Library deep view is a
+              route); this is the affordance that makes it reachable without copying the URL out
+              of the bar. */}
+          {/* Hidden in page mode: you are already in that tab, and a button offering
+              to open one more of the same document is an invitation to lose track of which is
+              which. */}
+          {!asPage && <Button
+            variant="quiet" size="sm"
+            onClick={() => window.open(`${window.location.origin}${to('view')}/fmd/${fmd.id}`, '_blank', 'noopener')}
+            title="Open this FMD in a new browser tab, so you can keep it open while using other screens"
+          >
+            <ExternalLink size={14} /> New tab
+          </Button>}
+          <Button variant="quiet" size="sm" onClick={handleExport} disabled={exporting || !selected || (!isGoldenStructure && !isGenerated)}>
+            <Download size={14} /> {exporting ? 'Exporting…' : 'Export to Excel'}
+          </Button>
+          {isCustomFmd && (
+            <Button variant="ai" size="sm"
+              onClick={handleReviewMapping}
+              disabled={versionBusy || !latest?.sheets.generatedTables?.length}
+              title={publishing ? busyReason : latest ? (latest.version === DRAFT_VERSION ? `Reviews the working draft` : `Reviews ${latest.version}, the latest version`) : undefined}
+            >
+              <Sparkles size={14} /> {reviewing ? 'Reviewing…' : 'Review Latest Version'}
+            </Button>
+          )}
+    </>
+  );
+
   return (
-    <Dialog open={!!fmd} onClose={gate(onClose)} title={fmd.name} size="win">
+    <>
+    <DocumentShell
+      asPage={asPage}
+      open={!!fmd}
+      onClose={gate(onClose)}
+      title={fmd.name}
+      subtitle={placementSubtitle}
+      backTo={to('fmds')}
+      backLabel="Back to Field Mapping"
+      headerActions={documentActions}
+    >
       {unsavedGate}
       <div className="h-full flex flex-col">
         {/* items-END, not center: the active tab marks itself with a border that has to sit ON
@@ -468,9 +649,14 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
             Field Mapping
           </button>
           {/* After Field Mapping and before the review tabs: the mapping is the document, the health
-              check is what it adds up to, and the reviews are what people said about it. Only for
-              generated FMDs — a Golden template is a structure with nothing to measure. */}
-          {isGenerated && (
+              check is what it adds up to, and the reviews are what people said about it.
+              CUSTOM only. Health grades a document somebody is building for a subproject — how much
+              is filled in, how much is still open, whether it is behind the template. A Standard FMD
+              is the programme-wide reference generated from Golden: nobody fills it in, it has no
+              consultant and no review points, so most of what the tab measures is structurally zero
+              and the rest reads as failure for work nobody intends to do. A Golden template has
+              nothing to measure at all. */}
+          {isCustomFmd && isGenerated && (
             <button
               onClick={gate(() => setTab('health'))}
               className={clsx('px-3.5 py-2 text-sm2 font-semibold border-b-2 -mb-px', tab === 'health' ? 'border-blue text-blue' : 'border-transparent text-muted hover:text-text')}
@@ -502,51 +688,13 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
           >
             Where-Used
           </button>
-          {/* On the tab row and right-aligned, but held clear of the border: the active tab
-              marks itself by sitting ON that line, so anything else touching it reads as a tab. */}
-          <div className="ml-auto flex items-center gap-2 mb-3">
-            {/* One version selector for the whole dialog — the Field Mapping tab (table and
-                field-level view alike) always renders whatever is picked here, so there's a single
-                answer to "which version am I looking at" no matter which tab is open. */}
-            {/* Hidden on Health check: that tab always measures the latest version, so a selector
-                sitting above it would imply a choice it doesn't honour. */}
-            {versions.length > 0 && tab !== 'health' && (
-              <label className="flex items-center gap-1.5 text-2xs text-muted">
-                Version
-                {/* Not `mono`: each option is an identifier followed by prose, and setting the
-                    whole control in the code face put "unpublished" in monospace beside two
-                    sans-serif buttons. Version numbers stay mono everywhere they stand alone. */}
-                <Select
-                  value={selected?.id ?? ''} onChange={(e) => pickVersion(e.target.value)}
-                  size="sm"
-                >
-                  {versionOptions.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {/* "latest" used to mean newest by date, which labelled an unreleased
-                          generation as latest while an older version was the one everyone else
-                          could see. Newest and live are different questions: say which is live,
-                          and say plainly when a version isn't published at all. */}
-                      {v.id === DRAFT_VERSION_ID
-                        ? `Draft · ${pendingChanges.length} unpublished`
-                        : `${v.version}${versionNote.get(v.id) ?? ''}`}
-                    </option>
-                  ))}
-                </Select>
-              </label>
-            )}
-            <Button variant="quiet" size="sm" onClick={handleExport} disabled={exporting || !selected || (!isGoldenStructure && !isGenerated)}>
-              <Download size={14} /> {exporting ? 'Exporting…' : 'Export to Excel'}
-            </Button>
-            {isCustomFmd && (
-              <Button variant="ai" size="sm"
-                onClick={handleReviewMapping}
-                disabled={versionBusy || !latest?.sheets.generatedTables?.length}
-                title={publishing ? busyReason : latest ? (latest.version === DRAFT_VERSION ? `Reviews the working draft` : `Reviews ${latest.version}, the latest version`) : undefined}
-              >
-                <Sparkles size={14} /> {reviewing ? 'Reviewing…' : 'Review Latest Version'}
-              </Button>
-            )}
-          </div>
+
+          {/* The grid portals its controls in here, so they sit in line with the tabs rather than
+              on the structure strip below. Empty on every tab but Field Mapping, because the grid
+              is the only thing that fills it — which is also why "only on Field Mapping" needs no
+              condition. Held clear of the row's bottom border: the active tab marks itself by
+              sitting ON that line, so anything else touching it reads as a tab. */}
+          <div ref={setGridControls} className="ml-auto flex items-center mb-1.5" />
         </div>
 
         {isLoading ? (
@@ -593,6 +741,27 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
                         canEdit={isCustomFmd && canEditSelected}
                         onSaveField={handleSaveField}
                         reviewPointCellsByTable={reviewPointCellsByTable}
+                        reviewPointRowsByTable={reviewPointRowsByTable}
+                        controlsContainer={gridControls}
+                        onAddContent={isCustomFmd && canEditSelected ? () => setAddingContent(true) : undefined}
+                        onReorderRows={isCustomFmd && canEditSelected ? reorderRows : undefined}
+                        onRemoveRow={isCustomFmd && canEditSelected ? (structureId, rowIndex, label) => setRemovingRow({ structureId, rowIndex, label }) : undefined}
+                        /* Offered only where a rule COULD differ: a Custom FMD (the only kind tied
+                           to a subproject) whose subproject covers more than one plant. With one
+                           plant there is nothing to differ between, and the control would be an
+                           invitation to record a distinction that cannot exist. */
+                        onOpenPlantRules={isCustomFmd && fmdPlants.length > 1 ? (structureId, rowIndex) => {
+                          const t = selected!.sheets.generatedTables!.find((x) => x.structureId === structureId);
+                          const r = t?.rows[rowIndex];
+                          if (!t || !r) return;
+                          setPlantRuleTarget({
+                            structureId, structureIdent: t.structureIdent,
+                            rowKey: rowKey(r, rowIndex),
+                            rowLabel: r.SRC_FIELD || r.TGT_FIELD || `Row ${rowIndex + 1}`,
+                            transformation: r.TRANSFORMATION_RULE, technical: r.TECHNICAL_RULE,
+                          });
+                        } : undefined}
+                        plantRuleCountsByTable={plantRuleCountsByTable}
                         onAddReviewPoint={(structureId, rowIndex, field) => {
                           const t = selected!.sheets.generatedTables!.find((x) => x.structureId === structureId);
                           const r = t?.rows[rowIndex];
@@ -714,6 +883,60 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
           </div>
         )}
       </div>
+    </DocumentShell>
+
+    {/* Overlays live OUTSIDE the shell, not inside its scrollable body.
+        A dialog rendered among the body content is a React-tree descendant of it, so its portal
+        shares that ancestry for event purposes — the child was mounting into the middle of the
+        interaction that opened it and taking the tail of it, which is why Add row appeared and
+        vanished in one click. They are overlays; they belong beside the shell, not within it. */}
+      {/* Rendered against the LATEST version's shape, not the selected one: adding always lands in
+          the draft on top of the latest, so offering the sections and structures of a superseded
+          version would let you add a column to a document that no longer looks like that. */}
+      <AddFmdContentDialog
+        open={addingContent}
+        fmdId={fmd.id}
+        tables={latest?.sheets.generatedTables ?? []}
+        standardTables={standardLatest?.sheets.generatedTables}
+        activeStructureId={openField?.structureId}
+        onClose={() => setAddingContent(false)}
+      />
+
+      <ConfirmDialog
+        open={!!removingRow}
+        title="Remove this field?"
+        message={removingRow
+          ? `${removingRow.label} will be removed from this FMD. It publishes as a new version, and the field can be restored later from the object's Standard FMD — any review points raised on it stay, marked as no longer in this version.`
+          : ''}
+        confirmLabel="Remove"
+        destructive
+        onConfirm={async () => {
+          const t = removingRow;
+          setRemovingRow(null);
+          if (!t) return;
+          try { await removeRow(t.structureId, t.rowIndex); toast.success(`${t.label} removed.`); }
+          catch (err: any) { toast.error(err.message ?? 'Could not remove that row.'); }
+        }}
+        onCancel={() => setRemovingRow(null)}
+      />
+
+      <PlantRulesDialog
+        open={!!plantRuleTarget}
+        fmdId={fmd.id}
+        structureId={plantRuleTarget?.structureId ?? ''}
+        structureIdent={plantRuleTarget?.structureIdent}
+        rowKey={plantRuleTarget?.rowKey ?? ''}
+        rowLabel={plantRuleTarget?.rowLabel ?? ''}
+        baseTransformation={plantRuleTarget?.transformation}
+        baseTechnical={plantRuleTarget?.technical}
+        plants={fmdPlantRecords}
+        rules={plantRules}
+        // Same gate as editing the mapping: an override IS the mapping for that plant, so it is
+        // the owner's call, not anyone's who can see the document.
+        canEdit={canEditSelected}
+        onClose={() => setPlantRuleTarget(null)}
+      />
+
       <AddReviewPointDialog
         target={pointTarget} canAdd={canAddNote} onClose={() => setPointTarget(null)}
         onSubmit={async (tagVal, body) => {
@@ -721,6 +944,6 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
           await fieldNoteMutations.add(pointTarget.structureId, pointTarget.rowKey, tagVal, body, pointTarget.field);
         }}
       />
-    </Dialog>
+    </>
   );
 }
