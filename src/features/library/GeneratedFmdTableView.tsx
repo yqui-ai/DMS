@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
-import { Check, ChevronLeft, ChevronRight, Columns3, Filter, Maximize2, MessageSquare, Pencil, Type } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Columns3, Eye, EyeOff, Maximize2, MessageSquare, Pencil, Type } from 'lucide-react';
 import { Dialog } from '../../components/Dialog';
 import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import { useDismiss } from '../../components/useDismiss';
@@ -513,7 +513,9 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
             hideOutOfScope ? 'text-blue bg-blue-pale' : 'text-muted hover:text-blue hover:bg-blue-pale',
           )}
         >
-          <Filter size={15} />
+          {/* The icon states what the click does, and changes with the state — a funnel said
+              "filtering happens here" without saying whether anything currently is. */}
+          {hideOutOfScope ? <EyeOff size={15} /> : <Eye size={15} />}
         </button>
 
         {tables.length > 1 && (
@@ -640,44 +642,24 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                   {showPointGutter && (() => {
                     const points = reviewPointRows?.get(rk);
                     return (
-                      /* A left EDGE STRIPE plus an outline icon, not a filled glyph.
-                         `fill="currentColor"` on a speech bubble at 12px is a solid blob — it read
-                         as a dark square rather than as a comment, and the two states differed only
-                         by how dark that square was. The stripe is what makes a row with open points
-                         findable while scanning the edge of the grid (the same device the health
-                         checks use for severity), and the icon then only has to name what the stripe
-                         means. Open work is amber; a thread where everything is resolved keeps a
-                         quiet outline and no stripe — the record of why a mapping looks the way it
-                         does stays findable without reading as outstanding. */
-                      <td
-                        className={clsx(
-                          'border-t border-line-soft px-0 align-middle w-9 border-l-[3px]',
-                          points && points.open > 0 ? 'border-l-amber-ink bg-amber-bg/60' : 'border-l-transparent',
-                        )}
-                      >
+                      /* One icon, centred, and nothing else.
+                         This has now been a filled glyph (a solid blob at 12px), then a stripe plus
+                         an icon plus a count — three marks competing in a 36px gutter for a fact
+                         that is binary: is there a conversation on this row. Colour carries the
+                         only other distinction worth making, open versus settled, and the count
+                         lives in the tooltip where it costs nothing. */
+                      <td className="border-t border-line-soft px-0 align-middle w-9">
                         {points && (
                           <span
-                            className="flex items-center justify-center gap-px"
+                            className="flex items-center justify-center"
                             title={points.open > 0
                               ? `${points.open} open review point${points.open === 1 ? '' : 's'} on this field${points.total > points.open ? ` (${points.total} in total)` : ''}`
                               : `${points.total} review point${points.total === 1 ? '' : 's'}, all resolved`}
                           >
                             <MessageSquare
-                              size={12}
-                              strokeWidth={2.25}
+                              size={14}
                               className={points.open > 0 ? 'text-amber-ink' : 'text-muted/60'}
                             />
-                            {/* The count only when it adds something. "1" beside an icon that
-                                already means "there is a point here" is a character of noise on
-                                every marked row. */}
-                            {points.total > 1 && (
-                              <span className={clsx(
-                                'text-[9px] font-bold tabular-nums leading-none',
-                                points.open > 0 ? 'text-amber-ink' : 'text-muted/60',
-                              )}>
-                                {points.total}
-                              </span>
-                            )}
                           </span>
                         )}
                       </td>
