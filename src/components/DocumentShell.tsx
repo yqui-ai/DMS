@@ -18,7 +18,7 @@ import { Dialog } from './Dialog';
  * the tab gets the document as the page, under the app's own header, with a way back to the
  * catalogue rather than a dismiss.
  */
-export function DocumentShell({ asPage, open, title, subtitle, backTo, backLabel, onClose, children }: {
+export function DocumentShell({ asPage, open, title, subtitle, backTo, backLabel, headerActions, onClose, children }: {
   /** True in a dedicated tab; false when floating over the list that opened it. */
   asPage?: boolean;
   open: boolean;
@@ -27,12 +27,17 @@ export function DocumentShell({ asPage, open, title, subtitle, backTo, backLabel
   /** Where "back" goes in page mode — the catalogue this document belongs to. */
   backTo?: string;
   backLabel?: string;
+  /** The document's own actions — version selector, export, review. They sit in the TITLE BAR,
+   * beside the close button, rather than in a strip below it: they act on the whole document, and
+   * putting them in the body made the reader work down through two rows of chrome before reaching
+   * the first row of data. */
+  headerActions?: ReactNode;
   onClose: () => void;
   children: ReactNode;
 }) {
   if (!asPage) {
     return (
-      <Dialog open={open} onClose={onClose} title={title} subtitle={subtitle} size="win">
+      <Dialog open={open} onClose={onClose} title={title} subtitle={subtitle} headerActions={headerActions} size="win">
         {children}
       </Dialog>
     );
@@ -54,8 +59,15 @@ export function DocumentShell({ asPage, open, title, subtitle, backTo, backLabel
             <ArrowLeft size={13} /> {backLabel ?? 'Back to the catalogue'}
           </Link>
         )}
-        <h1 className="text-lg font-bold text-text leading-tight">{title}</h1>
-        {subtitle && <p className="text-2xs text-muted mt-0.5">{subtitle}</p>}
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-lg font-bold text-text leading-tight">{title}</h1>
+            {subtitle && <p className="text-2xs text-muted mt-0.5">{subtitle}</p>}
+          </div>
+          {/* Same actions, same place relative to the title — there is simply no close button to
+              sit before in page mode. */}
+          {headerActions && <div className="flex items-center gap-2 shrink-0">{headerActions}</div>}
+        </div>
       </div>
 
       <div className="flex-1 min-h-0">{children}</div>

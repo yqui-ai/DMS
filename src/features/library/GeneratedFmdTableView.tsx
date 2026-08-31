@@ -473,6 +473,63 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
           at the other) — which, above the section band and the field-name header, put five strips of
           chrome between the top of the dialog and the first row of data. */}
       <div className="flex items-center gap-1 border-b border-line mb-2 shrink-0">
+        {/* Structures on the LEFT, controls on the RIGHT.
+            The tab strip is what this row is FOR — which structure am I looking at — and it was
+            starting a third of the way across, after five icon buttons. The controls are still
+            here rather than in the title bar because they act on the GRID (what it shows, whether
+            it is being edited), not on the document; the document's own actions sit with its
+            name. */}
+        {tables.length > 1 && (
+          <>
+            {canScrollLeft && (
+              <button onClick={() => scrollTabs('left')} className="shrink-0 p-1 text-muted hover:text-blue" aria-label="Scroll tabs left">
+                <ChevronLeft size={16} />
+              </button>
+            )}
+            {/* `self-stretch items-end -mb-px` is what puts the active underline ON the toolbar's
+                bottom border instead of floating above it.
+                The tabs sat in an `items-center` wrapper, so they were centred against a row made
+                taller by the 32px icon buttons beside them — and their own `-mb-px` was clipped by
+                this wrapper's `overflow-hidden` before it could reach the row's border. The result
+                was a tab that looked lifted, with a hairline gap under it. The overhang moves to
+                the wrapper, which nothing clips; the tabs keep a plain `border-b-2` inside it. */}
+            <div
+              ref={tabsRef}
+              onScroll={updateTabScrollState}
+              className="flex items-end self-stretch -mb-px gap-1 flex-1 min-w-0 overflow-hidden"
+            >
+              {tables.map((t) => (
+                <button
+                  key={t.structureId} onClick={() => setActiveTableId(t.structureId)}
+                  title={t.structureDescription || t.structureIdent}
+                  className={clsx('px-2.5 py-1.5 text-sm2 border-b-2 whitespace-nowrap shrink-0', t.structureId === activeTable.structureId ? 'border-blue text-blue font-semibold' : 'border-transparent text-muted hover:text-text')}
+                >
+                  {tabLabelMode === 'ident' ? t.structureIdent : (t.structureDescription || t.structureIdent)}
+                </button>
+              ))}
+            </div>
+            {canScrollRight && (
+              <button onClick={() => scrollTabs('right')} className="shrink-0 p-1 text-muted hover:text-blue" aria-label="Scroll tabs right">
+                <ChevronRight size={16} />
+              </button>
+            )}
+          </>
+        )}
+        <div className="ml-auto flex items-center gap-1 shrink-0">
+          {/* The structure-label toggle belongs with the other display controls, not in front of
+              the tabs. It sat inside the tab block, so when the tabs moved left it went with them
+              and landed on top of the first tab — a control overlapping the thing it controls. */}
+          {tables.length > 1 && (
+            <button
+              onClick={() => setTabLabelMode((m) => (m === 'ident' ? 'description' : 'ident'))}
+              title={tabLabelMode === 'ident' ? 'Show structure names' : 'Show structure IDs'}
+              aria-label={tabLabelMode === 'ident' ? 'Show structure names' : 'Show structure IDs'}
+              className={clsx('flex items-center justify-center w-8 h-8 rounded shrink-0',
+                tabLabelMode === 'description' ? 'text-blue bg-blue-pale' : 'text-muted hover:text-blue hover:bg-blue-pale')}
+            >
+              <Type size={15} />
+            </button>
+          )}
         {/* Pencil to enter, CHECK to finish — the same pair the field-level view and the scope
             register use, so "this is being edited" reads the same everywhere in the app. It was an
             eye here, which meant "view" rather than "done" and made this the one edit toggle whose
@@ -584,54 +641,7 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
           {hideOutOfScope ? <EyeOff size={15} /> : <Eye size={15} />}
         </button>
 
-        {tables.length > 1 && (
-          <>
-            {/* Grouped with sort/columns: all three change how the grid is displayed, so they read
-                as one control cluster rather than one stranded at the far end of the tab strip. */}
-            <button
-              onClick={() => setTabLabelMode((m) => (m === 'ident' ? 'description' : 'ident'))}
-              title={tabLabelMode === 'ident' ? 'Show structure names' : 'Show structure IDs'}
-              aria-label={tabLabelMode === 'ident' ? 'Show structure names' : 'Show structure IDs'}
-              className={clsx('flex items-center justify-center w-8 h-8 rounded shrink-0',
-                tabLabelMode === 'description' ? 'text-blue bg-blue-pale' : 'text-muted hover:text-blue hover:bg-blue-pale')}
-            >
-              <Type size={15} />
-            </button>
-            <div className="w-px h-5 bg-line shrink-0 mx-1" aria-hidden />
-            {canScrollLeft && (
-              <button onClick={() => scrollTabs('left')} className="shrink-0 p-1 text-muted hover:text-blue" aria-label="Scroll tabs left">
-                <ChevronLeft size={16} />
-              </button>
-            )}
-            {/* `self-stretch items-end -mb-px` is what puts the active underline ON the toolbar's
-                bottom border instead of floating above it.
-                The tabs sat in an `items-center` wrapper, so they were centred against a row made
-                taller by the 32px icon buttons beside them — and their own `-mb-px` was clipped by
-                this wrapper's `overflow-hidden` before it could reach the row's border. The result
-                was a tab that looked lifted, with a hairline gap under it. The overhang moves to
-                the wrapper, which nothing clips; the tabs keep a plain `border-b-2` inside it. */}
-            <div
-              ref={tabsRef}
-              onScroll={updateTabScrollState}
-              className="flex items-end self-stretch -mb-px gap-1 flex-1 min-w-0 overflow-hidden"
-            >
-              {tables.map((t) => (
-                <button
-                  key={t.structureId} onClick={() => setActiveTableId(t.structureId)}
-                  title={t.structureDescription || t.structureIdent}
-                  className={clsx('px-2.5 py-1.5 text-sm2 border-b-2 whitespace-nowrap shrink-0', t.structureId === activeTable.structureId ? 'border-blue text-blue font-semibold' : 'border-transparent text-muted hover:text-text')}
-                >
-                  {tabLabelMode === 'ident' ? t.structureIdent : (t.structureDescription || t.structureIdent)}
-                </button>
-              ))}
-            </div>
-            {canScrollRight && (
-              <button onClick={() => scrollTabs('right')} className="shrink-0 p-1 text-muted hover:text-blue" aria-label="Scroll tabs right">
-                <ChevronRight size={16} />
-              </button>
-            )}
-          </>
-        )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto">
@@ -651,7 +661,7 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                   one. Left blank in the band so it reads as a margin rather than as a column of
                   some section it does not belong to. */}
               {Array.from({ length: gutterCount }, (_, i) => (
-                <th key={`band-gutter-${i}`} className="sticky top-0 bg-surface-3 w-6" aria-hidden />
+                <th key={`band-gutter-${i}`} className="sticky top-0 bg-surface-3 w-8" aria-hidden />
               ))}
               {runs.map((run, i) => (
                 <th
@@ -666,7 +676,7 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
             <tr>
               {showReorderGutter && (
                 <th
-                  className="sticky bg-surface-3 w-6 z-[2] px-0"
+                  className="sticky bg-surface-3 w-8 z-[2] px-0"
                   style={{ top: bandHeight }}
                   aria-label="Reorder"
                   title={rowsInDocumentOrder
@@ -675,10 +685,10 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                 />
               )}
               {showRemoveGutter && (
-                <th className="sticky bg-surface-3 w-6 z-[2] px-0" style={{ top: bandHeight }} aria-label="Remove" title="Remove a field" />
+                <th className="sticky bg-surface-3 w-8 z-[2] px-0" style={{ top: bandHeight }} aria-label="Remove" title="Remove a field" />
               )}
               {showPointGutter && (
-                <th className="sticky bg-surface-3 w-6 z-[2] px-0" style={{ top: bandHeight }} aria-label="Review points" title="Rows carrying a review point" />
+                <th className="sticky bg-surface-3 w-8 z-[2] px-0" style={{ top: bandHeight }} aria-label="Review points" title="Rows carrying a review point" />
               )}
               {visibleColumns.map((c) => (
                 <th
@@ -730,7 +740,7 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                        same gesture for the same act, so knowing one teaches the other. The row is
                        the drop target (see the <tr> above); the handle is only what starts it, so
                        an ordinary click still lands in the cell underneath. */
-                    <td className="border-t border-line-soft px-0 align-middle w-6 text-center">
+                    <td className="border-t border-line-soft px-0 align-middle w-8 text-center">
                       <span
                         draggable={rowsInDocumentOrder && !reordering}
                         onDragStart={() => setDragRow(originalIndex)}
@@ -756,7 +766,7 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                        change that publishes as a version, so it is not something to do on a
                        mis-click. Muted until hovered, then red: destructive, but not shouting it
                        on every row of a two-hundred-row grid. */
-                    <td className="border-t border-line-soft px-0 align-middle w-6 text-center">
+                    <td className="border-t border-line-soft px-0 align-middle w-8 text-center">
                       <button
                         type="button"
                         aria-label="Remove this field"
@@ -782,7 +792,7 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                          that is binary: is there a conversation on this row. Colour carries the
                          only other distinction worth making, open versus settled, and the count
                          lives in the tooltip where it costs nothing. */
-                      <td className="border-t border-line-soft px-0 align-middle w-6">
+                      <td className="border-t border-line-soft px-0 align-middle w-8">
                         {points && (
                           <span
                             className="flex items-center justify-center"

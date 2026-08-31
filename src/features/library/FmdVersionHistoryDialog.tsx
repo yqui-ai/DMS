@@ -552,6 +552,73 @@ export function FmdVersionHistoryDialog({ fmd, onClose, asPage }: {
     }
   };
 
+  /* The document's own actions, in the TITLE BAR beside the close button rather than in a strip
+     below the tabs. They act on the whole document — which version, export it, review it — so
+     they belong with its name, and moving them up leaves the tab row to the tabs. It also spares
+     the reader two rows of chrome before the first row of data. */
+  const documentActions = (
+    <>
+          {/* One version selector for the whole dialog — the Field Mapping tab (table and
+              field-level view alike) always renders whatever is picked here, so there's a single
+              answer to "which version am I looking at" no matter which tab is open. */}
+          {/* Hidden on Health check: that tab always measures the latest version, so a selector
+              sitting above it would imply a choice it doesn't honour. */}
+          {versions.length > 0 && tab !== 'health' && (
+            <label className="flex items-center gap-1.5 text-2xs text-muted">
+              Version
+              {/* Not `mono`: each option is an identifier followed by prose, and setting the
+                  whole control in the code face put "unpublished" in monospace beside two
+                  sans-serif buttons. Version numbers stay mono everywhere they stand alone. */}
+              <Select
+                value={selected?.id ?? ''} onChange={(e) => pickVersion(e.target.value)}
+                size="sm"
+              >
+                {versionOptions.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {/* "latest" used to mean newest by date, which labelled an unreleased
+                        generation as latest while an older version was the one everyone else
+                        could see. Newest and live are different questions: say which is live,
+                        and say plainly when a version isn't published at all. */}
+                    {v.id === DRAFT_VERSION_ID
+                      ? `Draft · ${pendingChanges.length} unpublished`
+                      : `${v.version}${versionNote.get(v.id) ?? ''}`}
+                  </option>
+                ))}
+              </Select>
+            </label>
+          )}
+          {/* A second BROWSER tab, not an in-app "full screen".
+              The complaint this answers is that a modal has to be closed to look at anything
+              else — and an in-app full-screen mode would not fix that, because it still occupies
+              the one window. A real tab does: the FMD stays open on its own URL while you use the
+              rest of the app beside it. The address already exists (every Library deep view is a
+              route); this is the affordance that makes it reachable without copying the URL out
+              of the bar. */}
+          {/* Hidden in page mode: you are already in that tab, and a button offering
+              to open one more of the same document is an invitation to lose track of which is
+              which. */}
+          {!asPage && <Button
+            variant="quiet" size="sm"
+            onClick={() => window.open(`${window.location.origin}${to('view')}/fmd/${fmd.id}`, '_blank', 'noopener')}
+            title="Open this FMD in a new browser tab, so you can keep it open while using other screens"
+          >
+            <ExternalLink size={14} /> New tab
+          </Button>}
+          <Button variant="quiet" size="sm" onClick={handleExport} disabled={exporting || !selected || (!isGoldenStructure && !isGenerated)}>
+            <Download size={14} /> {exporting ? 'Exporting…' : 'Export to Excel'}
+          </Button>
+          {isCustomFmd && (
+            <Button variant="ai" size="sm"
+              onClick={handleReviewMapping}
+              disabled={versionBusy || !latest?.sheets.generatedTables?.length}
+              title={publishing ? busyReason : latest ? (latest.version === DRAFT_VERSION ? `Reviews the working draft` : `Reviews ${latest.version}, the latest version`) : undefined}
+            >
+              <Sparkles size={14} /> {reviewing ? 'Reviewing…' : 'Review Latest Version'}
+            </Button>
+          )}
+    </>
+  );
+
   return (
     <>
     <DocumentShell
@@ -562,6 +629,7 @@ export function FmdVersionHistoryDialog({ fmd, onClose, asPage }: {
       subtitle={placementSubtitle}
       backTo={to('fmds')}
       backLabel="Back to Field Mapping"
+      headerActions={documentActions}
     >
       {unsavedGate}
       <div className="h-full flex flex-col">
@@ -616,68 +684,6 @@ export function FmdVersionHistoryDialog({ fmd, onClose, asPage }: {
           >
             Where-Used
           </button>
-          {/* On the tab row and right-aligned, but held clear of the border: the active tab
-              marks itself by sitting ON that line, so anything else touching it reads as a tab. */}
-          <div className="ml-auto flex items-center gap-2 mb-3">
-            {/* One version selector for the whole dialog — the Field Mapping tab (table and
-                field-level view alike) always renders whatever is picked here, so there's a single
-                answer to "which version am I looking at" no matter which tab is open. */}
-            {/* Hidden on Health check: that tab always measures the latest version, so a selector
-                sitting above it would imply a choice it doesn't honour. */}
-            {versions.length > 0 && tab !== 'health' && (
-              <label className="flex items-center gap-1.5 text-2xs text-muted">
-                Version
-                {/* Not `mono`: each option is an identifier followed by prose, and setting the
-                    whole control in the code face put "unpublished" in monospace beside two
-                    sans-serif buttons. Version numbers stay mono everywhere they stand alone. */}
-                <Select
-                  value={selected?.id ?? ''} onChange={(e) => pickVersion(e.target.value)}
-                  size="sm"
-                >
-                  {versionOptions.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {/* "latest" used to mean newest by date, which labelled an unreleased
-                          generation as latest while an older version was the one everyone else
-                          could see. Newest and live are different questions: say which is live,
-                          and say plainly when a version isn't published at all. */}
-                      {v.id === DRAFT_VERSION_ID
-                        ? `Draft · ${pendingChanges.length} unpublished`
-                        : `${v.version}${versionNote.get(v.id) ?? ''}`}
-                    </option>
-                  ))}
-                </Select>
-              </label>
-            )}
-            {/* A second BROWSER tab, not an in-app "full screen".
-                The complaint this answers is that a modal has to be closed to look at anything
-                else — and an in-app full-screen mode would not fix that, because it still occupies
-                the one window. A real tab does: the FMD stays open on its own URL while you use the
-                rest of the app beside it. The address already exists (every Library deep view is a
-                route); this is the affordance that makes it reachable without copying the URL out
-                of the bar. */}
-            {/* Hidden in page mode: you are already in that tab, and a button offering
-                to open one more of the same document is an invitation to lose track of which is
-                which. */}
-            {!asPage && <Button
-              variant="quiet" size="sm"
-              onClick={() => window.open(`${window.location.origin}${to('view')}/fmd/${fmd.id}`, '_blank', 'noopener')}
-              title="Open this FMD in a new browser tab, so you can keep it open while using other screens"
-            >
-              <ExternalLink size={14} /> New tab
-            </Button>}
-            <Button variant="quiet" size="sm" onClick={handleExport} disabled={exporting || !selected || (!isGoldenStructure && !isGenerated)}>
-              <Download size={14} /> {exporting ? 'Exporting…' : 'Export to Excel'}
-            </Button>
-            {isCustomFmd && (
-              <Button variant="ai" size="sm"
-                onClick={handleReviewMapping}
-                disabled={versionBusy || !latest?.sheets.generatedTables?.length}
-                title={publishing ? busyReason : latest ? (latest.version === DRAFT_VERSION ? `Reviews the working draft` : `Reviews ${latest.version}, the latest version`) : undefined}
-              >
-                <Sparkles size={14} /> {reviewing ? 'Reviewing…' : 'Review Latest Version'}
-              </Button>
-            )}
-          </div>
         </div>
 
         {isLoading ? (

@@ -97,6 +97,49 @@ export function GoldenXrefViewerDialog({ xref, onClose, asPage }: {
 
   if (!xref) return null;
 
+  /* Same placement as the FMD viewer: the document's own actions live in the TITLE BAR beside the
+     close button, so the tab row is left to the tabs.
+     The version selector is still the ONE selector for the whole dialog — every tab that reads a
+     version reads whatever is picked here. It hides on the tabs that do not read one: Draft is by
+     definition the draft, and Where used compares against the latest published version. A selector
+     that visibly does nothing is worse than none. */
+  const documentActions = (
+    <>
+          {/* Same reasoning as the FMD viewer's: a modal has to be closed to look at anything
+              else, and an in-app full-screen mode would not change that — it still occupies the
+              one window. The address already exists (this view is a route); this makes it
+              reachable without copying the URL out of the bar. */}
+          {/* Hidden in page mode: you are already in that tab, and a button offering
+              to open one more of the same document is an invitation to lose track of which is
+              which. */}
+          {!asPage && <Button
+            variant="quiet" size="sm"
+            onClick={() => window.open(`${window.location.origin}${to('view')}/xref/${xref.id}`, '_blank', 'noopener')}
+            title="Open this XREF in a new browser tab, so you can keep it open while using other screens"
+          >
+            <ExternalLink size={14} /> New tab
+          </Button>}
+          {versions.length > 0 && (tab === 'structure' || tab === 'versions') && (
+            <label className="flex items-center gap-1.5 text-2xs text-muted">
+              Version
+              <Select
+                value={selected?.id ?? ''}
+                onChange={(e) => setSelectedId(e.target.value)}
+                size="sm"
+              >
+                {versions.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {/* "latest" is only meaningful for a released version — a draft sits above
+                        the live one without being it, so it says so instead. */}
+                    {v.version}{!v.publishedAt ? ' · unpublished' : v.id === latest?.id ? ' · latest' : ''}
+                  </option>
+                ))}
+              </Select>
+            </label>
+          )}
+    </>
+  );
+
   return (
     <DocumentShell
       asPage={asPage}
@@ -105,6 +148,7 @@ export function GoldenXrefViewerDialog({ xref, onClose, asPage }: {
       title={xref.name}
       backTo={to('xref')}
       backLabel="Back to Cross Reference"
+      headerActions={documentActions}
     >
       {isLoading ? (
         <p className="text-sm2 text-muted">Loading…</p>
@@ -127,45 +171,6 @@ export function GoldenXrefViewerDialog({ xref, onClose, asPage }: {
               ))}
             </div>
 
-            {/* One selector for the whole dialog, matching the FMD viewer — every tab that renders
-                a version renders whatever is picked here, so there is a single answer to which
-                version is on screen. Hidden on the tabs that do not read it: Draft is by definition
-                the draft, and Where used compares against the latest published one. A selector that
-                visibly does nothing is worse than none. */}
-            <div className="flex items-center gap-2 shrink-0 -mt-[5px]">
-            {/* Same reasoning as the FMD viewer's: a modal has to be closed to look at anything
-                else, and an in-app full-screen mode would not change that — it still occupies the
-                one window. The address already exists (this view is a route); this makes it
-                reachable without copying the URL out of the bar. */}
-            {/* Hidden in page mode: you are already in that tab, and a button offering
-                to open one more of the same document is an invitation to lose track of which is
-                which. */}
-            {!asPage && <Button
-              variant="quiet" size="sm"
-              onClick={() => window.open(`${window.location.origin}${to('view')}/xref/${xref.id}`, '_blank', 'noopener')}
-              title="Open this XREF in a new browser tab, so you can keep it open while using other screens"
-            >
-              <ExternalLink size={14} /> New tab
-            </Button>}
-            {versions.length > 0 && (tab === 'structure' || tab === 'versions') && (
-              <label className="flex items-center gap-1.5 text-2xs text-muted">
-                Version
-                <Select
-                  value={selected?.id ?? ''}
-                  onChange={(e) => setSelectedId(e.target.value)}
-                  size="sm"
-                >
-                  {versions.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {/* "latest" is only meaningful for a released version — a draft sits above
-                          the live one without being it, so it says so instead. */}
-                      {v.version}{!v.publishedAt ? ' · unpublished' : v.id === latest?.id ? ' · latest' : ''}
-                    </option>
-                  ))}
-                </Select>
-              </label>
-            )}
-            </div>
           </div>
 
           <div className="flex-1 min-h-0 overflow-auto">
