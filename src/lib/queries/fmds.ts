@@ -20,6 +20,7 @@ export {
   DRAFT_VERSION, DRAFT_VERSION_ID, applyPendingChanges, draftOverlayVersion, nextPublishedVersion, bumpVersion,
 } from '../fmdDraft';
 import { DRAFT_VERSION, DRAFT_VERSION_ID, applyPendingChanges, bumpVersion, nextPublishedVersion } from '../fmdDraft';
+import { CUSTOM_FIELD_TYPE } from '../goldenFmdRequiredFields';
 
 
 export function useAllFmds() {
@@ -792,6 +793,184 @@ export function useEditFmdField(fmdId: string) {
       if (error) throw error;
       await invalidateFmd(queryClient, fmdId);
       return { versionId: DRAFT_VERSION_ID, createdDraft: !existing.length, version: DRAFT_VERSION };
+    },
+  };
+}
+
+/** Adds a field or a whole structure to a generated FMD — things the Golden template never gave it.
+ *
+ * **Always produces a real draft VERSION, never a pending change.** A pending change is a cell edit
+ * (`structureId`, `rowIndex`, `field`, `from`, `to`); the model has no way to say "a row appeared",
+ * and inventing one would mean every consumer of `applyPendingChanges` — the draft overlay, the
+ * publish selector, the diff — learning to insert rows at a position that other pending changes are
+ * already indexed against. Adding a field changes the document's SHAPE, which is a different kind of
+ * act from changing a value, and it gets a version of its own.
+ *
+ * Anything already pending is folded into that version, exactly as goldenSync does. Without it the
+ * edits would still be stored but invisible — a real version row wins over the overlay — and
+ * publishing would silently release without them.
+ */
+export function useAddFmdContent(fmdId: string) {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  /** Reads the newest version, folds in any pending overlay, and hands back a writer that lands the
+   * result either in the existing unpublished row or in a fresh one. */
+  const openDraft = async () => {
+    const { data: current, error: readError } = await supabase
+      .from('fmd_versions')
+      .select('id, version, sheets, published_at')
+      .eq('fmd_id', fmdId).order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (readError) throw readError;
+    if (!current) throw new Error('This FMD has no version to add to yet.');
+
+    const sheets = (current.sheets ?? {}) as FmdVersion['sheets'];
+    if (!sheets.generatedTables?.length) throw new Error('This version has no generated mapping data to add to.');
+
+    const { data: fmdRow, error: draftReadError } = await supabase
+      .from('fmds').select('draft').eq('id', fmdId).single();
+    if (draftReadError) throw draftReadError;
+    const stored = (fmdRow?.draft as FmdDraft | null) ?? undefined;
+    const pending = stored && stored.baseVersionId === current.id ? (stored.pendingChanges ?? []) : [];
+
+    const tables = pending.length
+      ? applyPendingChanges(sheets.generatedTables, pending)
+      : sheets.generatedTables;
+
+    return { current, sheets, tables, pending };
+  };
+
+  const write = async (
+    current: { id: string; version: string; published_at: string | null },
+    _sheets: FmdVersion['sheets'],
+    nextSheets: FmdVersion['sheets'],
+    comment: string,
+    hadPending: boolean,
+  ) => {
+    const who = user?.email ?? 'Unknown';
+    const now = new Date().toISOString();
+
+    if (!current.published_at) {
+      // Already a working copy — edit it in place, exactly as a cell edit does.
+      const { error } = await supabase
+        .from('fmd_versions')
+        .update({ sheets: nextSheets, changed_by: who, changed_at: now })
+        .eq('id', current.id);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase.from('fmd_versions').insert({
+        fmd_id: fmdId,
+        version: bumpVersion(current.version),
+        state: 'Draft',
+        sheets: nextSheets,
+        comment,
+        created_by: who, created_at: now,
+      });
+      if (error) throw error;
+    }
+
+    // Folded into the version above, so the overlay must not replay them on top of it.
+    if (hadPending) {
+      const { error } = await supabase.from('fmds').update({ draft: null }).eq('id', fmdId);
+      if (error) throw error;
+    }
+    await invalidateFmd(queryClient, fmdId);
+  };
+
+  return {
+    /** Appends a field to EVERY structure in the document.
+     *
+     * A generated FMD's columns are one list shared by all its structures (`generatedColumns`), and
+     * the grid renders that list against each table — so a column present in one structure's rows
+     * and absent from another's is not a narrower document, it is a document whose other tabs show
+     * blanks under a header. Adding it everywhere keeps the shape honest.
+     *
+     * `FIELD_TYPE: 'Custom'` is stamped on the COLUMN, not the row, because it describes where the
+     * column came from rather than what any row holds. */
+    async addField(field: string, options?: { description?: string; sectionName?: string }): Promise<void> {
+      const name = field.trim().toUpperCase();
+      if (!name) throw new Error('Give the field a name.');
+
+      const { current, sheets, tables, pending } = await openDraft();
+      const columns = sheets.generatedColumns ?? [];
+      if (columns.some((c) => c.field.trim().toUpperCase() === name)) {
+        throw new Error(`${name} already exists in this FMD.`);
+      }
+
+      // Placed in the section it was asked for, else in the last one — never the first, which would
+      // put a custom column in front of SRC_SYSTEM.
+      const section = options?.sectionName?.trim() || columns[columns.length - 1]?.sectionName || 'Custom';
+      const colour = columns.find((c) => c.sectionName === section)?.color
+        ?? columns[columns.length - 1]?.color
+        ?? 'blue';
+
+      const nextColumns: GeneratedColumn[] = [
+        ...columns,
+        { field: name, sectionName: section, color: colour, description: options?.description },
+      ];
+      const nextTables: GeneratedTable[] = tables.map((t) => ({
+        ...t,
+        // Every row gains the key with an empty value, so the column exists rather than being
+        // absent-but-rendered — an undefined cell and a blank one look identical and behave
+        // differently the moment anything counts them.
+        rows: t.rows.map((r) => ({ ...r, [name]: '', FIELD_TYPE: r.FIELD_TYPE || CUSTOM_FIELD_TYPE })),
+      }));
+
+      await write(
+        current as any, sheets,
+        { ...sheets, generatedColumns: nextColumns, generatedTables: nextTables },
+        `Added custom field ${name}`,
+        pending.length > 0,
+      );
+    },
+
+    /** Appends a whole structure — a new tab in the grid, with the document's columns and no rows.
+     *
+     * Rows are added by editing; a structure arrives empty because there is nothing to derive its
+     * contents from. The ident is what the grid tabs and every export sheet name key on, so it is
+     * uppercased and checked for collisions here rather than producing two tabs with one name. */
+    async addStructure(ident: string, description?: string): Promise<void> {
+      const name = ident.trim().toUpperCase();
+      if (!name) throw new Error('Give the structure a name.');
+
+      const { current, sheets, tables, pending } = await openDraft();
+      if (tables.some((t) => t.structureIdent.trim().toUpperCase() === name)) {
+        throw new Error(`${name} already exists in this FMD.`);
+      }
+
+      const nextTables: GeneratedTable[] = [
+        ...tables,
+        { structureId: crypto.randomUUID(), structureIdent: name, structureDescription: description?.trim() || undefined, rows: [] },
+      ];
+
+      await write(
+        current as any, sheets,
+        { ...sheets, generatedTables: nextTables },
+        `Added custom structure ${name}`,
+        pending.length > 0,
+      );
+    },
+
+    /** Appends an empty row to one structure, so a custom field has somewhere to be filled in. */
+    async addRow(structureId: string): Promise<void> {
+      const { current, sheets, tables, pending } = await openDraft();
+      const target = tables.find((t) => t.structureId === structureId);
+      if (!target) throw new Error('Could not locate that structure.');
+
+      const blank: Record<string, string> = {};
+      for (const c of sheets.generatedColumns ?? []) blank[c.field] = '';
+      blank.FIELD_TYPE = CUSTOM_FIELD_TYPE;
+
+      const nextTables: GeneratedTable[] = tables.map((t) => (
+        t.structureId !== structureId ? t : { ...t, rows: [...t.rows, blank] }
+      ));
+
+      await write(
+        current as any, sheets,
+        { ...sheets, generatedTables: nextTables },
+        `Added a custom field row to ${target.structureIdent}`,
+        pending.length > 0,
+      );
     },
   };
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
-import { Check, ChevronLeft, ChevronRight, Columns3, Eye, EyeOff, Maximize2, MessageSquare, Pencil, Type } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Columns3, Eye, EyeOff, Maximize2, MessageSquare, Pencil, Plus, Type } from 'lucide-react';
 import { Dialog } from '../../components/Dialog';
 import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import { useDismiss } from '../../components/useDismiss';
@@ -248,7 +248,7 @@ function GridCell({ column, value, onSave }: {
   );
 }
 
-export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, reviewFindingsByTable, onOpenField, onAddReviewPoint, reviewPointCellsByTable, reviewPointRowsByTable, canEdit = false, onSaveField }: {
+export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, reviewFindingsByTable, onOpenField, onAddReviewPoint, reviewPointCellsByTable, reviewPointRowsByTable, onAddContent, canEdit = false, onSaveField }: {
   columns: GeneratedColumn[]; tables: GeneratedTable[];
   /** structureId -> rowKey -> changed field names, vs. the previous version — yellow-highlights
    * exactly the cells that changed since then. Undefined/absent means "nothing to compare against
@@ -281,6 +281,8 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
    * on the grid: raise a point about a mapping without pinning it to a column and the row looked
    * untouched. This drives the gutter, which is the row-level answer. */
   reviewPointRowsByTable?: Map<string, Map<string, { total: number; open: number }>>;
+  /** Opens the add-field/row/structure dialog. Omitted where the FMD cannot be edited. */
+  onAddContent?: () => void;
 }) {
   const [activeTableId, setActiveTableId] = useState<string | null>(tables[0]?.structureId ?? null);
   const [tabLabelMode, setTabLabelMode] = useState<'ident' | 'description'>('ident');
@@ -427,6 +429,19 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
             eye here, which meant "view" rather than "done" and made this the one edit toggle whose
             exit icon differed. Editing is a mode you enter, not a property of clicking; every save
             lands in the draft, so nothing publishes. */}
+        {/* Adding sits beside editing, not inside it: both change the document, and hiding the one
+            that changes its SHAPE behind the mode that changes values would make it findable only
+            by someone already editing. */}
+        {canEdit && onAddContent && (
+          <button
+            onClick={onAddContent}
+            aria-label="Add a custom field, row or structure"
+            title="Add a custom field, row or structure — something the Golden template does not define"
+            className="flex items-center justify-center w-8 h-8 rounded text-muted hover:text-blue hover:bg-blue-pale"
+          >
+            <Plus size={16} />
+          </button>
+        )}
         {canEdit && onSaveField && (
           <button
             onClick={() => setEditing((v) => !v)}

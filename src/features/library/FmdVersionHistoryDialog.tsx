@@ -14,6 +14,7 @@ import { useDefaultProgram } from '../../lib/queries/programme';
 import { DRAFT_VERSION, DRAFT_VERSION_ID, draftOverlayVersion, nextPublishedVersion, useEditFmdField, useFmdVersions, useGoldenFmdSummary, useFmdUsage, useGoldenWhereUsed, useHistoricalSiblings, useLatestFmdVersion, usePublishFmdVersion, type LibraryFmdRow } from '../../lib/queries/fmds';
 import { useFmdFieldNotes, useFmdFieldNoteMutations } from '../../lib/queries/fmdFieldNotes';
 import { useMigrationObjects, useScopeObjectOwners, scopeOwnerKey, type ScopeAssignment } from '../../lib/queries/scope';
+import { usePlants, useSubprojectPlants } from '../../lib/queries/plants';
 import { diffTablesByStructure, rowKey, summariseVersionChange } from '../../lib/rowDiff';
 import { useMappingReview, readMappingReviews, findingKey } from '../../lib/queries/mappingReview';
 import { analyseFmd } from '../../lib/fmdHealth';
@@ -29,6 +30,7 @@ import { FmdWhereUsedTab } from './fmd/FmdWhereUsedTab';
 import { FmdDraftTab } from './fmd/FmdDraftTab';
 import { FmdReviewTab } from './fmd/FmdReviewTab';
 import { FmdHealthTab } from './fmd/FmdHealthTab';
+import { AddFmdContentDialog } from './fmd/AddFmdContentDialog';
 import type { MappingReviewFinding } from '../../types/entities';
 
 type Tab = 'mapping' | 'draft' | 'versions' | 'health' | 'whereUsed';
@@ -75,6 +77,10 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
   const [pointTarget, setPointTarget] = useState<ReviewPointTarget | null>(null);
   const [selectedReviewId, setSelectedReviewId] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
+  /* Adding a custom field, row or structure. Custom FMDs only — a Standard FMD is the programme's
+     generated reference and a Golden one is the template, so neither is somewhere to bolt an
+     object-specific column onto. */
+  const [addingContent, setAddingContent] = useState(false);
   const { publish: publishVersion } = usePublishFmdVersion();
   const { saveField } = useEditFmdField(fmd?.id ?? '');
   const { review: reviewMapping, save: saveMappingReview, setAddressed } = useMappingReview();
@@ -90,6 +96,9 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
   const { data: siblings = [], isLoading: siblingsLoading } = useHistoricalSiblings(siblingsMode ? fmd?.histSourceName : undefined, fmd?.id);
   const { data: usage } = useFmdUsage(fmd?.id);
   const { data: objects = [] } = useMigrationObjects(!!fmd);
+  /* Placement context for the header — see placementSubtitle. Loaded only while a dialog is open. */
+  const { data: plants = [] } = usePlants(false, !!fmd);
+  const { data: subprojectPlants = new Map<string, string[]>() } = useSubprojectPlants(!!fmd);
   const { data: scopeOwners = new Map<string, ScopeAssignment>() } = useScopeObjectOwners(!!fmd);
   /** The FMD's object, from the catalogue this dialog already loaded — see FmdWhereUsedTab. */
   const usageObject = objects.find((o) => o.id === fmd?.migrationObjectId);
@@ -349,6 +358,26 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
   if (!fmd) return null;
 
   const object = objects.find((o) => o.id === fmd.migrationObjectId);
+
+  /* Where this document sits, under its name.
+   *
+   * An FMD is reusable — the same mapping gets adopted by another subproject, and a Custom one is
+   * regenerated for a different wave — so this is a description of where it is being read FROM
+   * today, not a property of the document. It is stated as an indicator rather than as data anyone
+   * should key on, which is also why it is a subtitle and not a Fact row.
+   *
+   * A Standard or Golden FMD is programme-wide and has no placement at all; saying "Program-wide"
+   * is the whole answer for those, and inventing a hierarchy for them would be a lie. */
+  const fmdPlants = fmd.subprojectId ? (subprojectPlants.get(fmd.subprojectId) ?? []) : [];
+  const plantLabels = fmdPlants
+    .map((id) => plants.find((p) => p.id === id))
+    .filter((p): p is NonNullable<typeof p> => !!p)
+    .map((p) => p.code);
+
+  const placementSubtitle = fmd.subprojectId
+    ? [fmd.programName, fmd.projectName, fmd.subprojectName].filter(Boolean).join(' › ')
+      + (plantLabels.length ? `  ·  ${plantLabels.length === 1 ? 'Plant' : 'Plants'} ${plantLabels.join(', ')}` : '')
+    : 'Program-wide — not tied to a project, subproject or plant';
   const isGoldenStructure = !!selected?.sheets.goldenStructure;
   const isGenerated = !!selected?.sheets.generatedColumns?.length && !!selected?.sheets.generatedTables?.length;
   const fieldViewOpen = !!(isGenerated && openField && openTable);
@@ -479,7 +508,7 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
   };
 
   return (
-    <Dialog open={!!fmd} onClose={gate(onClose)} title={fmd.name} size="win">
+    <Dialog open={!!fmd} onClose={gate(onClose)} title={fmd.name} subtitle={placementSubtitle} size="win">
       {unsavedGate}
       <div className="h-full flex flex-col">
         {/* items-END, not center: the active tab marks itself with a border that has to sit ON
@@ -494,9 +523,14 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
             Field Mapping
           </button>
           {/* After Field Mapping and before the review tabs: the mapping is the document, the health
-              check is what it adds up to, and the reviews are what people said about it. Only for
-              generated FMDs — a Golden template is a structure with nothing to measure. */}
-          {isGenerated && (
+              check is what it adds up to, and the reviews are what people said about it.
+              CUSTOM only. Health grades a document somebody is building for a subproject — how much
+              is filled in, how much is still open, whether it is behind the template. A Standard FMD
+              is the programme-wide reference generated from Golden: nobody fills it in, it has no
+              consultant and no review points, so most of what the tab measures is structurally zero
+              and the rest reads as failure for work nobody intends to do. A Golden template has
+              nothing to measure at all. */}
+          {isCustomFmd && isGenerated && (
             <button
               onClick={gate(() => setTab('health'))}
               className={clsx('px-3.5 py-2 text-sm2 font-semibold border-b-2 -mb-px', tab === 'health' ? 'border-blue text-blue' : 'border-transparent text-muted hover:text-text')}
@@ -620,6 +654,7 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
                         onSaveField={handleSaveField}
                         reviewPointCellsByTable={reviewPointCellsByTable}
                         reviewPointRowsByTable={reviewPointRowsByTable}
+                        onAddContent={isCustomFmd && canEditSelected ? () => setAddingContent(true) : undefined}
                         onAddReviewPoint={(structureId, rowIndex, field) => {
                           const t = selected!.sheets.generatedTables!.find((x) => x.structureId === structureId);
                           const r = t?.rows[rowIndex];
@@ -741,6 +776,18 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
           </div>
         )}
       </div>
+      {/* Rendered against the LATEST version's shape, not the selected one: adding always lands in
+          the draft on top of the latest, so offering the sections and structures of a superseded
+          version would let you add a column to a document that no longer looks like that. */}
+      <AddFmdContentDialog
+        open={addingContent}
+        fmdId={fmd.id}
+        columns={latest?.sheets.generatedColumns ?? []}
+        tables={latest?.sheets.generatedTables ?? []}
+        activeStructureId={openField?.structureId}
+        onClose={() => setAddingContent(false)}
+      />
+
       <AddReviewPointDialog
         target={pointTarget} canAdd={canAddNote} onClose={() => setPointTarget(null)}
         onSubmit={async (tagVal, body) => {
