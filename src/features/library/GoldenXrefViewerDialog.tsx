@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
+import { ExternalLink } from 'lucide-react';
 import { Dialog } from '../../components/Dialog';
 import { useToast } from '../../components/Toast';
 import { Select } from '../../components/Select';
 import { Tag } from '../../components/Tag';
+import { Button } from '../../components/Button';
 import { useGoldenXrefMutations, useXrefVersions, type LibraryXrefRow } from '../../lib/queries/rules';
+import { useLibraryPath } from '../../lib/libraryNav';
 import { GoldenFmdStructureView } from './GoldenFmdStructureView';
 import { XrefDraftTab } from './xref/XrefDraftTab';
 import { XrefVersionsTab } from './xref/XrefVersionsTab';
@@ -40,6 +43,7 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
   const { data: versions = [], isLoading } = useXrefVersions(xref?.id);
   const mutations = useGoldenXrefMutations();
   const toast = useToast();
+  const to = useLibraryPath();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('structure');
   const [publishing, setPublishing] = useState(false);
@@ -116,8 +120,20 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
                 version is on screen. Hidden on the tabs that do not read it: Draft is by definition
                 the draft, and Where used compares against the latest published one. A selector that
                 visibly does nothing is worse than none. */}
+            <div className="flex items-center gap-2 shrink-0 -mt-[5px]">
+            {/* Same reasoning as the FMD viewer's: a modal has to be closed to look at anything
+                else, and an in-app full-screen mode would not change that — it still occupies the
+                one window. The address already exists (this view is a route); this makes it
+                reachable without copying the URL out of the bar. */}
+            <Button
+              variant="quiet" size="sm"
+              onClick={() => window.open(`${window.location.origin}${to('xref', xref.id)}`, '_blank', 'noopener')}
+              title="Open this XREF in a new browser tab, so you can keep it open while using other screens"
+            >
+              <ExternalLink size={14} /> New tab
+            </Button>
             {versions.length > 0 && (tab === 'structure' || tab === 'versions') && (
-              <label className="flex items-center gap-1.5 text-2xs text-muted shrink-0 -mt-[5px]">
+              <label className="flex items-center gap-1.5 text-2xs text-muted">
                 Version
                 <Select
                   value={selected?.id ?? ''}
@@ -134,6 +150,7 @@ export function GoldenXrefViewerDialog({ xref, onClose }: { xref: LibraryXrefRow
                 </Select>
               </label>
             )}
+            </div>
           </div>
 
           <div className="flex-1 min-h-0 overflow-auto">

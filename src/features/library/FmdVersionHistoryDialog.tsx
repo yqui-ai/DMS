@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Select } from '../../components/Select';
 import { Button } from '../../components/Button';
 import clsx from 'clsx';
-import { Download, Sparkles } from 'lucide-react';
+import { Download, ExternalLink, Sparkles } from 'lucide-react';
 import { Dialog } from '../../components/Dialog';
 import { useUnsavedGate } from '../../components/useUnsavedGate';
 import { Tag } from '../../components/Tag';
@@ -16,6 +16,7 @@ import { useFmdFieldNotes, useFmdFieldNoteMutations } from '../../lib/queries/fm
 import { useFmdPlantRules } from '../../lib/queries/fmdPlantRules';
 import { useMigrationObjects, useScopeObjectOwners, scopeOwnerKey, type ScopeAssignment } from '../../lib/queries/scope';
 import { usePlants, useSubprojectPlants } from '../../lib/queries/plants';
+import { useLibraryPath } from '../../lib/libraryNav';
 import { diffTablesByStructure, rowKey, summariseVersionChange } from '../../lib/rowDiff';
 import { useMappingReview, readMappingReviews, findingKey } from '../../lib/queries/mappingReview';
 import { analyseFmd } from '../../lib/fmdHealth';
@@ -60,6 +61,7 @@ const SHEET_LABEL: Record<SheetKey, string> = { source: 'Source', target: 'Targe
  *    explaining there's nothing to find, rather than hiding the tab. */
 export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow | null; onClose: () => void }) {
   const toast = useToast();
+  const to = useLibraryPath();
   const { data: versions = [], isLoading } = useFmdVersions(fmd?.id);
   const [tab, setTab] = useState<Tab>('mapping');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -612,6 +614,20 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
                 </Select>
               </label>
             )}
+            {/* A second BROWSER tab, not an in-app "full screen".
+                The complaint this answers is that a modal has to be closed to look at anything
+                else — and an in-app full-screen mode would not fix that, because it still occupies
+                the one window. A real tab does: the FMD stays open on its own URL while you use the
+                rest of the app beside it. The address already exists (every Library deep view is a
+                route); this is the affordance that makes it reachable without copying the URL out
+                of the bar. */}
+            <Button
+              variant="quiet" size="sm"
+              onClick={() => window.open(`${window.location.origin}${to('fmds', fmd.id)}`, '_blank', 'noopener')}
+              title="Open this FMD in a new browser tab, so you can keep it open while using other screens"
+            >
+              <ExternalLink size={14} /> New tab
+            </Button>
             <Button variant="quiet" size="sm" onClick={handleExport} disabled={exporting || !selected || (!isGoldenStructure && !isGenerated)}>
               <Download size={14} /> {exporting ? 'Exporting…' : 'Export to Excel'}
             </Button>
