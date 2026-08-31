@@ -91,6 +91,10 @@ export function FmdVersionHistoryDialog({ fmd, onClose, asPage }: {
      generated reference and a Golden one is the template, so neither is somewhere to bolt an
      object-specific column onto. */
   const [addingContent, setAddingContent] = useState(false);
+  /* The node the grid portals its controls into — the tab row, so they sit in line with Field
+     Mapping / Health Check / Versions & Review. A state setter as the ref, because a plain ref
+     would not re-render the grid once the node exists. */
+  const [gridControls, setGridControls] = useState<HTMLDivElement | null>(null);
   /* Which row's per-plant rules are open. Holds the row's identity rather than its index: the grid
      can be sorted or filtered under the dialog, and an index would then point at a different row. */
   const [plantRuleTarget, setPlantRuleTarget] = useState<{ structureId: string; structureIdent?: string; rowKey: string; rowLabel: string; transformation?: string; technical?: string } | null>(null);
@@ -684,6 +688,13 @@ export function FmdVersionHistoryDialog({ fmd, onClose, asPage }: {
           >
             Where-Used
           </button>
+
+          {/* The grid portals its controls in here, so they sit in line with the tabs rather than
+              on the structure strip below. Empty on every tab but Field Mapping, because the grid
+              is the only thing that fills it — which is also why "only on Field Mapping" needs no
+              condition. Held clear of the row's bottom border: the active tab marks itself by
+              sitting ON that line, so anything else touching it reads as a tab. */}
+          <div ref={setGridControls} className="ml-auto flex items-center mb-1.5" />
         </div>
 
         {isLoading ? (
@@ -731,6 +742,7 @@ export function FmdVersionHistoryDialog({ fmd, onClose, asPage }: {
                         onSaveField={handleSaveField}
                         reviewPointCellsByTable={reviewPointCellsByTable}
                         reviewPointRowsByTable={reviewPointRowsByTable}
+                        controlsContainer={gridControls}
                         onAddContent={isCustomFmd && canEditSelected ? () => setAddingContent(true) : undefined}
                         onReorderRows={isCustomFmd && canEditSelected ? reorderRows : undefined}
                         onRemoveRow={isCustomFmd && canEditSelected ? (structureId, rowIndex, label) => setRemovingRow({ structureId, rowIndex, label }) : undefined}
