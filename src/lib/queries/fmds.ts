@@ -869,11 +869,25 @@ export function useAddFmdContent(fmdId: string) {
         .eq('id', current.id);
       if (error) throw error;
     } else {
+      /* Forking a NEW version off a published one. Three keys must NOT come across, and every one
+       * of them belongs to the version being left behind rather than to the document:
+       *
+       *  · `changeLog` — the record of what was done to v1.0.1. Carried forward, the new version's
+       *    Draft tab opens listing edits somebody already published, presented as part of the
+       *    unreleased work sitting on top of them.
+       *  · `mappingReview` / `mappingReviews` — a review assesses the content it ran against, and
+       *    this fork exists precisely because the content is changing.
+       *  · `pendingChanges` — folded into the content above and cleared below.
+       *
+       * goldenSync learned this the same way and strips the same keys; the two forks now agree.
+       * Updating an unpublished row in place (the branch above) keeps its log, because that log IS
+       * that row's own history. */
+      const { changeLog: _cl, mappingReview: _mr, mappingReviews: _mrs, pendingChanges: _pc, ...carried } = nextSheets;
       const { error } = await supabase.from('fmd_versions').insert({
         fmd_id: fmdId,
         version: bumpVersion(current.version),
         state: 'Draft',
-        sheets: nextSheets,
+        sheets: carried,
         comment,
         created_by: who, created_at: now,
       });
