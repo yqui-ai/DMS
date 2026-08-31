@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Dialog } from '../../components/Dialog';
 import { Button } from '../../components/Button';
 import { Field, Input } from '../../components/Field';
@@ -7,7 +7,7 @@ import { Select } from '../../components/Select';
 import { Tag } from '../../components/Tag';
 import { useToast } from '../../components/Toast';
 import { fmtDateTime } from '../../lib/format';
-import { dateForInput, LEVELS, useHierarchyMutations, useRefStatus, type HierarchyForm } from '../../lib/queries/hierarchy';
+import { dateForInput, LEVELS, useHierarchy, useHierarchyMutations, useRefStatus, type HierarchyForm } from '../../lib/queries/hierarchy';
 import { useAssignablePeople } from '../../lib/queries/people';
 import { usePlants, usePlantMutations, useSubprojectPlants } from '../../lib/queries/plants';
 import { PlantPicker } from './PlantPicker';
@@ -78,6 +78,33 @@ export function HierarchyDialog({ target, onClose }: { target: HierarchyTarget |
   const { data: allPlants = [] } = usePlants(false, level === 'SPRJ');
   const { data: plantIdsBySubproject } = useSubprojectPlants(level === 'SPRJ');
   const [plantIds, setPlantIds] = useState<string[]>([]);
+
+  /* Which plants the SIBLING subprojects of this project already cover.
+   *
+   * A plant belongs to one subproject per project (0062), so a plant held by a sibling is not
+   * available here. The database enforces it either way; this is so the picker can grey it out and
+   * name where it already is, rather than letting someone build a subproject around a plant they
+   * cannot have and discovering it at save. */
+  // No argument: useHierarchy's first parameter is `includeArchived`, not `enabled`. Passing a
+  // truthiness flag here would have pulled ARCHIVED subprojects into the clash check whenever the
+  // level happened to be SPRJ — blocking a plant against a wave that is no longer running.
+  const { data: hierarchy = [] } = useHierarchy();
+  const takenInProject = useMemo(() => {
+    if (level !== 'SPRJ') return undefined;
+    const projectId = editing
+      ? hierarchy.flatMap((p) => p.projects).find((pj) => pj.subprojects.some((s) => s.id === target?.record?.id))?.id
+      : target?.parentId;
+    if (!projectId) return undefined;
+    const project = hierarchy.flatMap((p) => p.projects).find((pj) => pj.id === projectId);
+    const out = new Map<string, string>();
+    for (const sibling of project?.subprojects ?? []) {
+      if (sibling.id === target?.record?.id) continue;
+      for (const plantId of plantIdsBySubproject?.get(sibling.id) ?? []) {
+        out.set(plantId, sibling.code || sibling.name);
+      }
+    }
+    return out;
+  }, [level, editing, hierarchy, target?.record?.id, target?.parentId, plantIdsBySubproject]);
   const { setSubprojectPlants } = usePlantMutations();
 
   useEffect(() => {
@@ -228,7 +255,7 @@ export function HierarchyDialog({ target, onClose }: { target: HierarchyTarget |
               label="Plants covered"
               hint="Scope and Field Mappings are shared across every plant on this subproject."
             >
-              <PlantPicker plants={allPlants} selected={plantIds} onChange={setPlantIds} disabled={busy} />
+              <PlantPicker plants={allPlants} selected={plantIds} onChange={setPlantIds} disabled={busy} takenInProject={takenInProject} />
             </Field>
           )}
 
