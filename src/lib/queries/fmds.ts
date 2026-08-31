@@ -725,7 +725,18 @@ export function useEditFmdField(fmdId: string) {
             .update({ row_key: after })
             .eq('fmd_id', fmdId).eq('structure_id', structureId).eq('row_key', before);
           if (rekeyError) throw rekeyError;
-          await queryClient.invalidateQueries({ queryKey: ['fmd-field-notes', fmdId] });
+          // Per-plant rules are anchored the same way and break the same way. A rule left behind by
+          // a rename is not deleted, just orphaned — which is worse than deleted, because nothing
+          // on screen shows that a plant override has stopped applying.
+          const { error: plantRekeyError } = await supabase
+            .from('fmd_plant_rules')
+            .update({ row_key: after })
+            .eq('fmd_id', fmdId).eq('structure_id', structureId).eq('row_key', before);
+          if (plantRekeyError) throw plantRekeyError;
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['fmd-field-notes', fmdId] }),
+            queryClient.invalidateQueries({ queryKey: ['fmd-plant-rules', fmdId] }),
+          ]);
         }
       }
       // An unpublished version is a generation nobody has released yet — edit it in place. It needs
