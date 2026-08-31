@@ -88,6 +88,24 @@ export function useMappingReview() {
 
         const inScopeRows = table.rows.filter((r) => !isOutOfScope(r));
 
+        /* …and a structure whose every row is OUT of scope is the same silence by a different
+         * route. Skipping an out-of-scope row is right per row — it needs no rule, no target and no
+         * data type, so auditing it only manufactures findings nobody will act on. But when that
+         * skip empties the whole structure, every check below has nothing left to look at and the
+         * review reports a clean bill of health on a tab that will load nothing.
+         *
+         * A warning, not an error: unlike a structure with no rows at all, this is a state somebody
+         * may have chosen — a sender structure carried for completeness with nothing migrating from
+         * it yet. Worth surfacing, not worth calling broken. */
+        if (inScopeRows.length === 0) {
+          findings.push(at(-1, {
+            field: undefined,
+            severity: 'warning',
+            issue: `All ${table.rows.length} row${table.rows.length === 1 ? '' : 's'} in this structure are marked out of scope, so nothing will be loaded for it.`,
+          }));
+          continue;
+        }
+
         const blanks = alwaysBlankFields(inScopeRows);
         for (const field of blanks) {
           const critical = criticalFields.includes(field);
