@@ -3,7 +3,7 @@ import { supabase } from '../supabase';
 import { formatLibraryReference } from '../libraryReference';
 import { useAuth } from '../auth';
 import { IDENTITY_FIELDS, rowKey, summariseVersionChange } from '../rowDiff';
-import type { Fmd, FmdDraft, FmdPendingChange, FmdVersion, GeneratedColumn, GeneratedTable, GoldenFmdStructure, GovState, LibraryListing } from '../../types/entities';
+import type { Fmd, FmdDraft, FmdPendingChange, FmdVersion, GeneratedColumn, GeneratedTable, GoldenFmdStructure, GovState, LibraryListing, MappingReview } from '../../types/entities';
 
 const toFmdVersion = (v: any): FmdVersion => ({
   id: v.id, fmdId: v.fmd_id, version: v.version, state: v.state,
@@ -929,6 +929,66 @@ export function useAddFmdContent(fmdId: string) {
         current as any, sheets,
         { ...sheets, generatedColumns: next, generatedTables: tables },
         'Reordered columns',
+        pending.length > 0,
+      );
+    },
+
+    /** Moves one row within a structure.
+     *
+     * A row IS a field in an FMD — one source field mapped to one target — so this is what
+     * "rearrange the fields" means: putting the mapping lines in the order somebody wants to read
+     * and build them in, usually grouping related fields that generation emitted apart.
+     *
+     * ── Why the stored review has to be remapped ──────────────────────────────────────────────
+     * A finding pins `structureId + rowIndex + field`. Move a row and every finding after it points
+     * at the wrong line — silently, because an index is always a valid index. The review would keep
+     * rendering, just against the wrong rows, which is worse than losing it. So the indices move
+     * with the rows.
+     *
+     * Review POINTS need no such care: they are anchored to the content-based `row_key`, which is
+     * exactly why that decision was made. Pending changes need none either — `openDraft` folds them
+     * into the content first and the draft is cleared, so there are no index-bearing edits left to
+     * invalidate.
+     */
+    async reorderRows(structureId: string, from: number, to: number): Promise<void> {
+      if (from === to) return;
+      const { current, sheets, tables, pending } = await openDraft();
+      const target = tables.find((t) => t.structureId === structureId);
+      if (!target) throw new Error('Could not locate that structure.');
+      if (from < 0 || from >= target.rows.length || to < 0 || to >= target.rows.length) {
+        throw new Error('That row is no longer where it was — reopen the FMD and try again.');
+      }
+
+      const rows = [...target.rows];
+      rows.splice(to, 0, ...rows.splice(from, 1));
+
+      /** oldIndex -> newIndex for this structure, derived from the same splice rather than from a
+       * second piece of arithmetic that could disagree with it. */
+      const moved = new Map<number, number>();
+      const order = target.rows.map((_, i) => i);
+      order.splice(to, 0, ...order.splice(from, 1));
+      order.forEach((oldIndex, newIndex) => moved.set(oldIndex, newIndex));
+
+      const remap = (review?: MappingReview): MappingReview | undefined => (review && {
+        ...review,
+        findings: review.findings.map((f) => (
+          f.structureId === structureId && f.rowIndex >= 0
+            // A finding at -1 belongs to the structure rather than to a row (see mappingReview.ts)
+            // and must keep its sentinel, not be renumbered into row 0.
+            ? { ...f, rowIndex: moved.get(f.rowIndex) ?? f.rowIndex }
+            : f
+        )),
+      });
+
+      await write(
+        current as any, sheets,
+        {
+          ...sheets,
+          generatedTables: tables.map((t) => (t.structureId === structureId ? { ...t, rows } : t)),
+          mappingReview: remap(sheets.mappingReview),
+          mappingReviews: sheets.mappingReviews?.map((r) => remap(r)!),
+        },
+        `Reordered rows in ${target.structureIdent}`,
         pending.length > 0,
       );
     },

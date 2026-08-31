@@ -253,7 +253,7 @@ function GridCell({ column, value, onSave }: {
   );
 }
 
-export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, reviewFindingsByTable, onOpenField, onAddReviewPoint, reviewPointCellsByTable, reviewPointRowsByTable, onAddContent, onReorderColumns, onOpenPlantRules, plantRuleCountsByTable, canEdit = false, onSaveField }: {
+export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, reviewFindingsByTable, onOpenField, onAddReviewPoint, reviewPointCellsByTable, reviewPointRowsByTable, onAddContent, onReorderColumns, onReorderRows, onOpenPlantRules, plantRuleCountsByTable, canEdit = false, onSaveField }: {
   columns: GeneratedColumn[]; tables: GeneratedTable[];
   /** structureId -> rowKey -> changed field names, vs. the previous version — yellow-highlights
    * exactly the cells that changed since then. Undefined/absent means "nothing to compare against
@@ -291,6 +291,9 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
   /** Persists a new column order. Omitted where the FMD cannot be edited, and on Standard/Golden —
    * order is presentation, and a Custom FMD is the only kind whose presentation is its own. */
   onReorderColumns?: (fields: string[]) => Promise<void>;
+  /** Moves one row within a structure. A row IS a field in an FMD, so this is what "rearrange the
+   * fields" means. Omitted where the FMD cannot be edited. */
+  onReorderRows?: (structureId: string, from: number, to: number) => Promise<void>;
   /** Opens the per-plant rules dialog for one row. Omitted where the FMD covers no plants — a
    * single-plant subproject has nothing for a rule to differ between. */
   onOpenPlantRules?: (structureId: string, rowIndex: number) => void;
@@ -389,6 +392,9 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
   /** The gutter exists only when this FMD has review points at all — an always-present empty
    * column is 28px of nothing on every row of every document that has never been reviewed. */
   const showPointGutter = !!reviewPointRowsByTable;
+  /** The reorder gutter appears only while editing: it is a control, and a read-only viewer should
+   * not carry a column of buttons nobody can press. */
+  const showReorderGutter = !!onReorderRows && editing;
   /** How many rows the template says are NOT being migrated. Counted before the filter so the
    * button can say what it would hide, and so "0 out of scope" can disable it rather than offering
    * a toggle that does nothing. */
@@ -439,6 +445,21 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
     next.splice(to, 0, ...next.splice(from, 1));
     setReordering(true);
     try { await onReorderColumns(next); } finally { setReordering(false); }
+  };
+
+  /** Whether the grid is showing the rows in DOCUMENT order.
+   *
+   * Reordering is only offered then. Sorted or filtered, the row above a given row on screen is not
+   * the row above it in the document, so "move up" would move it somewhere the reader cannot see —
+   * and a control whose effect you cannot observe is worse than one that is missing. Disabled with
+   * the reason rather than hidden, so it does not look like the feature vanished. */
+  const rowsInDocumentOrder = !sortField && !hideOutOfScope;
+
+  const moveRow = async (from: number, to: number) => {
+    if (!onReorderRows || !activeTable || reordering) return;
+    if (to < 0 || to >= activeTable.rows.length) return;
+    setReordering(true);
+    try { await onReorderRows(activeTable.structureId, from, to); } finally { setReordering(false); }
   };
 
   const toggleColumn = (field: string) => setHiddenColumns((s) => {
@@ -669,6 +690,7 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
               {/* The gutter has no section — it is not a field of the document, it is a note about
                   one. Left blank in the band so it reads as a margin rather than as a column of
                   some section it does not belong to. */}
+              {showReorderGutter && <th className="sticky top-0 bg-surface-3 w-9" aria-hidden />}
               {showPointGutter && <th className="sticky top-0 bg-surface-3 w-9" aria-hidden />}
               {runs.map((run, i) => (
                 <th
@@ -681,6 +703,16 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
               ))}
             </tr>
             <tr>
+              {showReorderGutter && (
+                <th
+                  className="sticky bg-surface-3 w-9 z-[2] px-0"
+                  style={{ top: bandHeight }}
+                  aria-label="Reorder rows"
+                  title={rowsInDocumentOrder
+                    ? 'Move a row up or down'
+                    : 'Clear the sort and the scope filter to reorder — the order on screen is not the document order'}
+                />
+              )}
               {showPointGutter && (
                 <th
                   className="sticky bg-surface-3 w-9 z-[2] px-0"
@@ -705,7 +737,7 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
           </thead>
           <tbody>
             {processedRows.length === 0 && (
-              <tr><td colSpan={visibleColumns.length + (showPointGutter ? 1 : 0)} className="px-2.5 py-6 text-center text-muted text-sm2">No rows.</td></tr>
+              <tr><td colSpan={visibleColumns.length + (showPointGutter ? 1 : 0) + (showReorderGutter ? 1 : 0)} className="px-2.5 py-6 text-center text-muted text-sm2">No rows.</td></tr>
             )}
             {processedRows.map((row, i) => {
               // Keyed on the row's position in the DOCUMENT, not in this render. rowKey falls back
@@ -724,6 +756,36 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                   onDoubleClick={onOpenField && !editing ? () => onOpenField(activeTable.structureId, originalIndex) : undefined}
                   className={clsx('group/row', onOpenField && !editing && 'cursor-default select-none')}
                 >
+                  {showReorderGutter && (
+                    <td className="border-t border-line-soft px-0 align-middle w-9">
+                      <span className="flex flex-col items-center leading-none">
+                        <button
+                          type="button"
+                          aria-label="Move this field up"
+                          title={rowsInDocumentOrder
+                            ? 'Move this field up'
+                            : 'Clear the sort and the scope filter first — the order on screen is not the document order'}
+                          disabled={!rowsInDocumentOrder || originalIndex <= 0 || reordering}
+                          onClick={() => moveRow(originalIndex, originalIndex - 1)}
+                          className="text-muted hover:text-blue disabled:opacity-25 disabled:pointer-events-none"
+                        >
+                          <ChevronUp size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Move this field down"
+                          title={rowsInDocumentOrder
+                            ? 'Move this field down'
+                            : 'Clear the sort and the scope filter first — the order on screen is not the document order'}
+                          disabled={!rowsInDocumentOrder || originalIndex >= activeTable.rows.length - 1 || reordering}
+                          onClick={() => moveRow(originalIndex, originalIndex + 1)}
+                          className="text-muted hover:text-blue disabled:opacity-25 disabled:pointer-events-none"
+                        >
+                          <ChevronDown size={12} />
+                        </button>
+                      </span>
+                    </td>
+                  )}
                   {showPointGutter && (() => {
                     const points = reviewPointRows?.get(rk);
                     return (
