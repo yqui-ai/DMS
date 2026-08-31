@@ -469,10 +469,12 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
             eye here, which meant "view" rather than "done" and made this the one edit toggle whose
             exit icon differed. Editing is a mode you enter, not a property of clicking; every save
             lands in the draft, so nothing publishes. */}
-        {/* Adding sits beside editing, not inside it: both change the document, and hiding the one
-            that changes its SHAPE behind the mode that changes values would make it findable only
-            by someone already editing. */}
-        {canEdit && onAddContent && (
+        {/* Only while EDITING. Adding a row or a structure changes the document, and every other
+            way of changing it is already behind the edit toggle — an add button sitting in a
+            read-only grid is an invitation to alter a document you opened to read. It also keeps
+            the two shape changes and the reorder handles appearing and disappearing together,
+            rather than as three unrelated controls. */}
+        {canEdit && editing && onAddContent && (
           <button
             onClick={onAddContent}
             aria-label="Add a custom field, row or structure"

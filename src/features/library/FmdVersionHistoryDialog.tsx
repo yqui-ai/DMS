@@ -534,6 +534,7 @@ export function FmdVersionHistoryDialog({ fmd, onClose, asPage }: {
   };
 
   return (
+    <>
     <DocumentShell
       asPage={asPage}
       open={!!fmd}
@@ -844,6 +845,13 @@ export function FmdVersionHistoryDialog({ fmd, onClose, asPage }: {
           </div>
         )}
       </div>
+    </DocumentShell>
+
+    {/* Overlays live OUTSIDE the shell, not inside its scrollable body.
+        A dialog rendered among the body content is a React-tree descendant of it, so its portal
+        shares that ancestry for event purposes — the child was mounting into the middle of the
+        interaction that opened it and taking the tail of it, which is why Add row appeared and
+        vanished in one click. They are overlays; they belong beside the shell, not within it. */}
       {/* Rendered against the LATEST version's shape, not the selected one: adding always lands in
           the draft on top of the latest, so offering the sections and structures of a superseded
           version would let you add a column to a document that no longer looks like that. */}
@@ -879,6 +887,6 @@ export function FmdVersionHistoryDialog({ fmd, onClose, asPage }: {
           await fieldNoteMutations.add(pointTarget.structureId, pointTarget.rowKey, tagVal, body, pointTarget.field);
         }}
       />
-    </DocumentShell>
+    </>
   );
 }
