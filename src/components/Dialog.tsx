@@ -101,7 +101,18 @@ export function Dialog({ open, onClose, title, subtitle, size = 'md', children, 
           isAi && 'p-[1.5px]',
           isAi && (processing ? 'ai-border-processing' : 'bg-gradient-to-br from-[#3b82f6] via-[#8b5cf6] to-[#a855f7]'),
         )}
-        onMouseDown={(e) => e.stopPropagation()}
+        /* No stopPropagation here any more, and its absence is load-bearing.
+         *
+         * The card used to swallow mousedown so it could not reach the backdrop's
+         * `onMouseDown={requestClose}`. But React's synthetic stopPropagation also stops the NATIVE
+         * event, and React listens at the root container — so the event died there and never
+         * reached `document`, which is where `useDismiss` listens. Every popover inside every
+         * dialog therefore stayed open when you clicked away: the review filters, the column
+         * picker, every MultiSelectFilter. Two could be open at once, overlapping.
+         *
+         * The backdrop now closes on a CLICK whose target is the backdrop itself, so it already
+         * ignores anything that happens inside the card and needs no help from here. Do not
+         * reintroduce this. */
       >
         <div className="bg-surface rounded flex flex-col flex-1 min-h-0 overflow-hidden">
           <div className="flex items-center gap-2 px-5 py-4 border-b border-line">
