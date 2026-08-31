@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Archive, ArrowRight, Eraser, Factory, History, CheckCircle2, Clock, Library as LibraryIcon, Package, Pencil, Plus, ShieldCheck, Trash2, Undo2, X } from 'lucide-react';
+import { Archive, ArrowRight, Copy, Eraser, Factory, History, CheckCircle2, Clock, Library as LibraryIcon, Package, Pencil, Plus, ShieldCheck, Trash2, Undo2, X } from 'lucide-react';
 import clsx from 'clsx';
 import { PageHeader } from '../../components/PageHeader';
 import { Button } from '../../components/Button';
@@ -20,6 +20,7 @@ import { adminProgramIds, useMyMemberships } from '../../lib/queries/launchpad';
 import { HierarchyDialog, type HierarchyTarget } from './HierarchyDialog';
 import { usePlants, useSubprojectPlants } from '../../lib/queries/plants';
 import { ResetTestDataDialog } from './ResetTestDataDialog';
+import { ReplicateSubprojectDialog } from './ReplicateSubprojectDialog';
 import { LEVEL_ICON, statusVariant } from './hierarchyLevels';
 import type { HierarchyLevel, RefStatus } from '../../types/entities';
 
@@ -61,6 +62,9 @@ export function HierarchyPage() {
   const [archiving, setArchiving] = useState<ArchiveTarget | null>(null);
   const [resetting, setResetting] = useState(false);
   const [deleting, setDeleting] = useState<DeleteTarget | null>(null);
+  /* One replicate dialog for the whole screen, opened with whichever subproject was chosen — a
+     dialog per tile would be dozens of mounted components on a page that renders many. */
+  const [replicating, setReplicating] = useState<{ id: string; code?: string; name: string } | null>(null);
   const toast = useToast();
   const { cancel } = useArchiveMutations();
   const { deleteEmpty } = useHierarchyMutations();
@@ -237,6 +241,7 @@ export function HierarchyPage() {
               onCancelRequest={withdraw}
               onOpen={(subprojectId) => navigate(`/pg/${pg.id}/sp/${subprojectId}/dashboard`)}
               onDelete={setDeleting}
+              onReplicate={setReplicating}
             />
           ))}
         </div>
@@ -250,6 +255,17 @@ export function HierarchyPage() {
         open={resetting}
         programs={programs.filter((p) => adminOf.has(p.id)).map((p) => ({ id: p.id, code: p.code, name: p.name }))}
         onClose={() => setResetting(false)}
+      />
+
+      <ReplicateSubprojectDialog
+        subproject={replicating}
+        onClose={() => setReplicating(null)}
+        // Straight into the copy. The reason for making one is to work in it, and leaving someone
+        // on the hierarchy to find the wave they just created is a step with no purpose.
+        onReplicated={(id) => {
+          const programId = programs.find((pg) => pg.projects.some((pj) => pj.subprojects.some((sp) => sp.id === replicating?.id)))?.id;
+          if (programId) navigate(`/pg/${programId}/sp/${id}/scope/register`);
+        }}
       />
 
       {/* Deleting an EMPTY record, in place of archiving it. `dms_delete_empty` re-checks emptiness
@@ -387,7 +403,7 @@ function nodeActions(opts: {
 
 /* ────────────────────────────────────────────────────────────────────────────── program */
 
-function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, onDialog, onArchive, onCancelRequest, onOpen, onDelete }: {
+function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, onDialog, onArchive, onCancelRequest, onOpen, onDelete, onReplicate }: {
   program: ProgramNode;
   canEdit: boolean;
   statuses: RefStatus[];
@@ -397,6 +413,9 @@ function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, on
   onArchive: (t: ArchiveTarget) => void;
   onCancelRequest: (requestId: string) => void;
   onDelete: (t: DeleteTarget) => void;
+  /** Opens the replicate dialog for one subproject. Threaded from the page rather than held per
+   * tile: one dialog for the screen, so two tiles cannot each open their own. */
+  onReplicate: (sp: { id: string; code?: string; name: string }) => void;
   onOpen: (subprojectId: string) => void;
 }) {
   const Icon = LEVEL_ICON.PRGM;
@@ -485,6 +504,7 @@ function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, on
               onCancelRequest={onCancelRequest}
               onOpen={onOpen}
               onDelete={onDelete}
+              onReplicate={onReplicate}
             />
           ))}
         </div>
@@ -496,7 +516,7 @@ function ProgramSection({ program: pg, canEdit, statuses, plantsBySubproject, on
 /* ────────────────────────────────────────────────────────────────────────────── project */
 
 /** A grouping, not a card — projects organise subprojects, they are not something you open. */
-function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDialog, onArchive, onCancelRequest, onOpen, onDelete }: {
+function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDialog, onArchive, onCancelRequest, onOpen, onDelete, onReplicate }: {
   project: ProjectNode;
   canEdit: boolean;
   statuses: RefStatus[];
@@ -505,6 +525,9 @@ function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDi
   onArchive: (t: ArchiveTarget) => void;
   onCancelRequest: (requestId: string) => void;
   onDelete: (t: DeleteTarget) => void;
+  /** Opens the replicate dialog for one subproject. Threaded from the page rather than held per
+   * tile: one dialog for the screen, so two tiles cannot each open their own. */
+  onReplicate: (sp: { id: string; code?: string; name: string }) => void;
   onOpen: (subprojectId: string) => void;
 }) {
   const Icon = LEVEL_ICON.PRJT;
@@ -580,6 +603,7 @@ function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDi
                 onArchive={onArchive}
                 onCancelRequest={onCancelRequest}
                 onDelete={onDelete}
+                onReplicate={onReplicate}
               />
             ))}
           </div>
@@ -593,7 +617,7 @@ function ProjectGroup({ project: pj, canEdit, statuses, plantsBySubproject, onDi
 
 /** The only level you can work inside, so the only one rendered as a destination. The whole tile is
  * the click target; the overflow menu stops propagation so administering never navigates. */
-function SubprojectTile({ subproject: sp, programId, canEdit, statuses, plantCodes, onOpen, onDialog, onArchive, onCancelRequest, onDelete }: {
+function SubprojectTile({ subproject: sp, programId, canEdit, statuses, plantCodes, onOpen, onDialog, onArchive, onCancelRequest, onDelete, onReplicate }: {
   subproject: SubprojectNode;
   /** The program the subproject sits in — an archive request is scoped by program. */
   programId: string;
@@ -607,6 +631,9 @@ function SubprojectTile({ subproject: sp, programId, canEdit, statuses, plantCod
   onArchive: (t: ArchiveTarget) => void;
   onCancelRequest: (requestId: string) => void;
   onDelete: (t: DeleteTarget) => void;
+  /** Opens the replicate dialog for one subproject. Threaded from the page rather than held per
+   * tile: one dialog for the screen, so two tiles cannot each open their own. */
+  onReplicate: (sp: { id: string; code?: string; name: string }) => void;
 }) {
   const Icon = LEVEL_ICON.SPRJ;
 
@@ -653,6 +680,16 @@ function SubprojectTile({ subproject: sp, programId, canEdit, statuses, plantCod
                       ? () => onDelete({ level: 'SPRJ', id: sp.id, label: sp.name, kind: 'subproject' })
                       : undefined,
                   }),
+                  /* Replicating belongs on the SUBPROJECT, not on the project's "add subproject":
+                     the thing being copied is this wave's scope, so the action has to start from
+                     the wave that has it. Offered on live subprojects only — copying an archived
+                     wave's scope would resurrect decisions the programme has already retired. */
+                  ...(sp.archiveState ? [] : [{
+                    key: 'replicate',
+                    label: 'Replicate for other plants…',
+                    icon: <Copy size={13} />,
+                    onSelect: () => onReplicate({ id: sp.id, code: sp.code, name: sp.name }),
+                  } satisfies MenuAction]),
                 ]}
               />
             </div>
