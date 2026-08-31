@@ -7,6 +7,7 @@ import { Button } from '../../components/Button';
 import { useToast } from '../../components/Toast';
 import { useXrefVersions, useGoldenXrefMutations, type LibraryXrefRow } from '../../lib/queries/rules';
 import { SECTION_COLORS, colorByKey, nextColor } from '../../lib/goldenFmdColors';
+import { normaliseStructureFieldName } from '../../lib/structureFieldName';
 import type { GoldenFmdStructure } from '../../types/entities';
 
 export const GOLDEN_XREF_NAME = 'Golden_Cross_Reference_Template';
@@ -288,7 +289,13 @@ export function GoldenXrefDesignerDialog({ target, onClose }: { target: LibraryX
                           </td>
                           <td className="p-0">
                             <input
-                              value={field.field} onChange={(e) => updateField(activeSection.id, field.id, 'field', e.target.value)}
+                              value={field.field}
+                              // Normalised as typed: ALL CAPS, no spaces. See structureFieldName.ts —
+                              // a field name is a technical identifier and the anchor every review
+                              // point, diff and generated column hangs off, so the wrong shape must
+                              // never become possible rather than merely be reported at save.
+                              onChange={(e) => updateField(activeSection.id, field.id, 'field', normaliseStructureFieldName(e.target.value))}
+                              title="ALL CAPS, no spaces — typed characters are converted automatically."
                               className="w-full bg-transparent px-2.5 py-1.5 text-sm2 font-mono font-bold focus-visible:outline-none focus-visible:bg-blue-pale"
                             />
                           </td>

@@ -1,32 +1,48 @@
 import { colorByKey } from '../../lib/goldenFmdColors';
 import type { GoldenFmdStructure } from '../../types/entities';
 
-/** The note beside a field: a set of permitted values, or a sentence about it.
+/** What a field is FOR and what you may actually type in it — both, when both exist.
  *
- * These arrive in one free-text column, so the two are told apart by shape rather than by a flag —
- * "Copy, Default, Transform, XREF" and "Mandatory or Optional" are lists of short tokens, while a
- * description is prose. Splitting on commas and the word "or", then requiring every part to be
- * short, gets that right for the cases that exist and falls back to plain text when it does not.
+ * These are two different facts and a field can carry each: FIELD_TYPE has the value list
+ * `Standard | Custom` AND a sentence explaining what those mean. Showing one or the other, as this
+ * did, meant a field with a real value list hid its description and a field with a description hid
+ * nothing but told you nothing about what it accepts.
  *
- * Worth the distinction because the two mean different things to someone filling the document in:
- * a description tells you what the field is FOR, whereas allowed values tell you what you may
- * actually type — the second is a constraint, and constraints should look like constraints. */
-function AllowedValues({ note }: { note?: string }) {
-  if (!note?.trim()) return null;
-  const parts = note.split(/\s*,\s*|\s+or\s+/i).map((p) => p.trim()).filter(Boolean);
-  // More than one part, and every part short enough to be a value rather than a clause.
-  const isEnumeration = parts.length > 1 && parts.every((p) => p.length <= 24);
+ * `options` is the real answer whenever the template sets it (`kind: 'select'`). The comma-splitting
+ * heuristic below is kept only as a FALLBACK for the fields that predate `options` and encoded their
+ * list in the description — "Copy, Default, Transform, XREF", "Mandatory or Optional". Those are
+ * lists of short tokens rather than prose, and rendering them as chips is what makes a constraint
+ * look like a constraint. New templates should set `options` and let the heuristic go unused. */
+function FieldNote({ options, description }: { options?: string[]; description?: string }) {
+  const note = description?.trim();
 
-  if (!isEnumeration) {
-    return <span className="text-2xs text-muted min-w-0 flex-1">{note}</span>;
-  }
+  const listed = options?.length
+    ? options
+    : (() => {
+      if (!note) return undefined;
+      const parts = note.split(/\s*,\s*|\s+or\s+/i).map((p) => p.trim()).filter(Boolean);
+      // More than one part, and every part short enough to be a value rather than a clause.
+      return parts.length > 1 && parts.every((p) => p.length <= 24) ? parts : undefined;
+    })();
+
+  // The description is suppressed only when the heuristic derived the chips FROM it — printing the
+  // same words twice, once as chips and once as prose, is not showing two facts.
+  const prose = note && !(listed && !options?.length) ? note : undefined;
+
+  if (!listed && !prose) return null;
+
   return (
-    <span className="flex flex-wrap items-baseline gap-1 min-w-0 flex-1">
-      {parts.map((p) => (
-        <span key={p} className="font-mono text-2xs bg-surface-2 text-muted rounded-xs px-1.5 py-px">
-          {p}
+    <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1 min-w-0 flex-1">
+      {listed && (
+        <span className="flex flex-wrap items-baseline gap-1 shrink-0">
+          {listed.map((p) => (
+            <span key={p} className="font-mono text-2xs bg-surface-2 text-muted rounded-xs px-1.5 py-px">
+              {p}
+            </span>
+          ))}
         </span>
-      ))}
+      )}
+      {prose && <span className="text-2xs text-muted min-w-0">{prose}</span>}
     </span>
   );
 }
@@ -116,7 +132,7 @@ export function GoldenFmdStructureView({ structure }: { structure: GoldenFmdStru
                         >
                           {f.field || '—'}
                         </span>
-                        <AllowedValues note={f.description} />
+                        <FieldNote options={f.options} description={f.description} />
                       </div>
                     );
                   })}

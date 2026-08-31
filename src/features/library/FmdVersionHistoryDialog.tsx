@@ -82,7 +82,11 @@ export function FmdVersionHistoryDialog({ fmd, onClose }: { fmd: LibraryFmdRow |
   const isCustomFmd = fmd?.type === 'Custom';
   const goldenMode = fmd?.type === 'Golden';
   const siblingsMode = !goldenMode;
-  const { data: whereUsed = [], isLoading: whereUsedLoading } = useGoldenWhereUsed(goldenMode ? fmd?.id : undefined, goldenMode ? versions[0]?.id : undefined);
+  /* The latest PUBLISHED version, not versions[0]. Where-used answers "is this FMD on the current
+     template", and an unpublished draft is not the current template — passing it marked every row
+     Outdated the moment anyone saved in the designer. */
+  const goldenLivePublished = versions.find((v) => v.publishedAt);
+  const { data: whereUsed = [], isLoading: whereUsedLoading } = useGoldenWhereUsed(goldenMode ? fmd?.id : undefined, goldenMode ? goldenLivePublished?.id : undefined);
   const { data: siblings = [], isLoading: siblingsLoading } = useHistoricalSiblings(siblingsMode ? fmd?.histSourceName : undefined, fmd?.id);
   const { data: usage } = useFmdUsage(fmd?.id);
   const { data: objects = [] } = useMigrationObjects(!!fmd);

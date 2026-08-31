@@ -42,10 +42,20 @@ export interface LibraryFmdRow extends Fmd, LibraryListing {
    * on — undefined for the Golden FMD itself (it doesn't reference itself) and for anything never
    * generated from one. */
   goldenVersionLabel?: string; goldenOutdated?: boolean;
+  /** A newer template version exists but has NOT been published.
+   *
+   * Deliberately separate from `goldenOutdated`. Outdated means "behind what the programme is
+   * using" and asks for action; a draft on the template asks for nothing yet — it is one person's
+   * work in progress, and syncing to it is not even possible. Both can be true at once: an FMD can
+   * be genuinely behind the live template and have a further version coming after that. */
+  goldenDraftPending?: boolean;
   /** A Custom FMD's snapshot reference to the object's Standard FMD version — undefined for
    * Standard/Golden, which reference something else (or nothing). Outdated when the
-   * Standard FMD has since moved to a newer version for any reason, not just a Golden change. */
+   * Standard FMD has since moved to a newer PUBLISHED version, for any reason, not just a Golden
+   * change. */
   standardRefVersionLabel?: string; standardRefOutdated?: boolean;
+  /** The object's Standard FMD has an unpublished draft — same distinction as goldenDraftPending. */
+  standardRefDraftPending?: boolean;
   /** The newest PUBLISHED version — what everyone other than the editor should consider current.
    * Undefined while an FMD has only ever been a draft. */
   activeVersion?: string;
@@ -118,9 +128,24 @@ export function useLibraryFmds(enabled = true) {
       const versionLabelById = new Map<string, string>();
       for (const f of rows as any[]) for (const v of f.fmd_versions ?? []) versionLabelById.set(v.id, v.version);
 
-      const latestVersionId = (f: any): string | undefined => {
-        const sorted = [...(f.fmd_versions ?? [])].sort((a: any, b: any) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
-        return sorted[0]?.id as string | undefined;
+      const sortedVersionsOf = (f: any) =>
+        [...(f.fmd_versions ?? [])].sort((a: any, b: any) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
+
+      /** The newest RELEASED version — what everything downstream should be measured against.
+       *
+       * "Outdated" has to mean "behind what the programme is using", and an unpublished draft is not
+       * something the programme is using: it is one person's work in progress on the template. Using
+       * the newest version of any kind marked every FMD in the catalogue Outdated the moment anyone
+       * opened the Golden designer and saved, before a single change had been released — so the flag
+       * that is supposed to mean "go and re-sync this" fired on work nobody could sync to yet. */
+      const latestPublishedVersionId = (f: any): string | undefined =>
+        sortedVersionsOf(f).find((v: any) => v.published_at)?.id as string | undefined;
+
+      /** True when the newest version is an unpublished draft — a template change being prepared.
+       * Worth saying, but in a different voice from Outdated: nothing is required of anyone yet. */
+      const hasUnpublishedDraft = (f: any): boolean => {
+        const newest = sortedVersionsOf(f)[0];
+        return !!newest && !newest.published_at;
       };
       // How many Custom FMDs exist per object. A Standard FMD is the reference its Customs align
       // to, so archiving one with live children would leave them pointing at an archived parent.
@@ -131,12 +156,18 @@ export function useLibraryFmds(enabled = true) {
       }
 
       const goldenFmd = (rows as any[]).find((f) => f.type === 'Golden');
-      const goldenLatestVersionId = goldenFmd ? latestVersionId(goldenFmd) : undefined;
+      const goldenLatestVersionId = goldenFmd ? latestPublishedVersionId(goldenFmd) : undefined;
+      /** The Golden has unreleased work on it. Not the same as anything being outdated. */
+      const goldenDraftPending = goldenFmd ? hasUnpublishedDraft(goldenFmd) : false;
       const standardLatestVersionIdByObject = new Map<string, string>();
+      const standardDraftPendingByObject = new Map<string, boolean>();
       for (const f of rows as any[]) {
         if (f.type !== 'Standard' || !f.migration_object_id) continue;
-        const id = latestVersionId(f);
+        // Published only, for the same reason as the Golden: a Custom FMD is not behind a Standard
+        // draft that nobody has released.
+        const id = latestPublishedVersionId(f);
         if (id) standardLatestVersionIdByObject.set(f.migration_object_id, id);
+        standardDraftPendingByObject.set(f.migration_object_id, hasUnpublishedDraft(f));
       }
 
       const decorated = (rows as any[]).map((f) => {
@@ -179,8 +210,13 @@ export function useLibraryFmds(enabled = true) {
           changedAt: hasChanged ? (latest?.created_at ?? undefined) : undefined,
           goldenVersionLabel: goldenVersionId ? versionLabelById.get(goldenVersionId) : undefined,
           goldenOutdated: f.type !== 'Golden' && !!goldenVersionId && !!goldenLatestVersionId && goldenVersionId !== goldenLatestVersionId,
+          /** A new template version is being drafted. Informational — nothing is behind anything
+           * until it is published, and this is deliberately independent of goldenOutdated: an FMD
+           * can be genuinely outdated AND have a further draft coming. */
+          goldenDraftPending: f.type !== 'Golden' && goldenDraftPending,
           standardRefVersionLabel: standardRefVersionId ? versionLabelById.get(standardRefVersionId) : undefined,
           standardRefOutdated: f.type === 'Custom' && !!standardRefVersionId && !!currentStandardLatestId && standardRefVersionId !== currentStandardLatestId,
+          standardRefDraftPending: f.type === 'Custom' && !!f.migration_object_id && !!standardDraftPendingByObject.get(f.migration_object_id),
         };
         return { row, lastActivityAt: (latest?.created_at ?? first?.created_at ?? '') as string };
       });
@@ -370,7 +406,11 @@ export function useFmdUsage(fmdId?: string) {
 
       const [templateRes, newestRes] = await Promise.all([
         supabase.from('fmds').select('name, display_id').eq('id', (gv as any).fmd_id).single(),
+        // PUBLISHED only. Comparing against the newest row of any kind reported every FMD as
+        // outdated the moment somebody saved a draft on the template — against a version they
+        // could not have synced to even if they wanted to.
         supabase.from('fmd_versions').select('id').eq('fmd_id', (gv as any).fmd_id)
+          .not('published_at', 'is', null)
           .order('created_at', { ascending: false }).limit(1),
       ]);
       if (templateRes.error) throw templateRes.error;

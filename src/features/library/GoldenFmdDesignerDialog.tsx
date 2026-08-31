@@ -10,6 +10,7 @@ import { useToast } from '../../components/Toast';
 import { useLatestFmdVersion, useGoldenFmdMutations, type LibraryFmdRow } from '../../lib/queries/fmds';
 import { SECTION_COLORS, colorByKey, nextColor } from '../../lib/goldenFmdColors';
 import { isRequiredGoldenField, missingRequiredGoldenFields, withMissingBaselineFields } from '../../lib/goldenFmdRequiredFields';
+import { nonConformingFieldNames, normaliseStructureFieldName } from '../../lib/structureFieldName';
 import type { GoldenFmdStructure } from '../../types/entities';
 
 export const GOLDEN_FMD_NAME = 'Golden_Field_Mapping_Document_Template';
@@ -162,6 +163,7 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
   const missingBaseline = missingRequiredGoldenFields(
     structure.sections.flatMap((s) => s.fields.map((f) => f.field)),
   );
+  const badlyNamed = nonConformingFieldNames(structure.sections);
 
   const updateSection = (id: string, patch: Partial<GoldenFmdStructure['sections'][number]>) => {
     setStructure((s) => ({ sections: s.sections.map((sec) => (sec.id === id ? { ...sec, ...patch } : sec)) }));
@@ -286,6 +288,27 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
             the field by hand, spelled correctly, in the right section, with the right value list.
             That is a wall with no instructions on it. This is the same repair as one action, and it
             goes through the normal comment-and-version path rather than happening invisibly. */}
+        {/* Names that predate the ALL-CAPS rule. Reported, never auto-corrected: a field's name IS
+            its identity — it is the generated column header and the anchor every review point and
+            diff hangs off — so silently rewriting `Field Class` to `FIELD_CLASS` would detach all of
+            them, which is the very harm the rule exists to prevent. Renaming is a person's call. */}
+        {badlyNamed.length > 0 && (
+          <div className="flex items-start gap-3 rounded-lg bg-amber-bg shadow-[inset_0_0_0_1px_var(--amber-ink)] px-3.5 py-2.5 shrink-0">
+            <AlertTriangle size={15} className="text-amber-ink shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1 text-2xs text-amber-ink">
+              <span className="font-semibold">
+                {badlyNamed.length} field name{badlyNamed.length === 1 ? '' : 's'} not in the standard form:
+              </span>{' '}
+              <span className="font-mono font-semibold">{badlyNamed.join(', ')}</span>
+              <span className="ml-1 font-normal">
+                — structure field names are ALL CAPS with underscores, never spaces. Retype{' '}
+                {badlyNamed.length === 1 ? 'it' : 'them'} to fix. Nothing is changed automatically:
+                the name is what generated columns and review points are keyed on, so renaming is a
+                deliberate act.
+              </span>
+            </div>
+          </div>
+        )}
         {missingBaseline.length > 0 && (
           <div className="flex items-start gap-3 rounded-lg bg-amber-bg shadow-[inset_0_0_0_1px_var(--amber-ink)] px-3.5 py-2.5 shrink-0">
             <AlertTriangle size={15} className="text-amber-ink shrink-0 mt-0.5" />
@@ -416,9 +439,16 @@ export function GoldenFmdDesignerDialog({ target, onClose }: { target: LibraryFm
                                 finding that out only when you press Save costs you the edits you
                                 made after it. Everything else about the field stays editable. */}
                             <input
-                              value={field.field} onChange={(e) => updateField(activeSection.id, field.id, 'field', e.target.value)}
+                              value={field.field}
+                              // Normalised as typed: ALL CAPS, no spaces. See structureFieldName.ts —
+                              // a field name is a technical identifier and the anchor every review
+                              // point, diff and generated column hangs off, so the wrong shape must
+                              // never become possible rather than merely be reported at save.
+                              onChange={(e) => updateField(activeSection.id, field.id, 'field', normaliseStructureFieldName(e.target.value))}
                               readOnly={isRequiredGoldenField(field.field)}
-                              title={isRequiredGoldenField(field.field) ? 'Baseline field — its name is fixed. Type, allowed values, description and Critical are all still editable.' : undefined}
+                              title={isRequiredGoldenField(field.field)
+                                ? 'Baseline field — its name is fixed. Type, allowed values, description and Critical are all still editable.'
+                                : 'ALL CAPS, no spaces — what you type is converted automatically.'}
                               className={clsx(
                                 'w-full bg-transparent px-2.5 py-1.5 text-sm2 font-mono font-bold focus-visible:outline-none',
                                 isRequiredGoldenField(field.field) ? 'cursor-default' : 'focus-visible:bg-blue-pale',
