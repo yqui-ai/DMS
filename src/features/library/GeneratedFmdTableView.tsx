@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
-import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Columns3, Eye, EyeOff, Factory, Maximize2, MessageSquare, Pencil, Plus, Type } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Columns3, Eye, EyeOff, Factory, GripVertical, Maximize2, MessageSquare, Pencil, Plus, Type } from 'lucide-react';
 import { Dialog } from '../../components/Dialog';
 import { UnsavedChangesGuard } from '../../components/UnsavedChangesGuard';
 import { useDismiss } from '../../components/useDismiss';
@@ -253,7 +253,7 @@ function GridCell({ column, value, onSave }: {
   );
 }
 
-export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, reviewFindingsByTable, onOpenField, onAddReviewPoint, reviewPointCellsByTable, reviewPointRowsByTable, onAddContent, onReorderColumns, onReorderRows, onOpenPlantRules, plantRuleCountsByTable, canEdit = false, onSaveField }: {
+export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, reviewFindingsByTable, onOpenField, onAddReviewPoint, reviewPointCellsByTable, reviewPointRowsByTable, onAddContent, onReorderRows, onOpenPlantRules, plantRuleCountsByTable, canEdit = false, onSaveField }: {
   columns: GeneratedColumn[]; tables: GeneratedTable[];
   /** structureId -> rowKey -> changed field names, vs. the previous version — yellow-highlights
    * exactly the cells that changed since then. Undefined/absent means "nothing to compare against
@@ -288,9 +288,6 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
   reviewPointRowsByTable?: Map<string, Map<string, { total: number; open: number }>>;
   /** Opens the add-row/structure dialog. Omitted where the FMD cannot be edited. */
   onAddContent?: () => void;
-  /** Persists a new column order. Omitted where the FMD cannot be edited, and on Standard/Golden —
-   * order is presentation, and a Custom FMD is the only kind whose presentation is its own. */
-  onReorderColumns?: (fields: string[]) => Promise<void>;
   /** Moves one row within a structure. A row IS a field in an FMD, so this is what "rearrange the
    * fields" means. Omitted where the FMD cannot be edited. */
   onReorderRows?: (structureId: string, from: number, to: number) => Promise<void>;
@@ -328,6 +325,9 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
    * would misrepresent what the FMD contains to anyone who does not notice the toggle. */
   const [hideOutOfScope, setHideOutOfScope] = useState(false);
   const [reordering, setReordering] = useState(false);
+  /** The row being dragged, by its index in the DOCUMENT — the same identity moveRow takes, so
+   * nothing has to be translated between picking a row up and dropping it. */
+  const [dragRow, setDragRow] = useState<number | null>(null);
   /** Off by default, exactly like the field-level view's sections. A grid you can change by clicking
    * into it is a grid you can change by accident, so the mode makes the intent explicit and leaves
    * read-only as the resting state. */
@@ -434,19 +434,6 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
     fields.forEach((f) => next.add(f));
     return next;
   });
-  /** Moves one column one place and persists the whole order.
-   *
-   * The whole list is sent, not "move X after Y": the server has no idea what the client was
-   * looking at, and an instruction relative to a neighbour is wrong the moment anyone else has
-   * reordered in between. A complete order is either applied or rejected as a set. */
-  const moveColumn = async (from: number, to: number) => {
-    if (!onReorderColumns || to < 0 || to >= columns.length || reordering) return;
-    const next = columns.map((c) => c.field);
-    next.splice(to, 0, ...next.splice(from, 1));
-    setReordering(true);
-    try { await onReorderColumns(next); } finally { setReordering(false); }
-  };
-
   /** Whether the grid is showing the rows in DOCUMENT order.
    *
    * Reordering is only offered then. Sorted or filtered, the row above a given row on screen is not
@@ -545,53 +532,15 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                     <span className="ml-auto font-normal normal-case tracking-normal">{shown}/{g.cols.length}</span>
                   </label>
                   <div className="flex flex-col gap-0.5 mt-0.5 pl-2">
-                    {g.cols.map((c) => {
-                      /* Position in the DOCUMENT's column list, not in this section's slice — the
-                         arrows move a column one place in the real order, which is what the grid
-                         and the export read. Moving within a section is the common case, but a
-                         column can walk out of one section and into the next, and that is a legal
-                         thing to want: sections are runs of consecutive same-section columns, so
-                         the bands simply re-form around it. */
-                      const at = columns.findIndex((x) => x.field === c.field);
-                      return (
-                        <div key={c.field} className="flex items-center gap-2 text-sm2 py-0.5 hover:bg-surface-2 rounded px-1 group/col">
-                          <label className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer">
-                            <input
-                              type="checkbox" checked={!hiddenColumns.has(c.field)} onChange={() => toggleColumn(c.field)}
-                              className="w-3.5 h-3.5 accent-[var(--blue)] shrink-0"
-                            />
-                            <span className="font-mono truncate">{c.field}</span>
-                          </label>
-                          {onReorderColumns && (
-                            /* Arrows rather than drag: this list scrolls inside a popover, and
-                               dragging an item towards an edge that has to auto-scroll is the
-                               least reliable interaction in a browser. One click, one place. */
-                            <span className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover/col:opacity-100 focus-within:opacity-100">
-                              <button
-                                type="button"
-                                aria-label={`Move ${c.field} earlier`}
-                                title="Move earlier"
-                                disabled={at <= 0 || reordering}
-                                onClick={() => moveColumn(at, at - 1)}
-                                className="text-muted hover:text-blue disabled:opacity-30 disabled:pointer-events-none"
-                              >
-                                <ChevronUp size={13} />
-                              </button>
-                              <button
-                                type="button"
-                                aria-label={`Move ${c.field} later`}
-                                title="Move later"
-                                disabled={at < 0 || at >= columns.length - 1 || reordering}
-                                onClick={() => moveColumn(at, at + 1)}
-                                className="text-muted hover:text-blue disabled:opacity-30 disabled:pointer-events-none"
-                              >
-                                <ChevronDown size={13} />
-                              </button>
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
+                    {g.cols.map((c) => (
+                      <label key={c.field} className="flex items-center gap-2 text-sm2 cursor-pointer py-0.5 hover:bg-surface-2 rounded px-1">
+                        <input
+                          type="checkbox" checked={!hiddenColumns.has(c.field)} onChange={() => toggleColumn(c.field)}
+                          className="w-3.5 h-3.5 accent-[var(--blue)] shrink-0"
+                        />
+                        <span className="font-mono truncate">{c.field}</span>
+                      </label>
+                    ))}
                   </div>
                 </div>
               );
@@ -754,35 +703,40 @@ export function GeneratedFmdTableView({ columns, tables, changedCellsByTable, re
                 <tr
                   key={i}
                   onDoubleClick={onOpenField && !editing ? () => onOpenField(activeTable.structureId, originalIndex) : undefined}
-                  className={clsx('group/row', onOpenField && !editing && 'cursor-default select-none')}
+                  className={clsx(
+                    'group/row',
+                    onOpenField && !editing && 'cursor-default select-none',
+                    dragRow === originalIndex && 'opacity-40',
+                  )}
+                  onDragOver={showReorderGutter && dragRow !== null ? (e) => e.preventDefault() : undefined}
+                  onDrop={showReorderGutter && dragRow !== null ? () => {
+                    const from = dragRow;
+                    setDragRow(null);
+                    if (from !== null && from !== originalIndex) void moveRow(from, originalIndex);
+                  } : undefined}
                 >
                   {showReorderGutter && (
-                    <td className="border-t border-line-soft px-0 align-middle w-9">
-                      <span className="flex flex-col items-center leading-none">
-                        <button
-                          type="button"
-                          aria-label="Move this field up"
-                          title={rowsInDocumentOrder
-                            ? 'Move this field up'
-                            : 'Clear the sort and the scope filter first — the order on screen is not the document order'}
-                          disabled={!rowsInDocumentOrder || originalIndex <= 0 || reordering}
-                          onClick={() => moveRow(originalIndex, originalIndex - 1)}
-                          className="text-muted hover:text-blue disabled:opacity-25 disabled:pointer-events-none"
-                        >
-                          <ChevronUp size={12} />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="Move this field down"
-                          title={rowsInDocumentOrder
-                            ? 'Move this field down'
-                            : 'Clear the sort and the scope filter first — the order on screen is not the document order'}
-                          disabled={!rowsInDocumentOrder || originalIndex >= activeTable.rows.length - 1 || reordering}
-                          onClick={() => moveRow(originalIndex, originalIndex + 1)}
-                          className="text-muted hover:text-blue disabled:opacity-25 disabled:pointer-events-none"
-                        >
-                          <ChevronDown size={12} />
-                        </button>
+                    /* A drag handle, exactly as the Golden FMD designer's field rows have — the
+                       same gesture for the same act, so knowing one teaches the other. The row is
+                       the drop target (see the <tr> above); the handle is only what starts it, so
+                       an ordinary click still lands in the cell underneath. */
+                    <td className="border-t border-line-soft px-0 align-middle w-9 text-center">
+                      <span
+                        draggable={rowsInDocumentOrder && !reordering}
+                        onDragStart={() => setDragRow(originalIndex)}
+                        onDragEnd={() => setDragRow(null)}
+                        aria-label="Drag to reorder this field"
+                        title={rowsInDocumentOrder
+                          ? 'Drag to move this field'
+                          : 'Clear the sort and the scope filter first — the order on screen is not the document order'}
+                        className={clsx(
+                          'inline-flex',
+                          rowsInDocumentOrder && !reordering
+                            ? 'cursor-grab active:cursor-grabbing text-muted hover:text-blue'
+                            : 'text-muted/30 cursor-not-allowed',
+                        )}
+                      >
+                        <GripVertical size={13} />
                       </span>
                     </td>
                   )}

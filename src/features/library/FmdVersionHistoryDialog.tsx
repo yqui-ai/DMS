@@ -95,7 +95,7 @@ export function FmdVersionHistoryDialog({ fmd, onClose, asPage }: {
   const [plantRuleTarget, setPlantRuleTarget] = useState<{ structureId: string; structureIdent?: string; rowKey: string; rowLabel: string; transformation?: string; technical?: string } | null>(null);
   const { publish: publishVersion } = usePublishFmdVersion();
   const { saveField } = useEditFmdField(fmd?.id ?? '');
-  const { reorderColumns, reorderRows } = useAddFmdContent(fmd?.id ?? '');
+  const { reorderRows } = useAddFmdContent(fmd?.id ?? '');
   const { review: reviewMapping, save: saveMappingReview, setAddressed } = useMappingReview();
   const { user } = useAuth();
   const isCustomFmd = fmd?.type === 'Custom';
@@ -706,11 +706,6 @@ export function FmdVersionHistoryDialog({ fmd, onClose, asPage }: {
                         reviewPointCellsByTable={reviewPointCellsByTable}
                         reviewPointRowsByTable={reviewPointRowsByTable}
                         onAddContent={isCustomFmd && canEditSelected ? () => setAddingContent(true) : undefined}
-                        /* Custom only. Order is presentation, and a Custom FMD is the only kind
-                           whose presentation is its own — a Standard FMD is the programme-wide
-                           reference every Custom aligns to, so reordering it would move the
-                           columns under documents that never asked. */
-                        onReorderColumns={isCustomFmd && canEditSelected ? reorderColumns : undefined}
                         onReorderRows={isCustomFmd && canEditSelected ? reorderRows : undefined}
                         /* Offered only where a rule COULD differ: a Custom FMD (the only kind tied
                            to a subproject) whose subproject covers more than one plant. With one
